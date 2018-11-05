@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> f5cd5b2b69463968f3b40d2b353129c28b07c19e
 # Prerequisites
 *.d
 
@@ -31,6 +34,7 @@
 *.exe
 *.out
 *.app
+<<<<<<< HEAD
 
 # archived files
 *~
@@ -131,3 +135,5 @@ Thumbs.db
 # python compiled modules
 *.pyc
 *.pyo
+=======
+>>>>>>> f5cd5b2b69463968f3b40d2b353129c28b07c19e
