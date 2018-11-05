@@ -1394,7 +1394,7 @@ void HeatConductionProblem<dim>::assemble_temperature_system()
                                         temperature_stiffness_matrix);
             rebuild_temperature_preconditioner = true;
         }
-        else if (timestep_modified|| timestep_number == 1)
+        else if (timestep_number == 1)
         {
             Assert(timestep_number != 0, ExcInternalError());
 
@@ -1566,5 +1566,157 @@ void HeatConductionProblem<dim>::refine_mesh()
     }
 }
 
+template <int dim>
+void HeatConductionProblem<dim>::solve()
+{
+    std::cout << "   Solving temperature system..." << std::endl;
+    TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
+
+    temperature_constraints.set_zero(temperature_solution);
+
+    SolverControl solver_control(temperature_matrix.m(),
+                                 1e-12 * temperature_rhs.l2_norm());
+
+    SolverCG<>   cg(solver_control);
+    cg.solve(temperature_matrix,
+             temperature_solution,
+             temperature_rhs,
+             *preconditioner_T);
+
+    temperature_constraints.distribute(temperature_solution);
+
+    std::cout << "      "
+            << solver_control.last_step()
+            << " CG iterations for temperature"
+            << std::endl;
+}
+
+
+template<int dim>
+void HeatConductionProblem<dim>::run()
+{
+    make_grid();
+
+    setup_dofs();
+
+    VectorTools::project(mapping,
+                         temperature_dof_handler,
+                         temperature_constraints,
+                         QGauss<dim>(parameters.temperature_degree + 2),
+                         ZeroFunction<dim>(1),
+                         old_temperature_solution);
+
+    temperature_constraints.distribute(old_temperature_solution);
+
+    temperature_solution = old_temperature_solution;
+
+    output_results();
+
+    double time = 0;
+
+    do
+    {
+        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
+                  << "time: " << time << ", "
+                  << "time step: " << timestep
+                  << std::endl;
+
+        assemble_temperature_system();
+
+        build_temperature_preconditioner();
+
+        solve();
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
+
+            const double rms_value = compute_rms_values();
+
+            std::cout << "   temperature rms value: "
+                      << rms_value
+                      << std::endl
+                      << "   maximum temperature: "
+                      << temperature_solution.linfty_norm()
+                      << std::endl;
+        }
+        if (timestep_number % parameters.output_frequency == 0
+                && timestep_number != 0)
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "output results");
+            output_results();
+        }
+        // mesh refinement
+        if ((timestep_number > 0)
+                && (timestep_number % parameters.refinement_frequency == 0))
+            refine_mesh();
+
+        // copy temperature solution
+        old_old_temperature_solution = old_temperature_solution;
+        old_temperature_solution = temperature_solution;
+
+        // extrapolate temperature solution
+        temperature_solution *= (1. + timestep / old_timestep);
+        temperature_solution.sadd(timestep / old_timestep,
+                                  old_old_temperature_solution);
+        // advance in time
+        time += timestep;
+        ++timestep_number;
+
+    } while (timestep_number < parameters.n_steps);
+
+    if (parameters.n_steps % parameters.output_frequency != 0)
+        output_results();
+
+    computing_timer.print_summary();
+    computing_timer.reset();
+
+    std::cout << std::endl;
+}
+}  // namespace HeatConduction
+
+int main(int argc, char *argv[])
+{
+    using namespace dealii;
+
+    try
+    {
+        using namespace BuoyantFluid;
+
+        deallog.depth_console(1);
+
+        std::string parameter_filename;
+        if (argc>=2)
+            parameter_filename = argv[1];
+        else
+            parameter_filename = "default_parameters.prm";
+
+        HeatConductionProblem<2>::Parameters parameters_2D(parameter_filename);
+        HeatConductionProblem<2> problem_2D(parameters_2D);
+        problem_2D.run();
+    }
+    catch (std::exception &exc)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Exception on processing: " << std::endl
+                << exc.what() << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        return 1;
+    }
+    catch (...)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Unknown exception!" << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        return 1;
+    }
+    return 0;
+}
 
 }  // namespace BuoyantFluid
