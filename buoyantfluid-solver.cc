@@ -555,5 +555,396 @@ local_dof_indices(data.local_dof_indices)
 }  // namespace Assembly
 
 
+/*
+ *
+ * templated class for solving the Boussinesq problem
+ * using Q(p+1)/Q(p)-elements
+ *
+ */
+template <int dim>
+class HeatConductionProblem
+{
+public:
+    struct Parameters;
+
+    HeatConductionProblem(Parameters &parameters_);
+
+    void run();
+
+private:
+    void make_grid();
+
+    void setup_dofs();
+
+    void setup_temperature_matrices(const types::global_dof_index n_temperature_dofs);
+
+    void assemble_temperature_system();
+
+    void build_temperature_preconditioner();
+
+    void solve();
+
+    double compute_rms_values() const;
+
+    void output_results() const;
+
+    void refine_mesh();
+
+    Parameters                      &parameters;
+
+    TimeStepping::IMEXCoefficients  imex_coefficients;
+
+    Triangulation<dim>              triangulation;
+
+    const MappingQ<dim>             mapping;
+
+    const FE_Q<dim>                 temperature_fe;
+    DoFHandler<dim>                 temperature_dof_handler;
+
+    // temperature part
+    ConstraintMatrix                temperature_constraints;
+
+    SparsityPattern                 temperature_sparsity_pattern;
+    SparseMatrix<double>            temperature_matrix;
+    SparseMatrix<double>            temperature_mass_matrix;
+    SparseMatrix<double>            temperature_stiffness_matrix;
+
+    // vectors of temperature part
+    Vector<double>                  temperature_solution;
+    Vector<double>                  old_temperature_solution;
+    Vector<double>                  old_old_temperature_solution;
+    Vector<double>                  temperature_rhs;
+
+    // preconditioner types
+    typedef PreconditionJacobi<SparseMatrix<double>> PreconditionerTypeT;
+
+    // pointers to preconditioners
+    std_cxx11::shared_ptr<PreconditionerTypeT>      preconditioner_T;
+
+
+    // equation coefficients
+    const std::vector<double>       equation_coefficients;
+
+    // monitor of computing times
+    TimerOutput                     computing_timer;
+
+public:
+    struct Parameters
+    {
+        Parameters(const std::string &parameter_filename);
+        static void declare_parameters(ParameterHandler &prm);
+        void parse_parameters(ParameterHandler &prm);
+
+        // physics parameters
+        double aspect_ratio;
+        double Pr;
+        double Ra;
+
+        bool    rotation;
+
+        // runtime parameters
+        bool    workstream_assembly;
+
+        // time stepping parameters
+        TimeStepping::IMEXType  imex_scheme;
+
+        unsigned int    n_steps;
+
+        double          timestep;
+
+        // discretization parameters
+        unsigned int temperature_degree;
+
+        // refinement parameters
+        unsigned int n_global_refinements;
+        unsigned int n_initial_refinements;
+        unsigned int n_boundary_refinements;
+        unsigned int n_max_levels;
+
+        unsigned int refinement_frequency;
+
+        // logging parameters
+        unsigned int output_frequency;
+    };
+
+private:
+    // time stepping variables
+    double                          timestep;
+    double                          old_timestep;
+    unsigned int                    timestep_number = 0;
+
+    // flags for rebuilding matrices and preconditioners
+    bool    rebuild_temperature_matrix = true;
+    bool    rebuild_temperature_preconditioner = true;
+
+    // working stream methods for temperature assembly
+    void local_assemble_temperature_matrix(
+            const typename DoFHandler<dim>::active_cell_iterator &cell,
+            Assembly::Scratch::TemperatureMatrix<dim> &scratch,
+            Assembly::CopyData::TemperatureMatrix<dim> &data);
+    void copy_local_to_global_temperature_matrix(
+            const Assembly::CopyData::TemperatureMatrix<dim> &data);
+
+    void local_assemble_temperature_rhs(
+            const typename DoFHandler<dim>::active_cell_iterator &cell,
+            Assembly::Scratch::TemperatureRightHandSide<dim> &scratch,
+            Assembly::CopyData::TemperatureRightHandSide<dim> &data);
+    void copy_local_to_global_temperature_rhs(
+            const Assembly::CopyData::TemperatureRightHandSide<dim> &data);
+};
+
+template<int dim>
+HeatConductionProblem<dim>::HeatConductionProblem(Parameters &parameters_)
+:
+parameters(parameters_),
+imex_coefficients(parameters.imex_scheme),
+triangulation(),
+mapping(4),
+// temperature part
+temperature_fe(parameters.temperature_degree),
+temperature_dof_handler(triangulation),
+// coefficients
+equation_coefficients{(parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr))},
+// monitor
+computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+// time stepping
+timestep(parameters.timestep),
+old_timestep(0.5 * parameters.timestep)
+{
+    std::cout << "Heat conduction solver by S. Glane\n"
+              << "This program solves the heat conduction equation.\n"
+              << "The governing equation is\n\n"
+              << "\t-- Heat conduction equation:\n\t\tdT/dt = C div(grad(T)).\n\n"
+              << "The coefficient C depends on the normalization as follows.\n\n";
+
+    // generate a nice table
+    std::cout << "\n\n"
+              << "+-------------------+-------------------+\n"
+              << "|       case        |    C              |\n"
+              << "+-------------------+-------------------+\n"
+              << "| Non-rotating case | 1 / sqrt(Ra * Pr) |\n"
+              << "| Rotating case     | 1 /  Pr           |\n"
+              << "+-------------------+-------------------+\n";
+
+    std::cout << std::endl << "You have chosen ";
+
+    std::stringstream ss;
+    ss << "+----------+----------+----------+\n"
+       << "|    Ra    |    Pr    |    C     |\n";
+
+    if (parameters.rotation)
+    {
+        std::cout << "the rotating case with the following parameters: "
+                  << std::endl;
+    }
+    else
+    {
+        std::cout << "the non-rotating case with the following parameters: "
+                  << std::endl;
+    }
+    ss << "| ";
+    ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
+    ss << " | ";
+    ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
+    ss << " | ";
+
+
+    for (unsigned int n=0; n<1; ++n)
+    {
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << equation_coefficients[n];
+        ss << " | ";
+    }
+
+    ss << "\n+----------+----------+----------+\n";
+
+    std::cout << std::endl << ss.str() << std::endl;
+
+    std::cout << std::endl << std::flush << std::fixed;
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::Parameters::declare_parameters(ParameterHandler &prm)
+{
+    prm.enter_subsection("Runtime parameters");
+    {
+        prm.declare_entry("workstream_assembly",
+                "false",
+                Patterns::Bool(),
+                "Use multi-threading for assembly");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Discretization parameters");
+    {
+        prm.declare_entry("p_degree_temperature",
+                "1",
+                Patterns::Integer(1,2),
+                "Polynomial degree of the temperature discretization.");
+
+        prm.declare_entry("aspect_ratio",
+                "0.35",
+                Patterns::Double(0.,1.),
+                "Ratio of inner to outer radius");
+
+        prm.enter_subsection("Refinement parameters");
+        {
+            prm.declare_entry("n_global_refinements",
+                    "1",
+                    Patterns::Integer(),
+                    "Number of initial global refinements.");
+
+            prm.declare_entry("n_initial_refinements",
+                    "1",
+                    Patterns::Integer(),
+                    "Number of initial refinements based on the initial condition.");
+
+            prm.declare_entry("n_boundary_refinements",
+                    "1",
+                    Patterns::Integer(),
+                    "Number of initial boundary refinements.");
+
+            prm.declare_entry("n_max_levels",
+                    "1",
+                    Patterns::Integer(),
+                    "Total of number of refinements allowed during the run.");
+
+            prm.declare_entry("refinement_freq",
+                    "100",
+                    Patterns::Integer(),
+                    "Refinement frequency.");
+        }
+        prm.leave_subsection();
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Physics");
+    {
+        prm.declare_entry("rotating_case",
+                "true",
+                Patterns::Bool(),
+                "Turn rotation on or off");
+
+        prm.declare_entry("Pr",
+                "1.0",
+                Patterns::Double(),
+                "Prandtl number of the fluid");
+
+        prm.declare_entry("Ra",
+                "1.0e5",
+                Patterns::Double(),
+                "Rayleigh number of the flow");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Time stepping settings");
+    {
+        prm.declare_entry("n_steps",
+                "1000",
+                Patterns::Integer(),
+                "Maximum number of iteration. That is the maximum number of time steps.");
+
+        prm.declare_entry("time_step",
+                "1e-4",
+                Patterns::Double(),
+                "time step.");
+
+        // TODO: move to logging
+        prm.declare_entry("output_freq",
+                "10",
+                Patterns::Integer(),
+                "Output frequency.");
+
+        prm.declare_entry("time_stepping_scheme",
+                        "CNAB",
+                        Patterns::Selection("CNAB|MCNAB|CNLF|SBDF"),
+                        "Time stepping scheme applied.");
+    }
+    prm.leave_subsection();
+
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::Parameters::parse_parameters(ParameterHandler &prm)
+{
+    prm.enter_subsection("Runtime parameters");
+    {
+        workstream_assembly = prm.get_bool("workstream_assembly");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Discretization parameters");
+    {
+        temperature_degree = prm.get_integer("p_degree_temperature");
+
+        aspect_ratio = prm.get_double("aspect_ratio");
+
+        Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
+
+        prm.enter_subsection("Refinement parameters");
+        {
+
+            if (n_max_levels < n_global_refinements + n_boundary_refinements + n_initial_refinements)
+            {
+                std::ostringstream message;
+                message << "Inconsistency in parameter file in definition of maximum number of levels."
+                        << std::endl
+                        << "maximum number of levels is: "
+                        << n_max_levels
+                        << ", which is less than the sum of initial global and boundary refinements,"
+                        << std::endl
+                        << " which is "
+                        << n_global_refinements + n_boundary_refinements + n_initial_refinements
+                        << " for your parameter file."
+                        << std::endl;
+
+                AssertThrow(false, ExcMessage(message.str().c_str()));
+            }
+
+            n_global_refinements = prm.get_integer("n_global_refinements");
+            n_initial_refinements = prm.get_integer("n_initial_refinements");
+            n_boundary_refinements = prm.get_integer("n_boundary_refinements");
+
+            n_max_levels = prm.get_integer("n_max_levels");
+
+            refinement_frequency = prm.get_integer("refinement_freq");
+        }
+        prm.leave_subsection();
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Physics");
+    {
+        rotation = prm.get_bool("rotating_case");
+        Ra = prm.get_double("Ra");
+        Pr = prm.get_double("Pr");
+
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Time stepping settings");
+    {
+        n_steps = prm.get_integer("n_steps");
+        Assert(n_steps > 0, ExcLowerRange(n_steps,0));
+
+        timestep = prm.get_double("time_step");
+
+        // TODO: move to logging
+        output_frequency = prm.get_integer("output_freq");
+
+        std::string imex_type_str;
+        imex_type_str = prm.get("time_stepping_scheme");
+
+        if (imex_type_str == "CNAB")
+            imex_scheme = TimeStepping::IMEXType::CNAB;
+        else if (imex_type_str == "MCNAB")
+            imex_scheme = TimeStepping::IMEXType::MCNAB;
+        else if (imex_type_str == "CNLF")
+            imex_scheme = TimeStepping::IMEXType::CNLF;
+        else if (imex_type_str == "SBDF")
+            imex_scheme = TimeStepping::IMEXType::SBDF;
+    }
+    prm.leave_subsection();
+}
+
 
 }  // namespace BuoyantFluid
