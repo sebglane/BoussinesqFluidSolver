@@ -1652,12 +1652,11 @@ void BuoyantFluidSolver<dim>::run()
 
     setup_dofs();
 
-    VectorTools::project(mapping,
-                         temperature_dof_handler,
-                         temperature_constraints,
-                         QGauss<dim>(parameters.temperature_degree + 2),
-                         ZeroFunction<dim>(1),
-                         old_temperature_solution);
+
+    VectorTools::interpolate(mapping,
+                             temperature_dof_handler,
+                             Functions::ZeroFunction<dim>(1),
+                             old_temperature_solution);
 
     temperature_constraints.distribute(old_temperature_solution);
 
@@ -1714,7 +1713,7 @@ void BuoyantFluidSolver<dim>::run()
         time += timestep;
         ++timestep_number;
 
-    } while (timestep_number < parameters.n_steps);
+    } while (timestep_number <= parameters.n_steps);
 
     if (parameters.n_steps % parameters.output_frequency != 0)
         output_results();
