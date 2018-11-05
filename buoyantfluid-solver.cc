@@ -803,9 +803,11 @@ private:
 
     const MappingQ<dim>             mapping;
 
+    // temperature FiniteElement and DoFHandler
     const FE_Q<dim>                 temperature_fe;
     DoFHandler<dim>                 temperature_dof_handler;
 
+    // stokes FiniteElement and DoFHandler
     const FESystem<dim>             stokes_fe;
     DoFHandler<dim>                 stokes_dof_handler;
 
@@ -869,6 +871,10 @@ public:
         static void declare_parameters(ParameterHandler &prm);
         void parse_parameters(ParameterHandler &prm);
 
+
+        // runtime parameters
+        bool    workstream_assembly;
+
         // physics parameters
         double aspect_ratio;
         double Pr;
@@ -881,9 +887,6 @@ public:
         double rel_tol;
         double abs_tol;
         unsigned int n_max_iter;
-
-        // runtime parameters
-        bool    workstream_assembly;
 
         // time stepping parameters
         TimeStepping::IMEXType  imex_scheme;
@@ -965,81 +968,104 @@ mapping(4),
 // temperature part
 temperature_fe(parameters.temperature_degree),
 temperature_dof_handler(triangulation),
+// stokes part
+stokes_fe(FE_Q<dim>(parameters.velocity_degree), dim,
+          FE_Q<dim>(parameters.velocity_degree - 1), 1),
+stokes_dof_handler(triangulation),
 // coefficients
-equation_coefficients{(parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr))},
+equation_coefficients{(parameters.rotation ? 2.0/parameters.Ek: 0.0),
+                      (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
+                      (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
+                      (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr) )},
 // monitor
 computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
 timestep(parameters.timestep),
 old_timestep(parameters.timestep)
 {
-    std::cout << "Heat conduction solver by S. Glane\n"
-              << "This program solves the heat conduction equation.\n"
-              << "The governing equation is\n\n"
-              << "\t-- Heat conduction equation:\n\t\tdT/dt = C div(grad(T)).\n\n"
-              << "The coefficient C depends on the normalization as follows.\n\n";
+    std::cout << "Boussinesq solver by S. Glane\n"
+              << "This program solves the Navier-Stokes system with thermal convection.\n"
+              << "The stable Taylor-Hood (P2-P1) element and an approximative Schur complement solver is used.\n\n"
+              << "The governing equations are\n\n"
+              << "\t-- Incompressibility constraint:\n\t\t div(v) = 0,\n\n"
+              << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega .times. v\n"
+              << "\t\t\t\t= - grad(p) + C2 div(grad(v)) - C3 T g,\n\n"
+              << "\t-- Heat conduction equation:\n\t\tdT/dt + v . grad(T) = C4 div(grad(T)).\n\n"
+              << "The coefficients C1 to C4 depend on the normalization as follows.\n\n";
 
-    // generate a nice table
+    // generate a nice table of the equation coefficients
     std::cout << "\n\n"
-              << "+-------------------+-------------------+\n"
-              << "|       case        |    C              |\n"
-              << "+-------------------+-------------------+\n"
-              << "| Non-rotating case | 1 / sqrt(Ra * Pr) |\n"
-              << "| Rotating case     | 1 /  Pr           |\n"
-              << "+-------------------+-------------------+\n";
+              << "+-------------------+----------+---------------+----------+-------------------+\n"
+              << "|       case        |    C1    |      C2       |    C3    |        C4         |\n"
+              << "+-------------------+----------+---------------+----------+-------------------+\n"
+              << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |\n"
+              << "| Rotating case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           |\n"
+              << "+-------------------+----------+---------------+----------+-------------------+\n";
 
     std::cout << std::endl << "You have chosen ";
 
     std::stringstream ss;
-    ss << "+----------+----------+----------+\n"
-       << "|    Ra    |    Pr    |    C     |\n";
+    ss << "+----------+----------+----------+----------+----------+----------+----------+\n"
+       << "|    Ek    |    Ra    |    Pr    |    C1    |    C2    |    C3    |    C4    |\n"
+       << "+----------+----------+----------+----------+----------+----------+----------+\n";
 
     if (parameters.rotation)
     {
+        rotation_vector[dim-1] = 1.0;
+
         std::cout << "the rotating case with the following parameters: "
                   << std::endl;
+        ss << "| ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ek;
+        ss << " | ";
     }
     else
     {
         std::cout << "the non-rotating case with the following parameters: "
                   << std::endl;
+        ss << "|     0    | ";
     }
-    ss << "| ";
+
     ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
     ss << " | ";
     ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
     ss << " | ";
 
 
-    for (unsigned int n=0; n<1; ++n)
+    for (unsigned int n=0; n<4; ++n)
     {
         ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << equation_coefficients[n];
         ss << " | ";
     }
 
-    ss << "\n+----------+----------+----------+\n";
+    ss << "\n+----------+----------+----------+----------+----------+----------+----------+\n";
 
     std::cout << std::endl << ss.str() << std::endl;
 
-    std::cout << std::endl << std::flush << std::fixed;
+    std::cout << std::endl << std::fixed << std::flush;
 }
-
 
 template<int dim>
 BuoyantFluidSolver<dim>::Parameters::Parameters(const std::string &parameter_filename)
 :
+// runtime parameters
+workstream_assembly(false),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
 Ra(1.0e5),
+Ek(1.0e-3),
 rotation(false),
-// runtime parameters
-workstream_assembly(false),
+// linear solver parameters
+rel_tol(1e-6),
+abs_tol(1e-12),
+n_max_iter(100),
 // time stepping parameters
-imex_scheme(TimeStepping::IMEXType::CNAB),
+imex_scheme(TimeStepping::CNAB),
 n_steps(1000),
 // discretization parameters
 temperature_degree(1),
+velocity_degree(2),
 // refinement parameters
 n_global_refinements(1),
 n_initial_refinements(4),
@@ -1091,6 +1117,12 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
 
     prm.enter_subsection("Discretization parameters");
     {
+        prm.declare_entry("p_degree_velocity",
+                "1",
+                Patterns::Integer(1,2),
+                "Polynomial degree of the velocity discretization. The polynomial "
+                "degree of the pressure is automatically set to one less than the velocity");
+
         prm.declare_entry("p_degree_temperature",
                 "1",
                 Patterns::Integer(1,2),
@@ -1148,8 +1180,33 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
                 "1.0e5",
                 Patterns::Double(),
                 "Rayleigh number of the flow");
+
+        prm.declare_entry("Ek",
+                "1.0e-3",
+                Patterns::Double(),
+                "Ekman number of the flow");
     }
     prm.leave_subsection();
+
+    prm.enter_subsection("Linear solver settings");
+    {
+        prm.declare_entry("tol_rel",
+                "1e-6",
+                Patterns::Double(),
+                "Relative tolerance for the stokes solver.");
+
+        prm.declare_entry("tol_abs",
+                "1e-12",
+                Patterns::Double(),
+                "Absolute tolerance for the stokes solver.");
+
+        prm.declare_entry("n_max_iter",
+                "100",
+                Patterns::Integer(0),
+                "Maximum number of iterations for the stokes solver.");
+    }
+    prm.leave_subsection();
+
 
     prm.enter_subsection("Time stepping settings");
     {
@@ -1189,6 +1246,7 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
 
     prm.enter_subsection("Discretization parameters");
     {
+        velocity_degree = prm.get_integer("p_degree_pressure");
         temperature_degree = prm.get_integer("p_degree_temperature");
 
         aspect_ratio = prm.get_double("aspect_ratio");
@@ -1232,6 +1290,7 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
         rotation = prm.get_bool("rotating_case");
         Ra = prm.get_double("Ra");
         Pr = prm.get_double("Pr");
+        Ek = prm.get_double("Ek");
 
     }
     prm.leave_subsection();
@@ -1257,6 +1316,15 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
             imex_scheme = TimeStepping::IMEXType::CNLF;
         else if (imex_type_str == "SBDF")
             imex_scheme = TimeStepping::IMEXType::SBDF;
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Linear solver settings");
+    {
+        rel_tol = prm.get_double("tol_rel");
+        abs_tol = prm.get_double("tol_abs");
+
+        n_max_iter = prm.get_integer("n_max_iter");
     }
     prm.leave_subsection();
 }
