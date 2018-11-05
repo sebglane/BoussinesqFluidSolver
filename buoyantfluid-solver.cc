@@ -380,6 +380,13 @@ void TemperatureInitialValues<dim>::vector_value(
         values(c) = value(p, c);
 }
 
+template <int dim>
+Tensor<1,dim> gravity_vector(const Point<dim> &p)
+{
+    const double r = p.norm();
+    return -p / r;
+}
+
 }  // namespace EquationData
 
 
@@ -779,7 +786,7 @@ private:
 
     void solve();
 
-    double                      compute_rms_values() const;
+    std::pair<double,double>    compute_rms_values() const;
     double                      compute_cfl_number() const;
 
     void output_results() const;
@@ -958,6 +965,10 @@ mapping(4),
 // temperature part
 temperature_fe(parameters.temperature_degree),
 temperature_dof_handler(triangulation),
+// temperature part
+stokes_fe(FE_Q<dim>(2),dim,
+          FE_Q<dim>(1),1),
+stokes_dof_handler(triangulation),
 // coefficients
 equation_coefficients{(parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr))},
 // monitor
@@ -1339,11 +1350,35 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
     DoFRenumbering::boost::king_ordering(temperature_dof_handler);
 
+    // stokes part
+    stokes_dof_handler.distribute_dofs(stokes_fe);
+
+    DoFRenumbering::boost::king_ordering(stokes_dof_handler);
+
+    std::vector<unsigned int> stokes_block_component(dim+1,0);
+    stokes_block_component[dim] = 1;
+
+    DoFRenumbering::component_wise(stokes_dof_handler, stokes_block_component);
+
     // IO
+    std::vector<types::global_dof_index> dofs_per_block(2);
+    DoFTools::count_dofs_per_block(stokes_dof_handler,
+                                   dofs_per_block,
+                                   stokes_block_component);
+
     const unsigned int n_temperature_dofs = temperature_dof_handler.n_dofs();
 
     std::cout << "      Number of active cells: "
               << triangulation.n_active_cells()
+              << std::endl
+              << "      Number of degrees of freedom: "
+              << stokes_dof_handler.n_dofs()
+              << std::endl
+              << "      Number of velocity degrees of freedom: "
+              << dofs_per_block[0]
+              << std::endl
+              << "      Number of pressure degrees of freedom: "
+              << dofs_per_block[1]
               << std::endl
               << "      Number of temperature degrees of freedom: "
               << n_temperature_dofs
@@ -1380,6 +1415,12 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     old_old_temperature_solution.reinit(n_temperature_dofs);
 
     temperature_rhs.reinit(n_temperature_dofs);
+
+    // stokes matrix and vector setup
+    stokes_solution.reinit(dofs_per_block);
+    old_stokes_solution.reinit(dofs_per_block);
+    old_old_stokes_solution.reinit(dofs_per_block);
+    stokes_rhs.reinit(dofs_per_block);
 }
 
 
@@ -1760,41 +1801,263 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 }
 
 
-template<int dim>
-double BuoyantFluidSolver<dim>::compute_rms_values() const
-{
-    const QGauss<dim> temperature_quadrature_formula(parameters.temperature_degree + 1);
 
-    const unsigned int n_q_points = temperature_quadrature_formula.size();
+template <int dim>
+void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
+        Assembly::Scratch::StokesMatrix<dim> &scratch,
+        Assembly::CopyData::StokesMatrix<dim> &data)
+{
+    const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
+
+    const FEValuesExtractors::Vector    velocity(0);
+    const FEValuesExtractors::Scalar    pressure(dim);
+
+    scratch.stokes_fe_values.reinit(cell);
+
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_matrix = 0;
+    data.local_stiffness_matrix = 0;
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        {
+            scratch.phi_v[k] = scratch.stokes_fe_values[velocity].value(k, q);
+            scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
+            scratch.div_phi_v[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
+            scratch.phi_p[k] = scratch.stokes_fe_values[pressure].value(k, q);
+            scratch.grad_phi_p[k] = scratch.stokes_fe_values[pressure].gradient(k, q);
+        }
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+            for (unsigned int j=0; j<=i; ++j)
+            {
+                data.local_matrix(i,j)
+                    += (
+                          scratch.phi_v[i] * scratch.phi_v[j]
+                        - scratch.phi_p[i] * scratch.div_phi_v[j]
+                        - scratch.div_phi_v[i] * scratch.phi_p[j]
+                        + scratch.phi_p[i] * scratch.phi_p[j]
+                        ) * scratch.stokes_fe_values.JxW(q);
+                data.local_stiffness_matrix(i,j)
+                    += (
+                          scalar_product(scratch.grad_phi_v[i], scratch.grad_phi_v[j])
+                        + scratch.grad_phi_p[i] * scratch.grad_phi_p[j]
+                        ) * scratch.stokes_fe_values.JxW(q);
+            }
+    }
+    for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+        {
+            data.local_matrix(i,j) = data.local_matrix(j,i);
+            data.local_stiffness_matrix(i,j) = data.local_stiffness_matrix(j,i);
+        }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
+        const Assembly::CopyData::StokesMatrix<dim> &data)
+{
+    stokes_constraints.distribute_local_to_global(
+            data.local_matrix,
+            data.local_dof_indices,
+            stokes_matrix);
+    stokes_laplace_constraints.distribute_local_to_global(
+            data.local_stiffness_matrix,
+            data.local_dof_indices,
+            stokes_laplace_matrix);
+}
+
+
+template <int dim>
+void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
+        Assembly::Scratch::StokesMatrixRightHandSide<dim> &scratch,
+        Assembly::CopyData::StokesMatrixRightHandSide<dim> &data)
+{
+
+    const std::vector<double> alpha = (timestep_number != 0?
+                                        imex_coefficients.alpha(timestep/old_timestep):
+                                        std::vector<double>({1.0,-1.0,0.0}));
+    const std::vector<double> beta = (timestep_number != 0?
+                                        imex_coefficients.beta(timestep/old_timestep):
+                                        std::vector<double>({1.0,0.0}));
+    const std::vector<double> gamma = (timestep_number != 0?
+                                        imex_coefficients.gamma(timestep/old_timestep):
+                                        std::vector<double>({1.0,0.0,0.0}));
+
+
+    const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
+
+    const FEValuesExtractors::Vector    velocity(0);
+    const FEValuesExtractors::Scalar    pressure(dim);
+
+    scratch.stokes_fe_values.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    typename DoFHandler<dim>::active_cell_iterator
+    temperature_cell(&triangulation,
+                     cell->level(),
+                     cell->index(),
+                     &temperature_dof_handler);
+    scratch.temperature_fe_values.reinit(temperature_cell);
+
+    data.local_rhs = 0;
+
+    const std::vector<Point<dim>> quadrature_points = scratch.stokes_fe_values.get_quadrature_points();
+
+    scratch.stokes_fe_values[velocity].get_function_values(old_stokes_solution,
+                                                           scratch.old_velocity_values);
+    scratch.stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
+                                                           scratch.old_old_velocity_values);
+    scratch.stokes_fe_values[velocity].get_function_gradients(old_stokes_solution,
+                                                             scratch.old_velocity_gradients);
+    scratch.stokes_fe_values[velocity].get_function_gradients(old_old_stokes_solution,
+                                                             scratch.old_old_velocity_gradients);
+
+    scratch.temperature_fe_values.get_function_values(old_temperature_solution,
+                                                      scratch.old_temperature_values);
+    scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                      scratch.old_old_temperature_values);
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        {
+            scratch.phi_v[k] = scratch.stokes_fe_values[velocity].value(k, q);
+            scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
+        }
+
+        // TODO: initial step
+        const Tensor<1,dim> time_derivative_velocity
+            = alpha[1] * scratch.old_velocity_values[q]
+                + alpha[2] * scratch.old_old_velocity_values[q];
+
+        const Tensor<1,dim> nonlinear_term_velocity
+            = beta[0] * scratch.old_velocity_values[q] * scratch.old_velocity_gradients[q]
+                + beta[1] * scratch.old_old_velocity_values[q] * scratch.old_old_velocity_gradients[q];
+
+        const Tensor<2,dim> linear_term_velocity
+            = gamma[1] * scratch.old_velocity_gradients[q]
+                + gamma[2] * scratch.old_old_velocity_gradients[q];
+
+        const Tensor<1,dim> extrapolated_velocity
+            = (timestep != 0 ?
+                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                        : scratch.old_velocity_values[q]);
+        const double extrapolated_temperature
+            = (timestep != 0 ?
+                (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
+                        - scratch.old_old_temperature_values[q] * timestep/old_timestep)
+                        : scratch.old_temperature_values[q]);
+
+        const Tensor<1,dim> gravity_vector = EquationData::gravity_vector(scratch.stokes_fe_values.quadrature_point(q));
+
+        Tensor<1,dim>   coriolis_term;
+        if (parameters.rotation)
+        {
+            if (dim == 2)
+                coriolis_term = cross_product_2d(extrapolated_velocity);
+            else if (dim == 3)
+                coriolis_term = cross_product_3d(rotation_vector,
+                                                 extrapolated_velocity);
+            else
+            {
+                Assert(false, ExcInternalError());
+            }
+        }
+
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+            data.local_rhs(i)
+                += (
+                    - time_derivative_velocity * scratch.phi_v[i]
+                    - timestep * nonlinear_term_velocity * scratch.phi_v[i]
+                    - timestep * equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_v[i])
+                    - timestep * (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_v[i]: 0)
+                    - timestep * equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_v[i]
+                    ) * scratch.stokes_fe_values.JxW(q);
+    }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
+        const Assembly::CopyData::StokesMatrixRightHandSide<dim> &data)
+{
+    stokes_constraints.distribute_local_to_global(
+            data.local_rhs,
+            data.local_dof_indices,
+            stokes_rhs);
+}
+
+
+
+template<int dim>
+std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
+{
+    const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
+
+    const unsigned int n_q_points = quadrature_formula.size();
+
+    FEValues<dim> stokes_fe_values(mapping,
+                                   stokes_fe,
+                                   quadrature_formula,
+                                   update_values|update_JxW_values);
 
     FEValues<dim> temperature_fe_values(mapping,
                                         temperature_fe,
-                                        temperature_quadrature_formula,
-                                        update_values|update_JxW_values);
+                                        quadrature_formula,
+                                        update_values);
 
-    std::vector<double>     temperature_values(n_q_points);
+    std::vector<double>         temperature_values(n_q_points);
+    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
 
+    const FEValuesExtractors::Vector velocities (0);
+
+    double rms_velocity = 0;
     double rms_temperature = 0;
     double volume = 0;
 
-    for (auto cell : temperature_dof_handler.active_cell_iterators())
+    for (auto cell : stokes_dof_handler.active_cell_iterators())
     {
-        temperature_fe_values.reinit(cell);
+        stokes_fe_values.reinit(cell);
+
+        typename DoFHandler<dim>::active_cell_iterator
+        temperature_cell(&triangulation,
+                         cell->level(),
+                         cell->index(),
+                         &temperature_dof_handler);
+        temperature_fe_values.reinit(temperature_cell);
+
         temperature_fe_values.get_function_values(temperature_solution,
                                                   temperature_values);
+        stokes_fe_values[velocities].get_function_values(stokes_solution,
+                                                         velocity_values);
+
         for (unsigned int q=0; q<n_q_points; ++q)
         {
-            rms_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
-            volume += temperature_fe_values.JxW(q);
+            rms_velocity += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+            rms_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
+            volume += stokes_fe_values.JxW(q);
         }
     }
+
+    AssertIsFinite(rms_velocity);
+    AssertIsFinite(rms_temperature);
+    AssertIsFinite(volume);
+
+    rms_velocity /= volume;
+    Assert(rms_velocity >= 0, ExcLowerRangeType<double>(rms_velocity, 0));
 
     rms_temperature /= volume;
 
     AssertIsFinite(rms_temperature);
     Assert(rms_temperature >= 0, ExcLowerRangeType<double>(rms_temperature, 0));
 
-    return std::sqrt(rms_temperature);
+    return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
 }
 
 
@@ -1938,7 +2201,7 @@ void BuoyantFluidSolver<dim>::run()
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
 
-            const double rms_value = compute_rms_values();
+            const double rms_value = compute_rms_values().second;
 
             std::cout << "   temperature rms value: "
                       << rms_value
