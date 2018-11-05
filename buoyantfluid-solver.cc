@@ -1,12 +1,10 @@
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/function.h>
-#include <deal.II/base/tensor_function.h>
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/multithread_info.h>
 #include <deal.II/base/parameter_handler.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/timer.h>
-#include <deal.II/base/table_handler.h>
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/work_stream.h>
 
@@ -619,7 +617,7 @@ private:
     typedef PreconditionJacobi<SparseMatrix<double>> PreconditionerTypeT;
 
     // pointers to preconditioners
-    std_cxx11::shared_ptr<PreconditionerTypeT>      preconditioner_T;
+    std::shared_ptr<PreconditionerTypeT>      preconditioner_T;
 
 
     // equation coefficients
@@ -945,6 +943,512 @@ void HeatConductionProblem<dim>::Parameters::parse_parameters(ParameterHandler &
     }
     prm.leave_subsection();
 }
+
+
+template<int dim>
+void HeatConductionProblem<dim>::make_grid()
+{
+    TimerOutput::Scope timer_section(computing_timer, "make grid");
+
+    std::cout << "   Making grid..." << std::endl;
+
+    const Point<dim> center;
+    const double ri = parameters.aspect_ratio;
+    const double ro = 1.0;
+
+    GridGenerator::hyper_shell(triangulation, center, ri, ro, (dim==3) ? 96 : 12);
+
+    std::cout << "   Number of initial cells: "
+              << triangulation.n_active_cells()
+              << std::endl;
+
+    static SphericalManifold<dim>       manifold(center);
+
+    triangulation.set_all_manifold_ids(0);
+    triangulation.set_all_manifold_ids_on_boundary(1);
+
+    triangulation.set_manifold (0, manifold);
+    triangulation.set_manifold (1, manifold);
+
+    // setting boundary ids on coarsest grid
+    const double tol = 1e-12;
+    for(auto cell: triangulation.active_cell_iterators())
+      if (cell->at_boundary())
+          for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+              if (cell->face(f)->at_boundary())
+              {
+                  std::vector<double> dist(GeometryInfo<dim>::vertices_per_face);
+                  for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                      dist[v] = cell->face(f)->vertex(v).distance(center);
+                  if (std::all_of(dist.begin(), dist.end(),
+                          [&ri,&tol](double d){return std::abs(d - ri) < tol;}))
+                      cell->face(f)->set_boundary_id(BoundaryIds::ICB);
+                  if (std::all_of(dist.begin(), dist.end(),
+                          [&ro,&tol](double d){return std::abs(d - ro) < tol;}))
+                      cell->face(f)->set_boundary_id(BoundaryIds::CMB);
+              }
+
+    // initial global refinements
+    if (parameters.n_global_refinements > 0)
+    {
+        triangulation.refine_global(parameters.n_global_refinements);
+        std::cout << "      Number of cells after "
+                  << parameters.n_global_refinements
+                  << " global refinements: "
+                  << triangulation.n_active_cells()
+                  << std::endl;
+    }
+
+    // initial boundary refinements
+    if (parameters.n_boundary_refinements > 0)
+    {
+        for (unsigned int step=0; step<parameters.n_boundary_refinements; ++step)
+        {
+            for (auto cell: triangulation.active_cell_iterators())
+                if (cell->at_boundary())
+                    cell->set_refine_flag();
+            triangulation.execute_coarsening_and_refinement();
+        }
+        std::cout << "      Number of cells after "
+                  << parameters.n_boundary_refinements
+                  << " boundary refinements: "
+                  << triangulation.n_active_cells()
+                  << std::endl;
+    }
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::setup_dofs()
+{
+    TimerOutput::Scope timer_section(computing_timer, "setup dofs");
+
+    std::cout << "   Setup dofs..." << std::endl;
+
+    // temperature part
+    temperature_dof_handler.distribute_dofs(temperature_fe);
+
+    DoFRenumbering::boost::king_ordering(temperature_dof_handler);
+
+    // IO
+    const unsigned int n_temperature_dofs = temperature_dof_handler.n_dofs();
+
+    std::cout << "      Number of active cells: "
+              << triangulation.n_active_cells()
+              << std::endl
+              << "      Number of temperature degrees of freedom: "
+              << n_temperature_dofs
+              << std::endl;
+    // temperature constraints
+    {
+        TimerOutput::Scope timer_section(computing_timer, "temperature constraints");
+        temperature_constraints.clear();
+
+        DoFTools::make_hanging_node_constraints(
+                temperature_dof_handler,
+                temperature_constraints);
+
+        const Functions::ConstantFunction<dim> icb_temperature(0.5);
+        const Functions::ConstantFunction<dim> cmb_temperature(-0.5);
+
+        const std::map<typename types::boundary_id, const Function<dim>*>
+        temperature_boundary_values = {{BoundaryIds::ICB, &icb_temperature},
+                                       {BoundaryIds::CMB, &cmb_temperature}};
+
+        VectorTools::interpolate_boundary_values(
+                temperature_dof_handler,
+                temperature_boundary_values,
+                temperature_constraints);
+
+        temperature_constraints.close();
+    }
+
+    // temperature matrix and vector setup
+    setup_temperature_matrices(n_temperature_dofs);
+
+    temperature_solution.reinit(n_temperature_dofs);
+    old_temperature_solution.reinit(n_temperature_dofs);
+    old_old_temperature_solution.reinit(n_temperature_dofs);
+
+    temperature_rhs.reinit(n_temperature_dofs);
+}
+
+
+template<int dim>
+void HeatConductionProblem<dim>::setup_temperature_matrices(const types::global_dof_index n_temperature_dofs)
+{
+    preconditioner_T.reset();
+
+    temperature_matrix.clear();
+    temperature_mass_matrix.clear();
+    temperature_stiffness_matrix.clear();
+
+    DynamicSparsityPattern dsp(n_temperature_dofs, n_temperature_dofs);
+
+    DoFTools::make_sparsity_pattern(temperature_dof_handler,
+                                    dsp,
+                                    temperature_constraints);
+
+    temperature_sparsity_pattern.copy_from(dsp);
+
+    temperature_matrix.reinit(temperature_sparsity_pattern);
+    temperature_mass_matrix.reinit(temperature_sparsity_pattern);
+    temperature_stiffness_matrix.reinit(temperature_sparsity_pattern);
+
+    rebuild_temperature_matrix = true;
+}
+
+template <int dim>
+void HeatConductionProblem<dim>::local_assemble_temperature_matrix(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
+        Assembly::Scratch::TemperatureMatrix<dim> &scratch,
+        Assembly::CopyData::TemperatureMatrix<dim> &data)
+{
+    const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.temperature_fe_values.n_quadrature_points;
+
+    scratch.temperature_fe_values.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_mass_matrix = 0;
+    data.local_stiffness_matrix = 0;
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        {
+            scratch.grad_phi_T[k] = scratch.temperature_fe_values.shape_grad(k,q);
+            scratch.phi_T[k]      = scratch.temperature_fe_values.shape_value(k, q);
+        }
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+            for (unsigned int j=0; j<=i; ++j)
+            {
+                data.local_mass_matrix(i,j)
+                    += scratch.phi_T[i] * scratch.phi_T[j] * scratch.temperature_fe_values.JxW(q);
+                data.local_stiffness_matrix(i,j)
+                    += scratch.grad_phi_T[i] * scratch.grad_phi_T[j] * scratch.temperature_fe_values.JxW(q);
+            }
+    }
+    for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+        {
+            data.local_mass_matrix(i,j) = data.local_mass_matrix(j,i);
+            data.local_stiffness_matrix(i,j) = data.local_stiffness_matrix(j,i);
+        }
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::copy_local_to_global_temperature_matrix(
+        const Assembly::CopyData::TemperatureMatrix<dim> &data)
+{
+    temperature_constraints.distribute_local_to_global(
+            data.local_mass_matrix,
+            data.local_dof_indices,
+            temperature_mass_matrix);
+    temperature_constraints.distribute_local_to_global(
+            data.local_stiffness_matrix,
+            data.local_dof_indices,
+            temperature_stiffness_matrix);
+}
+
+
+template <int dim>
+void HeatConductionProblem<dim>::local_assemble_temperature_rhs(
+        const typename DoFHandler<dim>::active_cell_iterator    &cell,
+        Assembly::Scratch::TemperatureRightHandSide<dim>        &scratch,
+        Assembly::CopyData::TemperatureRightHandSide<dim>       &data)
+{
+    const std::vector<double> alpha = (timestep_number != 0?
+                                            imex_coefficients.alpha(timestep/old_timestep):
+                                            std::vector<double>({1.0,-1.0,0.0}));
+//    const std::vector<double> beta = (timestep_number != 0?
+//                                            imex_coefficients.beta(timestep/old_timestep):
+//                                            std::vector<double>({1.0,0.0}));
+    const std::vector<double> gamma = (timestep_number != 0?
+                                            imex_coefficients.gamma(timestep/old_timestep):
+                                            std::vector<double>({1.0,0.0,0.0}));
+
+    const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.temperature_fe_values.n_quadrature_points;
+
+    data.matrix_for_bc = 0;
+    data.local_rhs = 0;
+
+    cell->get_dof_indices(data.local_dof_indices);
+
+    scratch.temperature_fe_values.reinit (cell);
+
+    scratch.temperature_fe_values.get_function_values(old_temperature_solution,
+                                                      scratch.old_temperature_values);
+    scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                      scratch.old_old_temperature_values);
+    scratch.temperature_fe_values.get_function_gradients(old_temperature_solution,
+                                                         scratch.old_temperature_gradients);
+    scratch.temperature_fe_values.get_function_gradients(old_old_temperature_solution,
+                                                         scratch.old_old_temperature_gradients);
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        {
+            scratch.phi_T[i]      = scratch.temperature_fe_values.shape_value(i, q);
+            scratch.grad_phi_T[i] = scratch.temperature_fe_values.shape_grad(i, q);
+        }
+
+        const double time_derivative_temperature =
+                alpha[1] * scratch.old_temperature_values[q]
+                    + alpha[2] * scratch.old_temperature_values[q];
+
+        const Tensor<1,dim> linear_term_temperature =
+                gamma[1] * scratch.old_temperature_gradients[q]
+                    + gamma[2] * scratch.old_old_temperature_gradients[q];
+
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        {
+            data.local_rhs(i) += (
+                    - time_derivative_temperature * scratch.phi_T[i]
+                    - timestep * equation_coefficients[0] * linear_term_temperature * scratch.grad_phi_T[i]
+                    ) * scratch.temperature_fe_values.JxW(q);
+
+            if (temperature_constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
+                for (unsigned int j=0; j<dofs_per_cell; ++j)
+                    data.matrix_for_bc(j,i) += (
+                                  alpha[0] * scratch.phi_T[i] * scratch.phi_T[j]
+                                + gamma[0] * timestep * equation_coefficients[0] * scratch.grad_phi_T[i] * scratch.grad_phi_T[j]
+                                ) * scratch.temperature_fe_values.JxW(q);
+
+        }
+
+    }
+}
+
+template <int dim>
+void HeatConductionProblem<dim>::copy_local_to_global_temperature_rhs(
+        const Assembly::CopyData::TemperatureRightHandSide<dim> &data)
+{
+    temperature_constraints.distribute_local_to_global(
+            data.local_rhs,
+            data.local_dof_indices,
+            temperature_rhs,
+            data.matrix_for_bc);
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::assemble_temperature_system()
+{
+    TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
+
+    std::cout << "   Assembling temperature system..." << std::endl;
+
+    if (rebuild_temperature_matrix || timestep_number == 1)
+        temperature_matrix = 0;
+    temperature_rhs = 0;
+
+    const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
+
+    if (parameters.workstream_assembly == false)
+    {
+        const std::vector<double> alpha = (timestep_number != 0?
+                                            imex_coefficients.alpha(timestep/old_timestep):
+                                            std::vector<double>({1.0,-1.0,0.0}));
+//      const std::vector<double> beta_ = (timestep_number != 0?
+//                                                  imex_coefficients.beta(timestep/old_timestep):
+//                                                  std::vector<double>({1.0,0.0}));
+        const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+
+        FEValues<dim>     temperature_fe_values(mapping,
+                                                temperature_fe,
+                                                quadrature_formula,
+                                                update_values|
+                                                update_gradients|
+                                                update_quadrature_points|
+                                                update_JxW_values);
+
+        const unsigned int   dofs_per_cell   = temperature_fe.dofs_per_cell;
+        const unsigned int   n_q_points      = quadrature_formula.size();
+
+        Vector<double>       local_rhs(dofs_per_cell);
+        FullMatrix<double>   local_matrix(dofs_per_cell);
+
+        std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+        std::vector<double>         old_temperature_values(n_q_points);
+        std::vector<Tensor<1,dim> > old_temperature_gradients(n_q_points);
+        std::vector<double>         old_old_temperature_values(n_q_points);
+        std::vector<Tensor<1,dim> > old_old_temperature_gradients(n_q_points);
+
+
+        std::vector<double>         phi_T(dofs_per_cell);
+        std::vector<Tensor<1,dim> > grad_phi_T(dofs_per_cell);
+
+        typename DoFHandler<dim>::active_cell_iterator
+        cell = temperature_dof_handler.begin_active(),
+        endc = temperature_dof_handler.end();
+        for (; cell!= endc; ++cell)
+        {
+
+            local_matrix = 0;
+            local_rhs = 0;
+
+            temperature_fe_values.reinit(cell);
+            cell->get_dof_indices(local_dof_indices);
+
+            temperature_fe_values.get_function_values(old_temperature_solution,
+                                                      old_temperature_values);
+            temperature_fe_values.get_function_gradients(old_temperature_solution,
+                                                         old_temperature_gradients);
+            temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                      old_old_temperature_values);
+            temperature_fe_values.get_function_gradients(old_old_temperature_solution,
+                                                         old_old_temperature_gradients);
+
+            for (unsigned int q=0; q<n_q_points; ++q)
+            {
+                for (unsigned int k=0; k<dofs_per_cell; ++k)
+                {
+                    grad_phi_T[k] = temperature_fe_values.shape_grad (k,q);
+                    phi_T[k]      = temperature_fe_values.shape_value (k, q);
+                }
+
+                const double time_derivative_temperature =
+                        alpha[1] * old_temperature_values[q]
+                            + alpha[2] * old_temperature_values[q];
+
+                const Tensor<1,dim> linear_term_temperature =
+                        gamma[1] * old_temperature_gradients[q]
+                            + gamma[2] * old_old_temperature_gradients[q];
+
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                {
+                    local_rhs(i) += (
+                                - time_derivative_temperature * phi_T[i]
+                                - timestep * equation_coefficients[0] * linear_term_temperature * grad_phi_T[i]
+                                ) * temperature_fe_values.JxW(q);
+
+                    if (rebuild_temperature_matrix || timestep_number == 1)
+                        for (unsigned int j=0; j<dofs_per_cell; ++j)
+                            local_matrix(i,j) += (
+                                      alpha[0] * phi_T[i] * phi_T[j]
+                                    + gamma[0] * timestep * equation_coefficients[0] * grad_phi_T[i] * grad_phi_T[j]
+                                    ) * temperature_fe_values.JxW(q);
+                    else if (temperature_constraints.is_inhomogeneously_constrained(local_dof_indices[i]))
+                        for (unsigned int j=0; j<dofs_per_cell; ++j)
+                            local_matrix(j,i) += (
+                                      alpha[0] * phi_T[i] * phi_T[j]
+                                    + gamma[0] * timestep * equation_coefficients[0] * grad_phi_T[i] * grad_phi_T[j]
+                                    ) * temperature_fe_values.JxW(q);
+                }
+            }
+
+            if (rebuild_temperature_matrix || timestep_number == 1)
+                temperature_constraints.distribute_local_to_global(
+                        local_matrix,
+                        local_rhs,
+                        local_dof_indices,
+                        temperature_matrix,
+                        temperature_rhs);
+            else
+                temperature_constraints.distribute_local_to_global(
+                        local_rhs,
+                        local_dof_indices,
+                        temperature_rhs,
+                        local_matrix);
+        }
+        rebuild_temperature_preconditioner = true;
+    }
+    else
+    {
+        // assemble temperature matrices
+        if (rebuild_temperature_matrix)
+        {
+            temperature_mass_matrix = 0;
+            temperature_stiffness_matrix = 0;
+
+            WorkStream::run(
+                    temperature_dof_handler.begin_active(),
+                    temperature_dof_handler.end(),
+                    std::bind(&HeatConductionProblem<dim>::local_assemble_temperature_matrix,
+                              this,
+                              std::placeholders::_1,
+                              std::placeholders::_2,
+                              std::placeholders::_3),
+                    std::bind(&HeatConductionProblem<dim>::copy_local_to_global_temperature_matrix,
+                              this,
+                              std::placeholders::_1),
+                    Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
+                                                              mapping,
+                                                              quadrature_formula),
+                    Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
+
+            const std::vector<double> alpha = (timestep_number != 0?
+                                                    imex_coefficients.alpha(timestep/old_timestep):
+                                                    std::vector<double>({1.0,-1.0,0.0}));
+            const std::vector<double> gamma = (timestep_number != 0?
+                                                    imex_coefficients.gamma(timestep/old_timestep):
+                                                    std::vector<double>({1.0,0.0,0.0}));
+
+            temperature_matrix.copy_from(temperature_mass_matrix);
+            temperature_matrix *= alpha[0];
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[0],
+                                        temperature_stiffness_matrix);
+            rebuild_temperature_preconditioner = true;
+        }
+        else if (timestep_modified|| timestep_number == 1)
+        {
+            Assert(timestep_number != 0, ExcInternalError());
+
+            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+            temperature_matrix.copy_from(temperature_mass_matrix);
+            temperature_matrix *= alpha[0];
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[0],
+                                   temperature_stiffness_matrix);
+
+            rebuild_temperature_preconditioner = true;
+        }
+
+        // assemble temperature right-hand side
+        WorkStream::run(
+                temperature_dof_handler.begin_active(),
+                temperature_dof_handler.end(),
+                std::bind(&HeatConductionProblem<dim>::local_assemble_temperature_rhs,
+                          this,
+                          std::placeholders::_1,
+                          std::placeholders::_2,
+                          std::placeholders::_3),
+                std::bind(&HeatConductionProblem<dim>::copy_local_to_global_temperature_rhs,
+                          this,
+                          std::placeholders::_1),
+                Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
+                                                                 mapping,
+                                                                 quadrature_formula,
+                                                                 update_values|
+                                                                 update_gradients|
+                                                                 update_JxW_values),
+                Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+    }
+    rebuild_temperature_matrix = false;
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::build_temperature_preconditioner()
+{
+    if (!rebuild_temperature_preconditioner)
+        return;
+
+    TimerOutput::Scope timer_section(computing_timer, "build temperature preconditioner");
+
+    preconditioner_T.reset(new PreconditionerTypeT());
+
+    PreconditionerTypeT::AdditionalData     data;
+    data.relaxation = 0.6;
+
+    preconditioner_T->initialize(temperature_matrix,
+                                 data);
+}
+
 
 
 }  // namespace BuoyantFluid
