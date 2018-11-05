@@ -560,12 +560,12 @@ local_dof_indices(data.local_dof_indices)
  *
  */
 template <int dim>
-class HeatConductionProblem
+class BuoyantFluidSolver
 {
 public:
     struct Parameters;
 
-    HeatConductionProblem(Parameters &parameters_);
+    BuoyantFluidSolver(Parameters &parameters_);
 
     void run();
 
@@ -692,7 +692,7 @@ private:
 };
 
 template<int dim>
-HeatConductionProblem<dim>::HeatConductionProblem(Parameters &parameters_)
+BuoyantFluidSolver<dim>::BuoyantFluidSolver(Parameters &parameters_)
 :
 parameters(parameters_),
 imex_coefficients(parameters.imex_scheme),
@@ -762,7 +762,7 @@ old_timestep(parameters.timestep)
 
 
 template<int dim>
-HeatConductionProblem<dim>::Parameters::Parameters(const std::string &parameter_filename)
+BuoyantFluidSolver<dim>::Parameters::Parameters(const std::string &parameter_filename)
 :
 // physics parameters
 aspect_ratio(0.35),
@@ -814,7 +814,7 @@ output_frequency(10)
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::Parameters::declare_parameters(ParameterHandler &prm)
+void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &prm)
 {
     prm.enter_subsection("Runtime parameters");
     {
@@ -915,7 +915,7 @@ void HeatConductionProblem<dim>::Parameters::declare_parameters(ParameterHandler
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::Parameters::parse_parameters(ParameterHandler &prm)
+void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm)
 {
     prm.enter_subsection("Runtime parameters");
     {
@@ -999,7 +999,7 @@ void HeatConductionProblem<dim>::Parameters::parse_parameters(ParameterHandler &
 
 
 template<int dim>
-void HeatConductionProblem<dim>::make_grid()
+void BuoyantFluidSolver<dim>::make_grid()
 {
     TimerOutput::Scope timer_section(computing_timer, "make grid");
 
@@ -1071,7 +1071,7 @@ void HeatConductionProblem<dim>::make_grid()
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::setup_dofs()
+void BuoyantFluidSolver<dim>::setup_dofs()
 {
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
@@ -1127,7 +1127,7 @@ void HeatConductionProblem<dim>::setup_dofs()
 
 
 template<int dim>
-void HeatConductionProblem<dim>::setup_temperature_matrices(const types::global_dof_index n_temperature_dofs)
+void BuoyantFluidSolver<dim>::setup_temperature_matrices(const types::global_dof_index n_temperature_dofs)
 {
     preconditioner_T.reset();
 
@@ -1151,7 +1151,7 @@ void HeatConductionProblem<dim>::setup_temperature_matrices(const types::global_
 }
 
 template <int dim>
-void HeatConductionProblem<dim>::local_assemble_temperature_matrix(
+void BuoyantFluidSolver<dim>::local_assemble_temperature_matrix(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
         Assembly::Scratch::TemperatureMatrix<dim> &scratch,
         Assembly::CopyData::TemperatureMatrix<dim> &data)
@@ -1190,7 +1190,7 @@ void HeatConductionProblem<dim>::local_assemble_temperature_matrix(
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::copy_local_to_global_temperature_matrix(
+void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix(
         const Assembly::CopyData::TemperatureMatrix<dim> &data)
 {
     temperature_constraints.distribute_local_to_global(
@@ -1205,7 +1205,7 @@ void HeatConductionProblem<dim>::copy_local_to_global_temperature_matrix(
 
 
 template <int dim>
-void HeatConductionProblem<dim>::local_assemble_temperature_rhs(
+void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         const typename DoFHandler<dim>::active_cell_iterator    &cell,
         Assembly::Scratch::TemperatureRightHandSide<dim>        &scratch,
         Assembly::CopyData::TemperatureRightHandSide<dim>       &data)
@@ -1275,7 +1275,7 @@ void HeatConductionProblem<dim>::local_assemble_temperature_rhs(
 }
 
 template <int dim>
-void HeatConductionProblem<dim>::copy_local_to_global_temperature_rhs(
+void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs(
         const Assembly::CopyData::TemperatureRightHandSide<dim> &data)
 {
     temperature_constraints.distribute_local_to_global(
@@ -1286,7 +1286,7 @@ void HeatConductionProblem<dim>::copy_local_to_global_temperature_rhs(
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::assemble_temperature_system()
+void BuoyantFluidSolver<dim>::assemble_temperature_system()
 {
     TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
 
@@ -1421,12 +1421,12 @@ void HeatConductionProblem<dim>::assemble_temperature_system()
             WorkStream::run(
                     temperature_dof_handler.begin_active(),
                     temperature_dof_handler.end(),
-                    std::bind(&HeatConductionProblem<dim>::local_assemble_temperature_matrix,
+                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
                               this,
                               std::placeholders::_1,
                               std::placeholders::_2,
                               std::placeholders::_3),
-                    std::bind(&HeatConductionProblem<dim>::copy_local_to_global_temperature_matrix,
+                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
                               this,
                               std::placeholders::_1),
                     Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
@@ -1466,12 +1466,12 @@ void HeatConductionProblem<dim>::assemble_temperature_system()
         WorkStream::run(
                 temperature_dof_handler.begin_active(),
                 temperature_dof_handler.end(),
-                std::bind(&HeatConductionProblem<dim>::local_assemble_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
                           this,
                           std::placeholders::_1,
                           std::placeholders::_2,
                           std::placeholders::_3),
-                std::bind(&HeatConductionProblem<dim>::copy_local_to_global_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
                           this,
                           std::placeholders::_1),
                 Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
@@ -1486,7 +1486,7 @@ void HeatConductionProblem<dim>::assemble_temperature_system()
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::build_temperature_preconditioner()
+void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 {
     if (!rebuild_temperature_preconditioner)
         return;
@@ -1504,7 +1504,7 @@ void HeatConductionProblem<dim>::build_temperature_preconditioner()
 
 
 template<int dim>
-double HeatConductionProblem<dim>::compute_rms_values() const
+double BuoyantFluidSolver<dim>::compute_rms_values() const
 {
     const QGauss<dim> temperature_quadrature_formula(parameters.temperature_degree + 1);
 
@@ -1542,7 +1542,7 @@ double HeatConductionProblem<dim>::compute_rms_values() const
 
 
 template<int dim>
-void HeatConductionProblem<dim>::output_results() const
+void BuoyantFluidSolver<dim>::output_results() const
 {
     std::cout << "   Output results..." << std::endl;
 
@@ -1561,7 +1561,7 @@ void HeatConductionProblem<dim>::output_results() const
 }
 
 template<int dim>
-void HeatConductionProblem<dim>::refine_mesh()
+void BuoyantFluidSolver<dim>::refine_mesh()
 {
     TimerOutput::Scope timer_section(computing_timer, "refine mesh");
 
@@ -1620,7 +1620,7 @@ void HeatConductionProblem<dim>::refine_mesh()
 }
 
 template <int dim>
-void HeatConductionProblem<dim>::solve()
+void BuoyantFluidSolver<dim>::solve()
 {
     std::cout << "   Solving temperature system..." << std::endl;
     TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
@@ -1646,7 +1646,7 @@ void HeatConductionProblem<dim>::solve()
 
 
 template<int dim>
-void HeatConductionProblem<dim>::run()
+void BuoyantFluidSolver<dim>::run()
 {
     make_grid();
 
@@ -1741,8 +1741,8 @@ int main(int argc, char *argv[])
             parameter_filename = "default_parameters.prm";
 
         const int dim = 2;
-        HeatConductionProblem<dim>::Parameters parameters_2D(parameter_filename);
-        HeatConductionProblem<dim> problem_2D(parameters_2D);
+        BuoyantFluidSolver<dim>::Parameters parameters_2D(parameter_filename);
+        BuoyantFluidSolver<dim> problem_2D(parameters_2D);
         problem_2D.run();
     }
     catch (std::exception &exc)
