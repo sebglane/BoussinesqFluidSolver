@@ -1450,5 +1450,121 @@ void HeatConductionProblem<dim>::build_temperature_preconditioner()
 }
 
 
+template<int dim>
+double HeatConductionProblem<dim>::compute_rms_values() const
+{
+    const QGauss<dim> temperature_quadrature_formula(parameters.temperature_degree + 1);
+
+    const unsigned int n_q_points = temperature_quadrature_formula.size();
+
+    FEValues<dim> temperature_fe_values(mapping,
+                                        temperature_fe,
+                                        temperature_quadrature_formula,
+                                        update_values|update_JxW_values);
+
+    std::vector<double>     temperature_values(n_q_points);
+
+    double rms_temperature = 0;
+    double volume = 0;
+
+    for (auto cell : temperature_dof_handler.active_cell_iterators())
+    {
+        temperature_fe_values.reinit(cell);
+        temperature_fe_values.get_function_values(temperature_solution,
+                                                  temperature_values);
+        for (unsigned int q=0; q<n_q_points; ++q)
+        {
+            rms_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+            volume += temperature_fe_values.JxW(q);
+        }
+    }
+
+    rms_temperature /= volume;
+
+    AssertIsFinite(rms_temperature);
+    Assert(rms_temperature >= 0, ExcLowerRangeType<double>(rms_temperature, 0));
+
+    return std::sqrt(rms_temperature);
+}
+
+
+template<int dim>
+void HeatConductionProblem<dim>::output_results() const
+{
+    std::cout << "   Output results..." << std::endl;
+
+    // prepare data out object
+    DataOut<dim>    data_out;
+    data_out.attach_dof_handler(temperature_dof_handler);
+    data_out.add_data_vector(temperature_solution, "temperature");
+    data_out.build_patches();
+
+    // write output to disk
+    const std::string filename = ("solution-" +
+                                  Utilities::int_to_string(timestep_number, 5) +
+                                  ".vtk");
+    std::ofstream output(filename.c_str());
+    data_out.write_vtk(output);
+}
+
+template<int dim>
+void HeatConductionProblem<dim>::refine_mesh()
+{
+    TimerOutput::Scope timer_section(computing_timer, "refine mesh");
+
+    std::cout << "   Mesh refinement..." << std::endl;
+
+    // error estimation based on temperature
+    Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
+    KellyErrorEstimator<dim>::estimate(temperature_dof_handler,
+                                       QGauss<dim-1>(parameters.temperature_degree + 1),
+                                       typename FunctionMap<dim>::type(),
+                                       temperature_solution,
+                                       estimated_error_per_cell);
+    // set refinement flags
+    GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
+                                                      estimated_error_per_cell,
+                                                      0.8, 0.1);
+    // clear refinement flags if refinement level exceeds maximum
+    if (triangulation.n_levels() > parameters.n_max_levels)
+        for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_max_levels))
+            cell->clear_refine_flag();
+
+
+    // preparing temperature solution transfer
+    std::vector<Vector<double>> x_temperature(3);
+    x_temperature[0] = temperature_solution;
+    x_temperature[1] = old_temperature_solution;
+    x_temperature[2] = old_old_temperature_solution;
+    SolutionTransfer<dim,Vector<double>> temperature_transfer(temperature_dof_handler);
+
+    // preparing triangulation refinement
+    triangulation.prepare_coarsening_and_refinement();
+    temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
+
+    // refine triangulation
+    triangulation.execute_coarsening_and_refinement();
+
+    // setup dofs and constraints on refined mesh
+    setup_dofs();
+
+    // transfer of temperature solution
+    {
+        std::vector<Vector<double>> tmp_temperature(3);
+        tmp_temperature[0].reinit(temperature_solution);
+        tmp_temperature[1].reinit(temperature_solution);
+        tmp_temperature[2].reinit(temperature_solution);
+        temperature_transfer.interpolate(x_temperature, tmp_temperature);
+
+        temperature_solution = tmp_temperature[0];
+        old_temperature_solution = tmp_temperature[1];
+        old_old_temperature_solution = tmp_temperature[2];
+
+        temperature_constraints.distribute(temperature_solution);
+        temperature_constraints.distribute(old_temperature_solution);
+        temperature_constraints.distribute(old_old_temperature_solution);
+    }
+}
+
 
 }  // namespace BuoyantFluid
