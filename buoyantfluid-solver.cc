@@ -383,7 +383,6 @@ void TemperatureInitialValues<dim>::vector_value(
 }  // namespace EquationData
 
 
-
 namespace Assembly {
 
 namespace Scratch {
@@ -553,6 +552,202 @@ local_dof_indices(data.local_dof_indices)
 }  // namespace Assembly
 
 
+namespace Assembly {
+
+namespace Scratch {
+
+template<int dim>
+struct StokesMatrix
+{
+    StokesMatrix(const FiniteElement<dim> &stokes_fe,
+                 const Mapping<dim>       &mapping,
+                 const Quadrature<dim>    &stokes_quadrature,
+                 const UpdateFlags        stokes_update_flags);
+
+    StokesMatrix(const StokesMatrix<dim>  &scratch);
+
+    FEValues<dim>           stokes_fe_values;
+
+    std::vector<double>             div_phi_v;
+    std::vector<Tensor<1,dim>>      phi_v;
+    std::vector<Tensor<2,dim>>      grad_phi_v;
+
+    std::vector<double>             phi_p;
+    std::vector<Tensor<1,dim>>      grad_phi_p;
+};
+
+template <int dim>
+StokesMatrix<dim>::StokesMatrix(
+        const FiniteElement<dim> &stokes_fe,
+        const Mapping<dim>       &mapping,
+        const Quadrature<dim>    &stokes_quadrature,
+        const UpdateFlags         stokes_update_flags)
+:
+stokes_fe_values(mapping,
+                 stokes_fe,
+                 stokes_quadrature,
+                 stokes_update_flags),
+div_phi_v(stokes_fe.dofs_per_cell),
+phi_v(stokes_fe.dofs_per_cell),
+grad_phi_v(stokes_fe.dofs_per_cell),
+phi_p(stokes_fe.dofs_per_cell),
+grad_phi_p(stokes_fe.dofs_per_cell)
+{}
+
+template <int dim>
+StokesMatrix<dim>::StokesMatrix(const StokesMatrix<dim> &scratch)
+:
+stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
+                 scratch.stokes_fe_values.get_fe(),
+                 scratch.stokes_fe_values.get_quadrature(),
+                 scratch.stokes_fe_values.get_update_flags()),
+div_phi_v(scratch.div_phi_v),
+phi_v(scratch.phi_v),
+grad_phi_v(scratch.grad_phi_v),
+phi_p(scratch.phi_p),
+grad_phi_p(scratch.grad_phi_p)
+{}
+
+template<int dim>
+struct StokesMatrixRightHandSide
+{
+    StokesMatrixRightHandSide(const FiniteElement<dim>  &stokes_fe,
+                 const Mapping<dim>         &mapping,
+                 const Quadrature<dim>      &stokes_quadrature,
+                 const UpdateFlags           stokes_update_flags,
+                 const FiniteElement<dim>   &temperature_fe,
+                 const UpdateFlags           temperature_update_flags);
+
+    StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim>  &scratch);
+
+    FEValues<dim>               stokes_fe_values;
+    std::vector<Tensor<1,dim>>  phi_v;
+    std::vector<Tensor<2,dim>>  grad_phi_v;
+    std::vector<Tensor<1,dim>>  old_velocity_values;
+    std::vector<Tensor<1,dim>>  old_old_velocity_values;
+    std::vector<Tensor<2,dim>>  old_velocity_gradients;
+    std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
+
+
+    FEValues<dim>           temperature_fe_values;
+    std::vector<double>     old_temperature_values;
+    std::vector<double>     old_old_temperature_values;
+};
+
+template <int dim>
+StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(
+        const FiniteElement<dim> &stokes_fe,
+        const Mapping<dim>       &mapping,
+        const Quadrature<dim>    &stokes_quadrature,
+        const UpdateFlags         stokes_update_flags,
+        const FiniteElement<dim> &temperature_fe,
+        const UpdateFlags         temperature_update_flags)
+:
+stokes_fe_values(mapping,
+                 stokes_fe,
+                 stokes_quadrature,
+                 stokes_update_flags),
+phi_v(stokes_fe.dofs_per_cell),
+grad_phi_v(stokes_fe.dofs_per_cell),
+old_velocity_values(stokes_quadrature.size()),
+old_old_velocity_values(stokes_quadrature.size()),
+old_velocity_gradients(stokes_quadrature.size()),
+old_old_velocity_gradients(stokes_quadrature.size()),
+temperature_fe_values(mapping,
+                      temperature_fe,
+                      stokes_quadrature,
+                      temperature_update_flags),
+old_temperature_values(stokes_quadrature.size()),
+old_old_temperature_values(stokes_quadrature.size())
+{}
+
+template <int dim>
+StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &scratch)
+:
+stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
+                 scratch.stokes_fe_values.get_fe(),
+                 scratch.stokes_fe_values.get_quadrature(),
+                 scratch.stokes_fe_values.get_update_flags()),
+phi_v(scratch.phi_v),
+grad_phi_v(scratch.grad_phi_v),
+old_velocity_values(scratch.old_velocity_values),
+old_old_velocity_values(scratch.old_old_velocity_values),
+old_velocity_gradients(scratch.old_velocity_gradients),
+old_old_velocity_gradients(scratch.old_velocity_gradients),
+temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
+                      scratch.temperature_fe_values.get_fe(),
+                      scratch.temperature_fe_values.get_quadrature(),
+                      scratch.temperature_fe_values.get_update_flags()),
+old_temperature_values(scratch.old_temperature_values),
+old_old_temperature_values(scratch.old_old_temperature_values)
+{}
+
+}  // namespace Scratch
+
+namespace CopyData {
+
+
+template <int dim>
+struct StokesMatrix
+{
+    StokesMatrix(const FiniteElement<dim> &temperature_fe);
+    StokesMatrix(const StokesMatrix<dim> &data);
+
+    FullMatrix<double>      local_matrix;
+    FullMatrix<double>      local_stiffness_matrix;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+template <int dim>
+StokesMatrix<dim>::StokesMatrix(const FiniteElement<dim> &temperature_fe)
+:
+local_matrix(temperature_fe.dofs_per_cell,
+                  temperature_fe.dofs_per_cell),
+local_stiffness_matrix(temperature_fe.dofs_per_cell,
+                       temperature_fe.dofs_per_cell),
+local_dof_indices(temperature_fe.dofs_per_cell)
+{}
+
+template <int dim>
+StokesMatrix<dim>::StokesMatrix(const StokesMatrix<dim> &data)
+:
+local_matrix(data.local_matrix),
+local_stiffness_matrix(data.local_stiffness_matrix),
+local_dof_indices(data.local_dof_indices)
+{}
+
+
+template <int dim>
+struct StokesMatrixRightHandSide
+{
+    StokesMatrixRightHandSide(const FiniteElement<dim> &stokes_fe);
+    StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &data);
+
+    Vector<double>          local_rhs;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+template <int dim>
+StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const FiniteElement<dim> &stokes_fe)
+:
+local_rhs(stokes_fe.dofs_per_cell),
+local_dof_indices(stokes_fe.dofs_per_cell)
+{}
+
+template <int dim>
+StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &data)
+:
+local_rhs(data.local_rhs),
+local_dof_indices(data.local_dof_indices)
+{}
+
+}  // namespace Copy
+
+}  // namespace Assembly
+
+
 /*
  *
  * templated class for solving the Boussinesq problem
@@ -575,14 +770,17 @@ private:
     void setup_dofs();
 
     void setup_temperature_matrices(const types::global_dof_index n_temperature_dofs);
-
     void assemble_temperature_system();
-
     void build_temperature_preconditioner();
+
+    void setup_stokes_matrix(const std::vector<types::global_dof_index> dofs_per_block);
+    void assemble_stokes_system();
+    void build_stokes_preconditioner();
 
     void solve();
 
-    double compute_rms_values() const;
+    std::pair<double,double>    compute_rms_values() const;
+    double                      compute_cfl_number() const;
 
     void output_results() const;
 
@@ -592,12 +790,17 @@ private:
 
     TimeStepping::IMEXCoefficients  imex_coefficients;
 
+    Tensor<1,dim>                   rotation_vector;
+
     Triangulation<dim>              triangulation;
 
     const MappingQ<dim>             mapping;
 
     const FE_Q<dim>                 temperature_fe;
     DoFHandler<dim>                 temperature_dof_handler;
+
+    const FESystem<dim>             stokes_fe;
+    DoFHandler<dim>                 stokes_dof_handler;
 
     // temperature part
     ConstraintMatrix                temperature_constraints;
@@ -613,12 +816,38 @@ private:
     Vector<double>                  old_old_temperature_solution;
     Vector<double>                  temperature_rhs;
 
+    // stokes part
+    ConstraintMatrix                stokes_constraints;
+    ConstraintMatrix                stokes_laplace_constraints;
+
+    BlockSparsityPattern            stokes_sparsity_pattern;
+    BlockSparsityPattern            auxiliary_stokes_sparsity_pattern;
+    BlockSparseMatrix<double>       stokes_matrix;
+    BlockSparseMatrix<double>       stokes_laplace_matrix;
+
+    SparseMatrix<double>            velocity_mass_matrix;
+    SparseMatrix<double>            pressure_mass_matrix;
+
+    // vectors of stokes part
+    BlockVector<double>             stokes_solution;
+    BlockVector<double>             old_stokes_solution;
+    BlockVector<double>             old_old_stokes_solution;
+    BlockVector<double>             stokes_rhs;
+
     // preconditioner types
-    typedef PreconditionJacobi<SparseMatrix<double>> PreconditionerTypeT;
+    typedef TrilinosWrappers::PreconditionAMG           PreconditionerTypeA;
+    typedef TrilinosWrappers::PreconditionAMG           PreconditionerTypeKp;
+    typedef SparseILU<double>                           PreconditionerTypeMp;
+    typedef PreconditionJacobi<SparseMatrix<double>>    PreconditionerTypeT;
 
     // pointers to preconditioners
-    std::shared_ptr<PreconditionerTypeT>      preconditioner_T;
+    std::shared_ptr<PreconditionerTypeA>        preconditioner_A;
+    std::shared_ptr<PreconditionerTypeKp>       preconditioner_Kp;
+    std::shared_ptr<PreconditionerTypeMp>       preconditioner_Mp;
+    std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
 
+    // postprocessor class
+    class PostProcessor;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -637,8 +866,14 @@ public:
         double aspect_ratio;
         double Pr;
         double Ra;
+        double Ek;
 
-        bool    rotation;
+        bool         rotation;
+
+        // linear solver parameters
+        double rel_tol;
+        double abs_tol;
+        unsigned int n_max_iter;
 
         // runtime parameters
         bool    workstream_assembly;
@@ -652,6 +887,7 @@ public:
 
         // discretization parameters
         unsigned int temperature_degree;
+        unsigned int velocity_degree;
 
         // refinement parameters
         unsigned int n_global_refinements;
@@ -671,8 +907,14 @@ private:
     double                          old_timestep;
     unsigned int                    timestep_number = 0;
 
+    // variables for Schur complement approximation
+    double                          factor_Mp = 0;
+    double                          factor_Kp = 0;
+
     // flags for rebuilding matrices and preconditioners
-    bool    rebuild_temperature_matrix = true;
+    bool    rebuild_stokes_matrices = true;
+    bool    rebuild_temperature_matrices = true;
+    bool    rebuild_stokes_preconditioner = true;
     bool    rebuild_temperature_preconditioner = true;
 
     // working stream methods for temperature assembly
@@ -689,6 +931,21 @@ private:
             Assembly::CopyData::TemperatureRightHandSide<dim> &data);
     void copy_local_to_global_temperature_rhs(
             const Assembly::CopyData::TemperatureRightHandSide<dim> &data);
+
+    // working stream methods for stokes assembly
+    void local_assemble_stokes_matrix(
+            const typename DoFHandler<dim>::active_cell_iterator &cell,
+            Assembly::Scratch::StokesMatrix<dim> &scratch,
+            Assembly::CopyData::StokesMatrix<dim> &data);
+    void copy_local_to_global_stokes_matrix(
+            const Assembly::CopyData::StokesMatrix<dim> &data);
+
+    void local_assemble_stokes_rhs(
+                const typename DoFHandler<dim>::active_cell_iterator &cell,
+                Assembly::Scratch::StokesMatrixRightHandSide<dim> &scratch,
+                Assembly::CopyData::StokesMatrixRightHandSide<dim> &data);
+    void copy_local_to_global_stokes_rhs(
+                const Assembly::CopyData::StokesMatrixRightHandSide<dim> &data);
 };
 
 template<int dim>
