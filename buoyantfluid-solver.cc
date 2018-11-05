@@ -1477,7 +1477,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
         stokes_laplace_constraints.close();
     }
-
     // stokes matrix and vector setup
     setup_stokes_matrix(dofs_per_block);
     stokes_solution.reinit(dofs_per_block);
@@ -2151,16 +2150,16 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
                                             imex_coefficients.gamma(timestep/old_timestep):
                                             std::vector<double>({1.0,0.0,0.0}));
 
-        FEValues<dim>   stokes_fe_values(stokes_fe,
-                                         mapping,
+        FEValues<dim>   stokes_fe_values(mapping,
+                                         stokes_fe,
                                          quadrature_formula,
                                          update_values|
                                          update_quadrature_points|
                                          update_JxW_values|
                                          update_gradients);
 
-        FEValues<dim>   temperature_fe_values(temperature_fe,
-                                              mapping,
+        FEValues<dim>   temperature_fe_values(mapping,
+                                              temperature_fe,
                                               quadrature_formula,
                                               update_values);
 
@@ -2765,7 +2764,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // set refinement flags
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
                                                       estimated_error_per_cell,
-                                                      0.8, 0.1);
+                                                      0.8, 0.3);
+
     // clear refinement flags if refinement level exceeds maximum
     if (triangulation.n_levels() > parameters.n_max_levels)
         for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_max_levels))
@@ -2779,9 +2779,17 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     x_temperature[2] = old_old_temperature_solution;
     SolutionTransfer<dim,Vector<double>> temperature_transfer(temperature_dof_handler);
 
+    // preparing temperature stokes transfer
+    std::vector<BlockVector<double>> x_stokes(3);
+    x_stokes[0] = stokes_solution;
+    x_stokes[1] = old_stokes_solution;
+    x_stokes[2] = old_old_stokes_solution;
+    SolutionTransfer<dim,BlockVector<double>> stokes_transfer(stokes_dof_handler);
+
     // preparing triangulation refinement
     triangulation.prepare_coarsening_and_refinement();
     temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
+    stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -2805,7 +2813,27 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         temperature_constraints.distribute(old_temperature_solution);
         temperature_constraints.distribute(old_old_temperature_solution);
     }
+    // transfer of stokes solution
+    {
+        std::vector<BlockVector<double>>    tmp_stokes(3);
+        tmp_stokes[0].reinit(stokes_solution);
+        tmp_stokes[1].reinit(stokes_solution);
+        tmp_stokes[2].reinit(stokes_solution);
+        stokes_transfer.interpolate(x_stokes, tmp_stokes);
+
+        stokes_solution = tmp_stokes[0];
+        old_stokes_solution = tmp_stokes[1];
+        old_old_stokes_solution = tmp_stokes[2];
+
+        stokes_constraints.distribute(stokes_solution);
+        stokes_constraints.distribute(old_stokes_solution);
+        stokes_constraints.distribute(old_old_stokes_solution);
+    }
+    // set rebuild flags
+    rebuild_stokes_matrices = true;
+    rebuild_temperature_matrices = true;
 }
+
 
 template <int dim>
 void BuoyantFluidSolver<dim>::solve()
@@ -2840,7 +2868,6 @@ void BuoyantFluidSolver<dim>::run()
 
     setup_dofs();
 
-
     VectorTools::interpolate(mapping,
                              temperature_dof_handler,
                              Functions::ZeroFunction<dim>(1),
@@ -2861,9 +2888,12 @@ void BuoyantFluidSolver<dim>::run()
                   << "time step: " << timestep
                   << std::endl;
 
-        assemble_temperature_system();
+        assemble_stokes_system();
+        build_stokes_preconditioner();
 
+        assemble_temperature_system();
         build_temperature_preconditioner();
+
 
         solve();
         {
@@ -2871,11 +2901,11 @@ void BuoyantFluidSolver<dim>::run()
 
             const std::pair<double,double> rms_values = compute_rms_values();
 
-            std::cout << "   temperature rms value: "
+            std::cout << "   velocity rms value: "
                       << rms_values.first
                       << std::endl
-                      << "   maximum temperature: "
-                      << temperature_solution.linfty_norm()
+                      << "   temperature rms value: "
+                      << rms_values.second
                       << std::endl;
         }
         if (timestep_number % parameters.output_frequency == 0
@@ -2897,6 +2927,11 @@ void BuoyantFluidSolver<dim>::run()
         temperature_solution *= (1. + timestep / old_timestep);
         temperature_solution.sadd(timestep / old_timestep,
                                   old_old_temperature_solution);
+
+        // extrapolate stokes solution
+        stokes_solution *= (1. + timestep / old_timestep);
+        stokes_solution.sadd(timestep / old_timestep,
+                             old_old_stokes_solution);
         // advance in time
         time += timestep;
         ++timestep_number;
