@@ -1,0 +1,63 @@
+# Listing of Parameters
+# ---------------------
+subsection Discretization parameters
+  # Ratio of inner to outer radius
+  set aspect_ratio         = 0.35
+
+  # Polynomial degree of the temperature discretization.
+  set p_degree_temperature = 1
+
+
+  subsection Refinement parameters
+    # Number of initial boundary refinements.
+    set n_boundary_refinements = 1
+
+    # Number of initial global refinements.
+    set n_global_refinements   = 4
+
+    # Number of initial refinements based on the initial condition.
+    set n_initial_refinements  = 0
+
+    # Total of number of refinements allowed during the run.
+    set n_max_levels           = 6
+
+    # Refinement frequency.
+    set refinement_freq        = 100
+  end
+
+end
+
+
+subsection Physics
+  # Prandtl number of the fluid
+  set Pr            = 1.0
+
+  # Rayleigh number of the flow
+  set Ra            = 1.0e5
+
+  # Turn rotation on or off
+  set rotating_case = false
+end
+
+
+subsection Runtime parameters
+  # Use multi-threading for assembly
+  set workstream_assembly = true
+end
+
+
+subsection Time stepping settings
+  # Maximum number of iteration. That is the maximum number of time steps.
+  set n_steps              = 100
+
+  # Output frequency.
+  set output_freq          = 10
+
+  # time step.
+  set time_step            = 1e-1
+
+  # Time stepping scheme applied.
+  set time_stepping_scheme = CNAB
+end
+
+
