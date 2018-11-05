@@ -707,7 +707,7 @@ equation_coefficients{(parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sq
 computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
 timestep(parameters.timestep),
-old_timestep(0.5 * parameters.timestep)
+old_timestep(parameters.timestep)
 {
     std::cout << "Heat conduction solver by S. Glane\n"
               << "This program solves the heat conduction equation.\n"
@@ -758,6 +758,59 @@ old_timestep(0.5 * parameters.timestep)
     std::cout << std::endl << ss.str() << std::endl;
 
     std::cout << std::endl << std::flush << std::fixed;
+}
+
+
+template<int dim>
+HeatConductionProblem<dim>::Parameters::Parameters(const std::string &parameter_filename)
+:
+// physics parameters
+aspect_ratio(0.35),
+Pr(1.0),
+Ra(1.0e5),
+rotation(false),
+// runtime parameters
+workstream_assembly(false),
+// time stepping parameters
+imex_scheme(TimeStepping::IMEXType::CNAB),
+n_steps(1000),
+// discretization parameters
+temperature_degree(1),
+// refinement parameters
+n_global_refinements(1),
+n_initial_refinements(4),
+n_boundary_refinements(1),
+n_max_levels(6),
+refinement_frequency(10),
+// logging parameters
+output_frequency(10)
+{
+    ParameterHandler prm;
+    declare_parameters(prm);
+
+    std::ifstream parameter_file(parameter_filename.c_str());
+
+    if (!parameter_file)
+    {
+        parameter_file.close();
+
+        std::ostringstream message;
+        message << "Input parameter file <"
+                << parameter_filename << "> not found. Creating a"
+                << std::endl
+                << "template file of the same name."
+                << std::endl;
+
+        std::ofstream parameter_out(parameter_filename.c_str());
+        prm.print_parameters(parameter_out,
+                ParameterHandler::OutputStyle::Text);
+
+        AssertThrow(false, ExcMessage(message.str().c_str()));
+    }
+
+    prm.parse_input(parameter_file);
+
+    parse_parameters(prm);
 }
 
 template<int dim>
@@ -1671,26 +1724,25 @@ void HeatConductionProblem<dim>::run()
 
     std::cout << std::endl;
 }
-}  // namespace HeatConduction
+
+}  // namespace BuoyantFluid
 
 int main(int argc, char *argv[])
 {
     using namespace dealii;
+    using namespace BuoyantFluid;
 
     try
     {
-        using namespace BuoyantFluid;
-
-        deallog.depth_console(1);
-
         std::string parameter_filename;
         if (argc>=2)
             parameter_filename = argv[1];
         else
             parameter_filename = "default_parameters.prm";
 
-        HeatConductionProblem<2>::Parameters parameters_2D(parameter_filename);
-        HeatConductionProblem<2> problem_2D(parameters_2D);
+        const int dim = 2;
+        HeatConductionProblem<dim>::Parameters parameters_2D(parameter_filename);
+        HeatConductionProblem<dim> problem_2D(parameters_2D);
         problem_2D.run();
     }
     catch (std::exception &exc)
@@ -1718,5 +1770,3 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
-
-}  // namespace BuoyantFluid
