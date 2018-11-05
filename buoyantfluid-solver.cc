@@ -2061,15 +2061,139 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 }
 
 
+template <int dim>
+class BuoyantFluidSolver<dim>::PostProcessor : public DataPostprocessor<dim>
+{
+public:
+    PostProcessor() : DataPostprocessor<dim>()  {};
+
+    virtual void evaluate_vector_field(
+            const DataPostprocessorInputs::Vector<dim> &inputs,
+            std::vector<Vector<double> >               &computed_quantities) const;
+
+    virtual std::vector<std::string> get_names() const;
+
+    virtual std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    get_data_component_interpretation() const;
+
+    virtual UpdateFlags get_needed_update_flags() const;
+};
+
+
+template<int dim>
+std::vector<std::string> BuoyantFluidSolver<dim>::PostProcessor::get_names() const
+{
+    std::vector<std::string> solution_names(dim, "velocity");
+    solution_names.push_back("pressure");
+    solution_names.push_back("temperature");
+
+    return solution_names;
+}
+
+template<int dim>
+UpdateFlags BuoyantFluidSolver<dim>::PostProcessor::get_needed_update_flags() const
+{
+    return update_values;
+}
+
+template<int dim>
+std::vector<DataComponentInterpretation::DataComponentInterpretation>
+BuoyantFluidSolver<dim>::PostProcessor::get_data_component_interpretation() const
+{
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+
+    return component_interpretation;
+}
+
+template <int dim>
+void BuoyantFluidSolver<dim>::PostProcessor::evaluate_vector_field(
+        const DataPostprocessorInputs::Vector<dim> &inputs,
+        std::vector<Vector<double> >               &computed_quantities) const
+{
+    const unsigned int n_quadrature_points = inputs.solution_values.size();
+    Assert(computed_quantities.size() == n_quadrature_points,
+            ExcInternalError());
+    Assert(inputs.solution_values[0].size() == dim+2,
+            ExcInternalError());
+    for (unsigned int q=0; q<n_quadrature_points; ++q)
+    {
+        for (unsigned int d=0; d<dim; ++d)
+            computed_quantities[q](d) = inputs.solution_values[q](d);
+        const double pressure = inputs.solution_values[q](dim);
+        computed_quantities[q](dim) = pressure;
+        const double temperature = inputs.solution_values[q](dim+1);
+        computed_quantities[q](dim+1) = temperature;
+    }
+}
+
+
 template<int dim>
 void BuoyantFluidSolver<dim>::output_results() const
 {
     std::cout << "   Output results..." << std::endl;
 
+    // create joint finite element
+    const FESystem<dim> joint_fe(stokes_fe, 1,
+                                 temperature_fe, 1);
+
+    // create joint dof handler
+    DoFHandler<dim>     joint_dof_handler(triangulation);
+    joint_dof_handler.distribute_dofs(joint_fe);
+
+    Assert(joint_dof_handler.n_dofs() ==
+           stokes_dof_handler.n_dofs() + temperature_dof_handler.n_dofs(),
+           ExcInternalError());
+
+    // create joint solution
+    Vector<double>      joint_solution;
+    joint_solution.reinit(joint_dof_handler.n_dofs());
+
+    {
+        std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
+        std::vector<types::global_dof_index> local_stokes_dof_indices(stokes_fe.dofs_per_cell);
+        std::vector<types::global_dof_index> local_temperature_dof_indices(temperature_fe.dofs_per_cell);
+
+        typename DoFHandler<dim>::active_cell_iterator
+        joint_cell       = joint_dof_handler.begin_active(),
+        joint_endc       = joint_dof_handler.end(),
+        stokes_cell      = stokes_dof_handler.begin_active(),
+        temperature_cell = temperature_dof_handler.begin_active();
+        for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell)
+        {
+            joint_cell->get_dof_indices(local_joint_dof_indices);
+            stokes_cell->get_dof_indices(local_stokes_dof_indices);
+            temperature_cell->get_dof_indices(local_temperature_dof_indices);
+
+            for (unsigned int i=0; i<joint_fe.dofs_per_cell; ++i)
+                if (joint_fe.system_to_base_index(i).first.first == 0)
+                {
+                    Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
+                            ExcInternalError());
+                    joint_solution(local_joint_dof_indices[i])
+                    = stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
+                }
+                else
+                {
+                    Assert (joint_fe.system_to_base_index(i).first.first == 1,
+                            ExcInternalError());
+                    Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
+                            ExcInternalError());
+                    joint_solution(local_joint_dof_indices[i])
+                    = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
+                }
+        }
+    }
+
+    // create post processor
+    PostProcessor   postprocessor;
+
     // prepare data out object
     DataOut<dim>    data_out;
-    data_out.attach_dof_handler(temperature_dof_handler);
-    data_out.add_data_vector(temperature_solution, "temperature");
+    data_out.attach_dof_handler(joint_dof_handler);
+    data_out.add_data_vector(joint_solution, postprocessor);
     data_out.build_patches();
 
     // write output to disk
