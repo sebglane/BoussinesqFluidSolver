@@ -444,7 +444,9 @@ struct TemperatureRightHandSide
             const FiniteElement<dim> &temperature_fe,
             const Mapping<dim>       &mapping,
             const Quadrature<dim>    &temperature_quadrature,
-            const UpdateFlags         temperature_update_flags);
+            const UpdateFlags         temperature_update_flags,
+            const FiniteElement<dim> &stokes_fe,
+            const UpdateFlags         stokes_update_flags);
 
     TemperatureRightHandSide(const TemperatureRightHandSide<dim> &scratch);
 
@@ -455,6 +457,10 @@ struct TemperatureRightHandSide
     std::vector<double>         old_old_temperature_values;
     std::vector<Tensor<1,dim>>  old_temperature_gradients;
     std::vector<Tensor<1,dim>>  old_old_temperature_gradients;
+
+    FEValues<dim>               stokes_fe_values;
+    std::vector<Tensor<1,dim>>  old_velocity_values;
+    std::vector<Tensor<1,dim>>  old_old_velocity_values;
 };
 
 template<int dim>
@@ -462,7 +468,9 @@ TemperatureRightHandSide<dim>::TemperatureRightHandSide(
         const FiniteElement<dim>    &temperature_fe,
         const Mapping<dim>          &mapping,
         const Quadrature<dim>       &temperature_quadrature,
-        const UpdateFlags            temperature_update_flags)
+        const UpdateFlags            temperature_update_flags,
+        const FiniteElement<dim> &stokes_fe,
+        const UpdateFlags         stokes_update_flags)
 :
 temperature_fe_values(mapping,
                       temperature_fe,
@@ -473,7 +481,13 @@ grad_phi_T(temperature_fe.dofs_per_cell),
 old_temperature_values(temperature_quadrature.size()),
 old_old_temperature_values(temperature_quadrature.size()),
 old_temperature_gradients(temperature_quadrature.size()),
-old_old_temperature_gradients(temperature_quadrature.size())
+old_old_temperature_gradients(temperature_quadrature.size()),
+stokes_fe_values(mapping,
+                 stokes_fe,
+                 temperature_quadrature,
+                 stokes_update_flags),
+old_velocity_values(temperature_quadrature.size()),
+old_old_velocity_values(temperature_quadrature.size())
 {}
 
 template<int dim>
@@ -489,7 +503,13 @@ grad_phi_T(scratch.grad_phi_T),
 old_temperature_values(scratch.old_temperature_values),
 old_old_temperature_values(scratch.old_old_temperature_values),
 old_temperature_gradients(scratch.old_temperature_gradients),
-old_old_temperature_gradients(scratch.old_old_temperature_gradients)
+old_old_temperature_gradients(scratch.old_old_temperature_gradients),
+stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
+                 scratch.stokes_fe_values.get_fe(),
+                 scratch.stokes_fe_values.get_quadrature(),
+                 scratch.stokes_fe_values.get_update_flags()),
+old_velocity_values(scratch.old_velocity_values),
+old_old_velocity_values(scratch.old_old_velocity_values)
 {}
 
 }  // namespace Scratch
@@ -1446,7 +1466,6 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
         Ra = prm.get_double("Ra");
         Pr = prm.get_double("Pr");
         Ek = prm.get_double("Ek");
-
     }
     prm.leave_subsection();
 
@@ -1606,7 +1625,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
     // temperature constraints
     {
-        TimerOutput::Scope timer_section(computing_timer, "temperature constraints");
         temperature_constraints.clear();
 
         DoFTools::make_hanging_node_constraints(
@@ -1861,12 +1879,14 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
     const std::vector<double> alpha = (timestep_number != 0?
                                             imex_coefficients.alpha(timestep/old_timestep):
                                             std::vector<double>({1.0,-1.0,0.0}));
-//    const std::vector<double> beta = (timestep_number != 0?
-//                                            imex_coefficients.beta(timestep/old_timestep):
-//                                            std::vector<double>({1.0,0.0}));
+    const std::vector<double> beta = (timestep_number != 0?
+                                            imex_coefficients.beta(timestep/old_timestep):
+                                            std::vector<double>({1.0,0.0}));
     const std::vector<double> gamma = (timestep_number != 0?
                                             imex_coefficients.gamma(timestep/old_timestep):
                                             std::vector<double>({1.0,0.0,0.0}));
+
+    const FEValuesExtractors::Vector    velocity(0);
 
     const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.temperature_fe_values.n_quadrature_points;
@@ -1878,6 +1898,13 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
 
     scratch.temperature_fe_values.reinit (cell);
 
+    typename DoFHandler<dim>::active_cell_iterator
+    stokes_cell(&triangulation,
+                cell->level(),
+                cell->index(),
+                &stokes_dof_handler);
+    scratch.stokes_fe_values.reinit(stokes_cell);
+
     scratch.temperature_fe_values.get_function_values(old_temperature_solution,
                                                       scratch.old_temperature_values);
     scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
@@ -1886,6 +1913,12 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
                                                          scratch.old_temperature_gradients);
     scratch.temperature_fe_values.get_function_gradients(old_old_temperature_solution,
                                                          scratch.old_old_temperature_gradients);
+
+    scratch.stokes_fe_values[velocity].get_function_values(old_stokes_solution,
+                                                           scratch.old_velocity_values);
+    scratch.stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
+                                                           scratch.old_old_velocity_values);
+
 
     for (unsigned int q=0; q<n_q_points; ++q)
     {
@@ -1899,6 +1932,10 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
                 alpha[1] * scratch.old_temperature_values[q]
                     + alpha[2] * scratch.old_temperature_values[q];
 
+        const double nonlinear_term_temperature =
+                beta[0] * scratch.old_temperature_gradients[q] * scratch.old_velocity_values[q]
+                    + beta[1] * scratch.old_old_temperature_gradients[q] * scratch.old_old_velocity_values[q];
+
         const Tensor<1,dim> linear_term_temperature =
                 gamma[1] * scratch.old_temperature_gradients[q]
                     + gamma[2] * scratch.old_old_temperature_gradients[q];
@@ -1907,14 +1944,15 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         {
             data.local_rhs(i) += (
                     - time_derivative_temperature * scratch.phi_T[i]
-                    - timestep * equation_coefficients[0] * linear_term_temperature * scratch.grad_phi_T[i]
+                    - timestep * nonlinear_term_temperature * scratch.phi_T[i]
+                    - timestep * equation_coefficients[3] * linear_term_temperature * scratch.grad_phi_T[i]
                     ) * scratch.temperature_fe_values.JxW(q);
 
             if (temperature_constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
                 for (unsigned int j=0; j<dofs_per_cell; ++j)
                     data.matrix_for_bc(j,i) += (
                                   alpha[0] * scratch.phi_T[i] * scratch.phi_T[j]
-                                + gamma[0] * timestep * equation_coefficients[0] * scratch.grad_phi_T[i] * scratch.grad_phi_T[j]
+                                + gamma[0] * timestep * equation_coefficients[3] * scratch.grad_phi_T[i] * scratch.grad_phi_T[j]
                                 ) * scratch.temperature_fe_values.JxW(q);
 
         }
@@ -1951,12 +1989,14 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         const std::vector<double> alpha = (timestep_number != 0?
                                             imex_coefficients.alpha(timestep/old_timestep):
                                             std::vector<double>({1.0,-1.0,0.0}));
-//      const std::vector<double> beta_ = (timestep_number != 0?
-//                                                  imex_coefficients.beta(timestep/old_timestep):
-//                                                  std::vector<double>({1.0,0.0}));
+        const std::vector<double> beta = (timestep_number != 0?
+                                                  imex_coefficients.beta(timestep/old_timestep):
+                                                  std::vector<double>({1.0,0.0}));
         const std::vector<double> gamma = (timestep_number != 0?
                                                 imex_coefficients.gamma(timestep/old_timestep):
                                                 std::vector<double>({1.0,0.0,0.0}));
+
+        const FEValuesExtractors::Vector    velocity(0);
 
         FEValues<dim>     temperature_fe_values(mapping,
                                                 temperature_fe,
@@ -1965,6 +2005,11 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                 update_gradients|
                                                 update_quadrature_points|
                                                 update_JxW_values);
+
+        FEValues<dim>   stokes_fe_values(mapping,
+                                         stokes_fe,
+                                         quadrature_formula,
+                                         update_values);
 
         const unsigned int   dofs_per_cell   = temperature_fe.dofs_per_cell;
         const unsigned int   n_q_points      = quadrature_formula.size();
@@ -1979,30 +2024,39 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         std::vector<double>         old_old_temperature_values(n_q_points);
         std::vector<Tensor<1,dim> > old_old_temperature_gradients(n_q_points);
 
+        std::vector<Tensor<1,dim> > old_velocity_values(n_q_points);
+        std::vector<Tensor<1,dim> > old_old_velocity_values(n_q_points);
 
         std::vector<double>         phi_T(dofs_per_cell);
         std::vector<Tensor<1,dim> > grad_phi_T(dofs_per_cell);
 
         typename DoFHandler<dim>::active_cell_iterator
         cell = temperature_dof_handler.begin_active(),
+        stokes_cell = stokes_dof_handler.begin_active(),
         endc = temperature_dof_handler.end();
-        for (; cell!= endc; ++cell)
+        for (; cell!= endc; ++cell, ++stokes_cell)
         {
 
             local_matrix = 0;
             local_rhs = 0;
 
             temperature_fe_values.reinit(cell);
-            cell->get_dof_indices(local_dof_indices);
+            stokes_fe_values.reinit(stokes_cell);
 
             temperature_fe_values.get_function_values(old_temperature_solution,
                                                       old_temperature_values);
-            temperature_fe_values.get_function_gradients(old_temperature_solution,
-                                                         old_temperature_gradients);
             temperature_fe_values.get_function_values(old_old_temperature_solution,
                                                       old_old_temperature_values);
+            temperature_fe_values.get_function_gradients(old_temperature_solution,
+                                                         old_temperature_gradients);
             temperature_fe_values.get_function_gradients(old_old_temperature_solution,
                                                          old_old_temperature_gradients);
+
+            stokes_fe_values[velocity].get_function_values(old_stokes_solution,
+                                                           old_velocity_values);
+            stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
+                                                           old_old_velocity_values);
+
 
             for (unsigned int q=0; q<n_q_points; ++q)
             {
@@ -2016,6 +2070,10 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                         alpha[1] * old_temperature_values[q]
                             + alpha[2] * old_temperature_values[q];
 
+                const double nonlinear_term_temperature =
+                        beta[0] * old_velocity_values[q] * old_temperature_gradients[q]
+                            + beta[1] * old_old_velocity_values[q] * old_old_temperature_gradients[q];
+
                 const Tensor<1,dim> linear_term_temperature =
                         gamma[1] * old_temperature_gradients[q]
                             + gamma[2] * old_old_temperature_gradients[q];
@@ -2024,23 +2082,26 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                 {
                     local_rhs(i) += (
                                 - time_derivative_temperature * phi_T[i]
-                                - timestep * equation_coefficients[0] * linear_term_temperature * grad_phi_T[i]
+                                - timestep * nonlinear_term_temperature * phi_T[i]
+                                - timestep * equation_coefficients[3] * linear_term_temperature * grad_phi_T[i]
                                 ) * temperature_fe_values.JxW(q);
 
                     if (rebuild_temperature_matrices || timestep_number == 1)
                         for (unsigned int j=0; j<dofs_per_cell; ++j)
                             local_matrix(i,j) += (
                                       alpha[0] * phi_T[i] * phi_T[j]
-                                    + gamma[0] * timestep * equation_coefficients[0] * grad_phi_T[i] * grad_phi_T[j]
+                                    + gamma[0] * timestep * equation_coefficients[3] * grad_phi_T[i] * grad_phi_T[j]
                                     ) * temperature_fe_values.JxW(q);
                     else if (temperature_constraints.is_inhomogeneously_constrained(local_dof_indices[i]))
                         for (unsigned int j=0; j<dofs_per_cell; ++j)
                             local_matrix(j,i) += (
                                       alpha[0] * phi_T[i] * phi_T[j]
-                                    + gamma[0] * timestep * equation_coefficients[0] * grad_phi_T[i] * grad_phi_T[j]
+                                    + gamma[0] * timestep * equation_coefficients[3] * grad_phi_T[i] * grad_phi_T[j]
                                     ) * temperature_fe_values.JxW(q);
                 }
             }
+
+            cell->get_dof_indices(local_dof_indices);
 
             if (rebuild_temperature_matrices || timestep_number == 1)
                 temperature_constraints.distribute_local_to_global(
@@ -2092,8 +2153,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
             temperature_matrix.copy_from(temperature_mass_matrix);
             temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[0],
-                                        temperature_stiffness_matrix);
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                                   temperature_stiffness_matrix);
             rebuild_temperature_preconditioner = true;
         }
         else if (timestep_number == 1)
@@ -2105,7 +2166,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
             temperature_matrix.copy_from(temperature_mass_matrix);
             temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[0],
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
                                    temperature_stiffness_matrix);
 
             rebuild_temperature_preconditioner = true;
@@ -2128,7 +2189,9 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                                  quadrature_formula,
                                                                  update_values|
                                                                  update_gradients|
-                                                                 update_JxW_values),
+                                                                 update_JxW_values,
+                                                                 stokes_fe,
+                                                                 update_values),
                 Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
     }
     rebuild_temperature_matrices = false;
@@ -2149,6 +2212,8 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 
     preconditioner_T->initialize(temperature_matrix,
                                  data);
+
+    rebuild_temperature_preconditioner = false;
 }
 
 
@@ -2415,20 +2480,15 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
 
         typename DoFHandler<dim>::active_cell_iterator
         cell = stokes_dof_handler.begin_active(),
+        temperature_cell = temperature_dof_handler.begin_active(),
         endc = stokes_dof_handler.end();
-        for (; cell!= endc; ++cell)
+        for (; cell!= endc; ++cell, ++temperature_cell)
         {
             local_matrix = 0;
             local_stiffness_matrix = 0;
             local_rhs = 0;
 
             stokes_fe_values.reinit(cell);
-
-            typename DoFHandler<dim>::active_cell_iterator
-            temperature_cell(&triangulation,
-                             cell->level(),
-                             cell->index(),
-                             &temperature_dof_handler);
             temperature_fe_values.reinit(temperature_cell);
 
             stokes_fe_values[velocity].get_function_values(old_stokes_solution,
@@ -2826,38 +2886,6 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
     return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
 }
 
-template <int dim>
-double BuoyantFluidSolver<dim>::compute_cfl_number() const
-{
-    const QIterated<dim> quadrature_formula(QTrapez<1>(),
-                                            parameters.velocity_degree);
-    const unsigned int n_q_points = quadrature_formula.size();
-
-    FEValues<dim> fe_values(mapping,
-                            stokes_fe,
-                            quadrature_formula,
-                            update_values);
-
-    std::vector<Tensor<1,dim>> velocity_values(n_q_points);
-
-    const FEValuesExtractors::Vector velocities (0);
-
-    double max_cfl = 0;
-
-    for (auto cell : stokes_dof_handler.active_cell_iterators())
-    {
-        fe_values.reinit (cell);
-        fe_values[velocities].get_function_values(stokes_solution,
-                                                  velocity_values);
-        double max_cell_velocity = 0;
-        for (unsigned int q=0; q<n_q_points; ++q)
-            max_cell_velocity = std::max(max_cell_velocity,
-                                         velocity_values[q].norm());
-        max_cfl = std::max(max_cfl,
-                           max_cell_velocity / cell->diameter());
-    }
-    return max_cfl * timestep;
-}
 
 template <int dim>
 class BuoyantFluidSolver<dim>::PostProcessor : public DataPostprocessor<dim>
@@ -3019,7 +3047,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // set refinement flags
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
                                                       estimated_error_per_cell,
-                                                      0.8, 0.3);
+                                                      0.7, 0.3);
 
     // clear refinement flags if refinement level exceeds maximum
     if (triangulation.n_levels() > parameters.n_max_levels)
@@ -3135,7 +3163,6 @@ void BuoyantFluidSolver<dim>::run()
     output_results();
 
     double time = 0;
-    double cfl_number = 0;
 
     do
     {
@@ -3164,16 +3191,6 @@ void BuoyantFluidSolver<dim>::run()
                       << rms_values.second
                       << std::endl;
         }
-        {
-            TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
-
-            cfl_number = compute_cfl_number();
-
-            std::cout << "   current cfl number: "
-                    << cfl_number
-                    << std::endl;
-        }
-
         if (timestep_number % parameters.output_frequency == 0
                 && timestep_number != 0)
         {
