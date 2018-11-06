@@ -1576,7 +1576,6 @@ void BuoyantFluidSolver<dim>::make_grid()
     }
 }
 
-
 template<int dim>
 void BuoyantFluidSolver<dim>::setup_dofs()
 {
@@ -2873,14 +2872,12 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
         }
     }
 
-    AssertIsFinite(rms_velocity);
-    AssertIsFinite(rms_temperature);
-    AssertIsFinite(volume);
-
     rms_velocity /= volume;
+    AssertIsFinite(rms_velocity);
     Assert(rms_velocity >= 0, ExcLowerRangeType<double>(rms_velocity, 0));
 
     rms_temperature /= volume;
+    AssertIsFinite(rms_temperature);
     Assert(rms_temperature >= 0, ExcLowerRangeType<double>(rms_temperature, 0));
 
     return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
@@ -3072,7 +3069,6 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // preparing triangulation refinement
     triangulation.prepare_coarsening_and_refinement();
     temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
-    stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -3176,7 +3172,6 @@ void BuoyantFluidSolver<dim>::run()
 
         assemble_temperature_system();
         build_temperature_preconditioner();
-
 
         solve();
         {
