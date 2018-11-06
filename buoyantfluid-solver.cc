@@ -779,7 +779,7 @@ private:
 
     void solve();
 
-    std::pair<double,double>    compute_rms_values() const;
+    double                      compute_rms_values() const;
     double                      compute_cfl_number() const;
 
     void output_results() const;
@@ -1404,7 +1404,7 @@ void BuoyantFluidSolver<dim>::setup_temperature_matrices(const types::global_dof
     temperature_mass_matrix.reinit(temperature_sparsity_pattern);
     temperature_stiffness_matrix.reinit(temperature_sparsity_pattern);
 
-    rebuild_temperature_matrix = true;
+    rebuild_temperature_matrices = true;
 }
 
 template <int dim>
@@ -1549,7 +1549,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     std::cout << "   Assembling temperature system..." << std::endl;
 
-    if (rebuild_temperature_matrix || timestep_number == 1)
+    if (rebuild_temperature_matrices || timestep_number == 1)
         temperature_matrix = 0;
     temperature_rhs = 0;
 
@@ -1636,7 +1636,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                 - timestep * equation_coefficients[0] * linear_term_temperature * grad_phi_T[i]
                                 ) * temperature_fe_values.JxW(q);
 
-                    if (rebuild_temperature_matrix || timestep_number == 1)
+                    if (rebuild_temperature_matrices || timestep_number == 1)
                         for (unsigned int j=0; j<dofs_per_cell; ++j)
                             local_matrix(i,j) += (
                                       alpha[0] * phi_T[i] * phi_T[j]
@@ -1651,7 +1651,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                 }
             }
 
-            if (rebuild_temperature_matrix || timestep_number == 1)
+            if (rebuild_temperature_matrices || timestep_number == 1)
                 temperature_constraints.distribute_local_to_global(
                         local_matrix,
                         local_rhs,
@@ -1670,7 +1670,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
     else
     {
         // assemble temperature matrices
-        if (rebuild_temperature_matrix)
+        if (rebuild_temperature_matrices)
         {
             temperature_mass_matrix = 0;
             temperature_stiffness_matrix = 0;
@@ -1739,7 +1739,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                                  update_JxW_values),
                 Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
     }
-    rebuild_temperature_matrix = false;
+    rebuild_temperature_matrices = false;
 }
 
 template<int dim>
