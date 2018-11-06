@@ -964,6 +964,8 @@ private:
     std::pair<double,double>    compute_rms_values() const;
     double                      compute_cfl_number() const;
 
+    void update_timestep(const double current_cfl_number);
+
     void output_results() const;
 
     void refine_mesh();
@@ -1065,10 +1067,17 @@ public:
 
         // time stepping parameters
         TimeStepping::IMEXType  imex_scheme;
+        bool            adaptive_timestep;
 
         unsigned int    n_steps;
 
-        double          timestep;
+        double  initial_timestep;
+        double  min_timestep;
+        double  max_timestep;
+        double  cfl_min;
+        double  cfl_max;
+
+        bool    adaptive_timestep;
 
         // discretization parameters
         unsigned int temperature_degree;
@@ -1091,6 +1100,7 @@ private:
     double                          timestep;
     double                          old_timestep;
     unsigned int                    timestep_number = 0;
+    bool                            timestep_modified = false;
 
     // variables for Schur complement approximation
     double                          factor_Mp = 0;
@@ -1238,6 +1248,12 @@ n_max_iter(100),
 // time stepping parameters
 imex_scheme(TimeStepping::CNAB),
 n_steps(1000),
+initial_timestep(1e-3),
+min_timestep(1e-9),
+max_timestep(1e-1),
+cfl_min(0.3),
+cfl_max(0.7),
+adaptive_timestep(true),
 // discretization parameters
 temperature_degree(1),
 velocity_degree(2),
@@ -1390,10 +1406,36 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
                 Patterns::Integer(),
                 "Maximum number of iteration. That is the maximum number of time steps.");
 
-        prm.declare_entry("time_step",
+        prm.declare_entry("dt_initial",
                 "1e-4",
                 Patterns::Double(),
-                "time step.");
+                "Initial time step.");
+
+        prm.declare_entry("dt_min",
+                "1e-6",
+                Patterns::Double(),
+                "Maximum time step.");
+
+        prm.declare_entry("dt_max",
+                "1e-1",
+                Patterns::Double(),
+                "Maximum time step.");
+
+        prm.declare_entry("cfl_min",
+                "0.3",
+                Patterns::Double(),
+                "Minimal value for the cfl number.");
+
+        prm.declare_entry("cfl_max",
+                "0.7",
+                Patterns::Double(),
+                "Maximal value for the cfl number.");
+
+        prm.declare_entry("adaptive_timestep",
+                "true",
+                Patterns::Bool(),
+                "Turn adaptive time stepping on or off");
+
 
         // TODO: move to logging
         prm.declare_entry("output_freq",
@@ -1474,10 +1516,19 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
         n_steps = prm.get_integer("n_steps");
         Assert(n_steps > 0, ExcLowerRange(n_steps,0));
 
-        timestep = prm.get_double("time_step");
+        initial_timestep = prm.get_double("dt_initial");
+        min_timestep = prm.get_double("dt_min");
+        max_timestep = prm.get_double("dt_max");
+        Assert(min_timestep < max_timestep,
+               ExcLowerRangeType<double>(min_timestep, min_timestep));
+        Assert(min_timestep <= initial_timestep,
+               ExcLowerRangeType<double>(min_timestep, initial_timestep));
+        Assert(initial_timestep <= max_timestep,
+               ExcLowerRangeType<double>(initial_timestep, max_timestep));
 
-        // TODO: move to logging
-        output_frequency = prm.get_integer("output_freq");
+        cfl_min = prm.get_double("cfl_min");
+        cfl_max = prm.get_double("cfl_max");
+        Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
 
         std::string imex_type_str;
         imex_type_str = prm.get("time_stepping_scheme");
@@ -1490,6 +1541,9 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
             imex_scheme = TimeStepping::IMEXType::CNLF;
         else if (imex_type_str == "SBDF")
             imex_scheme = TimeStepping::IMEXType::SBDF;
+
+        // TODO: move to logging
+        output_frequency = prm.get_integer("output_freq");
     }
     prm.leave_subsection();
 
@@ -2156,7 +2210,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                    temperature_stiffness_matrix);
             rebuild_temperature_preconditioner = true;
         }
-        else if (timestep_number == 1)
+        else if (timestep_number == 1 || timestep_modified)
         {
             Assert(timestep_number != 0, ExcInternalError());
 
@@ -2653,7 +2707,7 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
             // rebuild the preconditioner of the velocity block
             rebuild_stokes_preconditioner = true;
         }
-        else if (timestep_number == 1)
+        else if (timestep_number == 1 || timestep_modified)
         {
             Assert(timestep_number != 0, ExcInternalError());
 
@@ -2738,7 +2792,7 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
             // rebuild the preconditioner of the velocity block
             rebuild_stokes_preconditioner = true;
         }
-        else if (timestep_number == 1)
+        else if (timestep_number == 1 || timestep_modified)
         {
             Assert(timestep_number != 0, ExcInternalError());
 
@@ -2915,7 +2969,50 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     return max_cfl * timestep;
 }
 
+template<int dim>
+void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
+{
+    TimerOutput::Scope  timer_section(computing_timer, "update time step");
 
+    std::cout << "   Updating time step..." << std::endl;
+
+    old_timestep = timestep;
+    time_step_modified = false;
+
+    if (current_cfl_number > parameters.cfl_max || current_cfl_number < parameters.cfl_min)
+    {
+        timestep = 0.5 * (parameters.cfl_min + parameters.cfl_max)
+                        * old_timestep / current_cfl_number;
+        if (timestep == old_timestep)
+            return;
+        else if (timestep > parameters.max_timestep
+                && old_timestep == parameters.max_timestep)
+        {
+            timestep = parameters.max_timestep;
+            return;
+        }
+        else if (timestep > parameters.max_timestep
+                && old_timestep != parameters.max_timestep)
+        {
+            timestep = parameters.max_timestep;
+            time_step_modified = true;
+        }
+        else if (timestep < parameters.min_timestep)
+        {
+            ExcLowerRangeType<double>(timestep, parameters.min_timestep);
+        }
+        else if (timestep < parameters.max_timestep)
+        {
+            time_step_modified = true;
+        }
+    }
+    if (time_step_modified)
+        std::cout << "      time step changed from "
+                  << std::setw(6) << std::setprecision(2) << std::scientific << old_timestep
+                  << " to "
+                  << std::setw(6) << std::setprecision(2) << std::scientific << timestep
+                  << std::endl;
+}
 
 template <int dim>
 class BuoyantFluidSolver<dim>::PostProcessor : public DataPostprocessor<dim>
@@ -3286,6 +3383,10 @@ void BuoyantFluidSolver<dim>::run()
         if ((timestep_number > 0)
                 && (timestep_number % parameters.refinement_frequency == 0))
             refine_mesh();
+        // adjust time step
+        if (parameters.adaptive_timestep && timestep_number > 1)
+            update_timestep(cfl_number);
+
 
         // copy temperature solution
         old_old_temperature_solution = old_temperature_solution;
