@@ -2848,15 +2848,14 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
     double rms_temperature = 0;
     double volume = 0;
 
-    for (auto cell : stokes_dof_handler.active_cell_iterators())
+    typename DoFHandler<dim>::active_cell_iterator
+    cell = stokes_dof_handler.begin_active(),
+    temperature_cell = temperature_dof_handler.begin_active(),
+    endc = stokes_dof_handler.end();
+
+    for (; cell != endc; ++cell, ++temperature_cell)
     {
         stokes_fe_values.reinit(cell);
-
-        typename DoFHandler<dim>::active_cell_iterator
-        temperature_cell(&triangulation,
-                         cell->level(),
-                         cell->index(),
-                         &temperature_dof_handler);
         temperature_fe_values.reinit(temperature_cell);
 
         temperature_fe_values.get_function_values(temperature_solution,
@@ -2882,6 +2881,40 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
     return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
 }
+
+template <int dim>
+double BuoyantFluidSolver<dim>::compute_cfl_number() const
+{
+    const QIterated<dim> quadrature_formula(QTrapez<1>(),
+                                            parameters.velocity_degree);
+    const unsigned int n_q_points = quadrature_formula.size();
+
+    FEValues<dim> fe_values(mapping,
+                            stokes_fe,
+                            quadrature_formula,
+                            update_values);
+
+    std::vector<Tensor<1,dim>> velocity_values(n_q_points);
+
+    const FEValuesExtractors::Vector velocities (0);
+
+    double max_cfl = 0;
+
+    for (auto cell : stokes_dof_handler.active_cell_iterators())
+    {
+        fe_values.reinit (cell);
+        fe_values[velocities].get_function_values(stokes_solution,
+                                                  velocity_values);
+        double max_cell_velocity = 0;
+        for (unsigned int q=0; q<n_q_points; ++q)
+            max_cell_velocity = std::max(max_cell_velocity,
+                                         velocity_values[q].norm());
+        max_cfl = std::max(max_cfl,
+                           max_cell_velocity / cell->diameter());
+    }
+    return max_cfl * timestep;
+}
+
 
 
 template <int dim>
@@ -3206,6 +3239,7 @@ void BuoyantFluidSolver<dim>::run()
     output_results();
 
     double time = 0;
+    double cfl_number = 0;
 
     do
     {
@@ -3231,6 +3265,15 @@ void BuoyantFluidSolver<dim>::run()
                       << std::endl
                       << "   temperature rms value: "
                       << rms_values.second
+                      << std::endl;
+        }
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
+
+            cfl_number = compute_cfl_number();
+
+            std::cout << "   current cfl number: "
+                      << cfl_number
                       << std::endl;
         }
         if (timestep_number % parameters.output_frequency == 0
