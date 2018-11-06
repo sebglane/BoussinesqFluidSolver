@@ -1067,7 +1067,6 @@ public:
 
         // time stepping parameters
         TimeStepping::IMEXType  imex_scheme;
-        bool            adaptive_timestep;
 
         unsigned int    n_steps;
 
@@ -1165,8 +1164,8 @@ equation_coefficients{(parameters.rotation ? 2.0/parameters.Ek: 0.0),
 // monitor
 computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
-timestep(parameters.timestep),
-old_timestep(parameters.timestep)
+timestep(parameters.initial_timestep),
+old_timestep(parameters.initial_timestep)
 {
     std::cout << "Boussinesq solver by S. Glane\n"
               << "This program solves the Navier-Stokes system with thermal convection.\n"
@@ -1983,7 +1982,7 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
 
         const double time_derivative_temperature =
                 alpha[1] * scratch.old_temperature_values[q]
-                    + alpha[2] * scratch.old_temperature_values[q];
+                    + alpha[2] * scratch.old_old_temperature_values[q];
 
         const double nonlinear_term_temperature =
                 beta[0] * scratch.old_temperature_gradients[q] * scratch.old_velocity_values[q]
@@ -2128,7 +2127,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
                 const double time_derivative_temperature =
                         alpha[1] * old_temperature_values[q]
-                            + alpha[2] * old_temperature_values[q];
+                            + alpha[2] * old_old_temperature_values[q];
 
                 const double nonlinear_term_temperature =
                         beta[0] * old_velocity_values[q] * old_temperature_gradients[q]
@@ -2160,8 +2159,6 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                     ) * temperature_fe_values.JxW(q);
                 }
             }
-
-
 
             cell->get_dof_indices(local_dof_indices);
 
@@ -3016,7 +3013,7 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     std::cout << "   Updating time step..." << std::endl;
 
     old_timestep = timestep;
-    time_step_modified = false;
+    timestep_modified = false;
 
     if (current_cfl_number > parameters.cfl_max || current_cfl_number < parameters.cfl_min)
     {
@@ -3034,7 +3031,7 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
                 && old_timestep != parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
-            time_step_modified = true;
+            timestep_modified = true;
         }
         else if (timestep < parameters.min_timestep)
         {
@@ -3042,10 +3039,10 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
         }
         else if (timestep < parameters.max_timestep)
         {
-            time_step_modified = true;
+            timestep_modified = true;
         }
     }
-    if (time_step_modified)
+    if (timestep_modified)
         std::cout << "      time step changed from "
                   << std::setw(6) << std::setprecision(2) << std::scientific << old_timestep
                   << " to "
