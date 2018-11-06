@@ -3069,6 +3069,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // preparing triangulation refinement
     triangulation.prepare_coarsening_and_refinement();
     temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
+    stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -3117,26 +3118,72 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 template <int dim>
 void BuoyantFluidSolver<dim>::solve()
 {
-    std::cout << "   Solving temperature system..." << std::endl;
-    TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
+    {
+        std::cout << "   Solving temperature system..." << std::endl;
+        TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
 
-    temperature_constraints.set_zero(temperature_solution);
+        temperature_constraints.set_zero(temperature_solution);
 
-    SolverControl solver_control(temperature_matrix.m(),
-                                 1e-12 * temperature_rhs.l2_norm());
+        SolverControl solver_control(temperature_matrix.m(),
+                1e-12 * temperature_rhs.l2_norm());
 
-    SolverCG<>   cg(solver_control);
-    cg.solve(temperature_matrix,
-             temperature_solution,
-             temperature_rhs,
-             *preconditioner_T);
+        SolverCG<>   cg(solver_control);
+        cg.solve(temperature_matrix,
+                temperature_solution,
+                temperature_rhs,
+                *preconditioner_T);
 
-    temperature_constraints.distribute(temperature_solution);
+        temperature_constraints.distribute(temperature_solution);
 
-    std::cout << "      "
-            << solver_control.last_step()
-            << " CG iterations for temperature"
-            << std::endl;
+        std::cout << "      "
+                << solver_control.last_step()
+                << " CG iterations for temperature"
+                << std::endl;
+    }
+    {
+        std::cout << "   Solving stokes system..." << std::endl;
+
+        TimerOutput::Scope  timer_section(computing_timer, "stokes solve");
+
+        stokes_constraints.set_zero(stokes_solution);
+
+        const Preconditioning::BlockSchurPreconditioner<PreconditionerTypeA, PreconditionerTypeMp, PreconditionerTypeKp>
+            preconditioner(stokes_matrix,
+                           pressure_mass_matrix,
+                           stokes_laplace_matrix.block(1,1),
+                           *preconditioner_A,
+                           *preconditioner_Kp,
+                           factor_Kp,
+                           *preconditioner_Mp,
+                           factor_Mp,
+                           false);
+
+        PrimitiveVectorMemory<BlockVector<double>> vector_memory;
+
+        SolverControl solver_control(parameters.n_max_iter,
+                                     std::max(parameters.abs_tol,
+                                              parameters.rel_tol * stokes_rhs.l2_norm()));
+
+        SolverFGMRES<BlockVector<double>>
+        solver(solver_control,
+               vector_memory,
+               SolverFGMRES<BlockVector<double>>::AdditionalData(30, true));
+
+        solver.solve(stokes_matrix,
+                     stokes_solution,
+                     stokes_rhs,
+                     preconditioner);
+
+        std::cout << "      "
+                  << solver_control.last_step()
+                  << " GMRES iterations for stokes system, "
+                  << " (Kp: " << preconditioner.n_iterations_Kp()
+                  << ", Mp: " << preconditioner.n_iterations_Mp()
+                  << ")"
+                  << std::endl;
+
+        stokes_constraints.distribute(stokes_solution);
+    }
 }
 
 
