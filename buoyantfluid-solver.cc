@@ -2068,7 +2068,9 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         const unsigned int   n_q_points      = quadrature_formula.size();
 
         Vector<double>       local_rhs(dofs_per_cell);
-        FullMatrix<double>   local_matrix(dofs_per_cell);
+        FullMatrix<double>   matrix_for_bc(dofs_per_cell);
+        FullMatrix<double>   local_mass_matrix(dofs_per_cell);
+        FullMatrix<double>   local_stiffness_matrix(dofs_per_cell);
 
         std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
@@ -2090,7 +2092,12 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         for (; cell!= endc; ++cell, ++stokes_cell)
         {
 
-            local_matrix = 0;
+            if (rebuild_temperature_matrices)
+            {
+                local_mass_matrix = 0;
+                local_stiffness_matrix = 0;
+            }
+            matrix_for_bc = 0;
             local_rhs = 0;
 
             temperature_fe_values.reinit(cell);
@@ -2140,38 +2147,70 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                 ) * temperature_fe_values.JxW(q);
 
                     if (rebuild_temperature_matrices || timestep_number == 1)
-                        for (unsigned int j=0; j<dofs_per_cell; ++j)
-                            local_matrix(i,j) += (
-                                      alpha[0] * phi_T[i] * phi_T[j]
-                                    + gamma[0] * timestep * equation_coefficients[3] * grad_phi_T[i] * grad_phi_T[j]
-                                    ) * temperature_fe_values.JxW(q);
+                        for (unsigned int j=0; j<=i; ++j)
+                        {
+                            local_mass_matrix(i,j) += phi_T[i] * phi_T[j] * temperature_fe_values.JxW(q);
+                            local_stiffness_matrix(i,j) += grad_phi_T[i] * grad_phi_T[j] * temperature_fe_values.JxW(q);
+                        }
                     else if (temperature_constraints.is_inhomogeneously_constrained(local_dof_indices[i]))
                         for (unsigned int j=0; j<dofs_per_cell; ++j)
-                            local_matrix(j,i) += (
+                            matrix_for_bc(j,i) += (
                                       alpha[0] * phi_T[i] * phi_T[j]
                                     + gamma[0] * timestep * equation_coefficients[3] * grad_phi_T[i] * grad_phi_T[j]
                                     ) * temperature_fe_values.JxW(q);
                 }
             }
 
+
+
             cell->get_dof_indices(local_dof_indices);
 
             if (rebuild_temperature_matrices || timestep_number == 1)
+            {
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                    for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+                    {
+                        local_mass_matrix(i,j) = local_mass_matrix(j,i);
+                        local_stiffness_matrix(i,j) = local_stiffness_matrix(j,i);
+                    }
                 temperature_constraints.distribute_local_to_global(
-                        local_matrix,
+                        local_mass_matrix,
+                        local_dof_indices,
+                        temperature_mass_matrix);
+                temperature_constraints.distribute_local_to_global(
+                        local_stiffness_matrix,
+                        local_dof_indices,
+                        temperature_stiffness_matrix);
+                temperature_constraints.distribute_local_to_global(
                         local_rhs,
                         local_dof_indices,
-                        temperature_matrix,
-                        temperature_rhs);
+                        temperature_rhs,
+                        matrix_for_bc);
+            }
             else
                 temperature_constraints.distribute_local_to_global(
                         local_rhs,
                         local_dof_indices,
                         temperature_rhs,
-                        local_matrix);
+                        matrix_for_bc);
         }
         if (rebuild_temperature_matrices || timestep_number == 1)
+        {
+            Assert(timestep_number != 0, ExcInternalError());
+
+            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+            temperature_matrix.copy_from(temperature_mass_matrix);
+            temperature_matrix *= alpha[0];
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                                   temperature_stiffness_matrix);
+
             rebuild_temperature_preconditioner = true;
+
+
+            rebuild_temperature_preconditioner = true;
+        }
     }
     else
     {
