@@ -79,6 +79,7 @@ Makefile
 *.acr
 *.alg
 *.bbl
+*-blx.bib
 *.blg
 *.dvi
 *.glg

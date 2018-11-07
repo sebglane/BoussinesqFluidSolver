@@ -54,6 +54,7 @@
 #include <sstream>
 #include <string>
 
+#include "assembly_data.h"
 #include "timestepping.h"
 
 namespace BuoyantFluid {
@@ -139,391 +140,6 @@ Tensor<1,dim> gravity_vector(const Point<dim> &p)
 }
 
 }  // namespace EquationData
-
-
-namespace Assembly {
-
-namespace Scratch {
-
-template<int dim>
-struct TemperatureMatrix
-{
-    TemperatureMatrix(const FiniteElement<dim> &temperature_fe,
-                      const Mapping<dim>       &mapping,
-                      const Quadrature<dim>    &temperature_quadrature);
-
-    TemperatureMatrix(const TemperatureMatrix<dim>  &scratch);
-
-    FEValues<dim>               temperature_fe_values;
-
-    std::vector<double>         phi_T;
-    std::vector<Tensor<1,dim>>  grad_phi_T;
-};
-
-
-template <int dim>
-TemperatureMatrix<dim>::TemperatureMatrix(
-        const FiniteElement<dim> &temperature_fe,
-        const Mapping<dim>       &mapping,
-        const Quadrature<dim>    &temperature_quadrature)
-:
-temperature_fe_values(mapping,
-                      temperature_fe,
-                      temperature_quadrature,
-                      update_values|
-                      update_gradients|
-                      update_JxW_values),
-phi_T(temperature_fe.dofs_per_cell),
-grad_phi_T(temperature_fe.dofs_per_cell)
-{}
-
-template <int dim>
-TemperatureMatrix<dim>::TemperatureMatrix(const TemperatureMatrix &scratch)
-:
-temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
-                      scratch.temperature_fe_values.get_fe(),
-                      scratch.temperature_fe_values.get_quadrature(),
-                      scratch.temperature_fe_values.get_update_flags()),
-phi_T(scratch.phi_T),
-grad_phi_T(scratch.grad_phi_T)
-{}
-
-template<int dim>
-struct TemperatureRightHandSide
-{
-    TemperatureRightHandSide(
-            const FiniteElement<dim> &temperature_fe,
-            const Mapping<dim>       &mapping,
-            const Quadrature<dim>    &temperature_quadrature,
-            const UpdateFlags         temperature_update_flags,
-            const FiniteElement<dim> &stokes_fe,
-            const UpdateFlags         stokes_update_flags);
-
-    TemperatureRightHandSide(const TemperatureRightHandSide<dim> &scratch);
-
-    FEValues<dim>               temperature_fe_values;
-    std::vector<double>         phi_T;
-    std::vector<Tensor<1,dim>>  grad_phi_T;
-    std::vector<double>         old_temperature_values;
-    std::vector<double>         old_old_temperature_values;
-    std::vector<Tensor<1,dim>>  old_temperature_gradients;
-    std::vector<Tensor<1,dim>>  old_old_temperature_gradients;
-
-    FEValues<dim>               stokes_fe_values;
-    std::vector<Tensor<1,dim>>  old_velocity_values;
-    std::vector<Tensor<1,dim>>  old_old_velocity_values;
-};
-
-template<int dim>
-TemperatureRightHandSide<dim>::TemperatureRightHandSide(
-        const FiniteElement<dim>    &temperature_fe,
-        const Mapping<dim>          &mapping,
-        const Quadrature<dim>       &temperature_quadrature,
-        const UpdateFlags            temperature_update_flags,
-        const FiniteElement<dim> &stokes_fe,
-        const UpdateFlags         stokes_update_flags)
-:
-temperature_fe_values(mapping,
-                      temperature_fe,
-                      temperature_quadrature,
-                      temperature_update_flags),
-phi_T(temperature_fe.dofs_per_cell),
-grad_phi_T(temperature_fe.dofs_per_cell),
-old_temperature_values(temperature_quadrature.size()),
-old_old_temperature_values(temperature_quadrature.size()),
-old_temperature_gradients(temperature_quadrature.size()),
-old_old_temperature_gradients(temperature_quadrature.size()),
-stokes_fe_values(mapping,
-                 stokes_fe,
-                 temperature_quadrature,
-                 stokes_update_flags),
-old_velocity_values(temperature_quadrature.size()),
-old_old_velocity_values(temperature_quadrature.size())
-{}
-
-template<int dim>
-TemperatureRightHandSide<dim>::TemperatureRightHandSide(
-        const TemperatureRightHandSide<dim> &scratch)
-:
-temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
-                      scratch.temperature_fe_values.get_fe(),
-                      scratch.temperature_fe_values.get_quadrature(),
-                      scratch.temperature_fe_values.get_update_flags()),
-phi_T(scratch.phi_T),
-grad_phi_T(scratch.grad_phi_T),
-old_temperature_values(scratch.old_temperature_values),
-old_old_temperature_values(scratch.old_old_temperature_values),
-old_temperature_gradients(scratch.old_temperature_gradients),
-old_old_temperature_gradients(scratch.old_old_temperature_gradients),
-stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
-                 scratch.stokes_fe_values.get_fe(),
-                 scratch.stokes_fe_values.get_quadrature(),
-                 scratch.stokes_fe_values.get_update_flags()),
-old_velocity_values(scratch.old_velocity_values),
-old_old_velocity_values(scratch.old_old_velocity_values)
-{}
-
-}  // namespace Scratch
-
-namespace CopyData {
-
-template <int dim>
-struct TemperatureMatrix
-{
-    TemperatureMatrix(const FiniteElement<dim> &temperature_fe);
-    TemperatureMatrix(const TemperatureMatrix<dim> &data);
-
-    FullMatrix<double>                      local_mass_matrix;
-    FullMatrix<double>                      local_stiffness_matrix;
-
-    std::vector<types::global_dof_index>    local_dof_indices;
-};
-
-template <int dim>
-TemperatureMatrix<dim>::TemperatureMatrix(const FiniteElement<dim> &temperature_fe)
-:
-local_mass_matrix(temperature_fe.dofs_per_cell),
-local_stiffness_matrix(temperature_fe.dofs_per_cell),
-local_dof_indices(temperature_fe.dofs_per_cell)
-{}
-
-template <int dim>
-TemperatureMatrix<dim>::TemperatureMatrix(const TemperatureMatrix<dim> &data)
-:
-local_mass_matrix(data.local_mass_matrix),
-local_stiffness_matrix(data.local_stiffness_matrix),
-local_dof_indices(data.local_dof_indices)
-{}
-
-template <int dim>
-struct TemperatureRightHandSide
-{
-    TemperatureRightHandSide(const FiniteElement<dim>               &temperature_fe);
-    TemperatureRightHandSide(const TemperatureRightHandSide<dim>    &data);
-
-    Vector<double>                          local_rhs;
-    FullMatrix<double>                      matrix_for_bc;
-    std::vector<types::global_dof_index>    local_dof_indices;
-};
-
-template <int dim>
-TemperatureRightHandSide<dim>::TemperatureRightHandSide(
-    const FiniteElement<dim> &temperature_fe)
-:
-local_rhs(temperature_fe.dofs_per_cell),
-matrix_for_bc(temperature_fe.dofs_per_cell,
-              temperature_fe.dofs_per_cell),
-local_dof_indices(temperature_fe.dofs_per_cell)
-{}
-
-template <int dim>
-TemperatureRightHandSide<dim>::TemperatureRightHandSide(
-    const TemperatureRightHandSide<dim> &data)
-:
-local_rhs(data.local_rhs),
-matrix_for_bc(data.matrix_for_bc),
-local_dof_indices(data.local_dof_indices)
-{}
-
-}  // namespace CopyData
-
-}  // namespace Assembly
-
-
-namespace Assembly {
-
-namespace Scratch {
-
-template<int dim>
-struct StokesMatrix
-{
-    StokesMatrix(const FiniteElement<dim> &stokes_fe,
-                 const Mapping<dim>       &mapping,
-                 const Quadrature<dim>    &stokes_quadrature,
-                 const UpdateFlags        stokes_update_flags);
-
-    StokesMatrix(const StokesMatrix<dim>  &scratch);
-
-    FEValues<dim>           stokes_fe_values;
-
-    std::vector<double>             div_phi_v;
-    std::vector<Tensor<1,dim>>      phi_v;
-    std::vector<Tensor<2,dim>>      grad_phi_v;
-
-    std::vector<double>             phi_p;
-    std::vector<Tensor<1,dim>>      grad_phi_p;
-};
-
-template <int dim>
-StokesMatrix<dim>::StokesMatrix(
-        const FiniteElement<dim> &stokes_fe,
-        const Mapping<dim>       &mapping,
-        const Quadrature<dim>    &stokes_quadrature,
-        const UpdateFlags         stokes_update_flags)
-:
-stokes_fe_values(mapping,
-                 stokes_fe,
-                 stokes_quadrature,
-                 stokes_update_flags),
-div_phi_v(stokes_fe.dofs_per_cell),
-phi_v(stokes_fe.dofs_per_cell),
-grad_phi_v(stokes_fe.dofs_per_cell),
-phi_p(stokes_fe.dofs_per_cell),
-grad_phi_p(stokes_fe.dofs_per_cell)
-{}
-
-template <int dim>
-StokesMatrix<dim>::StokesMatrix(const StokesMatrix<dim> &scratch)
-:
-stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
-                 scratch.stokes_fe_values.get_fe(),
-                 scratch.stokes_fe_values.get_quadrature(),
-                 scratch.stokes_fe_values.get_update_flags()),
-div_phi_v(scratch.div_phi_v),
-phi_v(scratch.phi_v),
-grad_phi_v(scratch.grad_phi_v),
-phi_p(scratch.phi_p),
-grad_phi_p(scratch.grad_phi_p)
-{}
-
-template<int dim>
-struct StokesMatrixRightHandSide
-{
-    StokesMatrixRightHandSide(const FiniteElement<dim>  &stokes_fe,
-                 const Mapping<dim>         &mapping,
-                 const Quadrature<dim>      &stokes_quadrature,
-                 const UpdateFlags           stokes_update_flags,
-                 const FiniteElement<dim>   &temperature_fe,
-                 const UpdateFlags           temperature_update_flags);
-
-    StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim>  &scratch);
-
-    FEValues<dim>               stokes_fe_values;
-    std::vector<Tensor<1,dim>>  phi_v;
-    std::vector<Tensor<2,dim>>  grad_phi_v;
-    std::vector<Tensor<1,dim>>  old_velocity_values;
-    std::vector<Tensor<1,dim>>  old_old_velocity_values;
-    std::vector<Tensor<2,dim>>  old_velocity_gradients;
-    std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
-
-
-    FEValues<dim>           temperature_fe_values;
-    std::vector<double>     old_temperature_values;
-    std::vector<double>     old_old_temperature_values;
-};
-
-template <int dim>
-StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(
-        const FiniteElement<dim> &stokes_fe,
-        const Mapping<dim>       &mapping,
-        const Quadrature<dim>    &stokes_quadrature,
-        const UpdateFlags         stokes_update_flags,
-        const FiniteElement<dim> &temperature_fe,
-        const UpdateFlags         temperature_update_flags)
-:
-stokes_fe_values(mapping,
-                 stokes_fe,
-                 stokes_quadrature,
-                 stokes_update_flags),
-phi_v(stokes_fe.dofs_per_cell),
-grad_phi_v(stokes_fe.dofs_per_cell),
-old_velocity_values(stokes_quadrature.size()),
-old_old_velocity_values(stokes_quadrature.size()),
-old_velocity_gradients(stokes_quadrature.size()),
-old_old_velocity_gradients(stokes_quadrature.size()),
-temperature_fe_values(mapping,
-                      temperature_fe,
-                      stokes_quadrature,
-                      temperature_update_flags),
-old_temperature_values(stokes_quadrature.size()),
-old_old_temperature_values(stokes_quadrature.size())
-{}
-
-template <int dim>
-StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &scratch)
-:
-stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
-                 scratch.stokes_fe_values.get_fe(),
-                 scratch.stokes_fe_values.get_quadrature(),
-                 scratch.stokes_fe_values.get_update_flags()),
-phi_v(scratch.phi_v),
-grad_phi_v(scratch.grad_phi_v),
-old_velocity_values(scratch.old_velocity_values),
-old_old_velocity_values(scratch.old_old_velocity_values),
-old_velocity_gradients(scratch.old_velocity_gradients),
-old_old_velocity_gradients(scratch.old_velocity_gradients),
-temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
-                      scratch.temperature_fe_values.get_fe(),
-                      scratch.temperature_fe_values.get_quadrature(),
-                      scratch.temperature_fe_values.get_update_flags()),
-old_temperature_values(scratch.old_temperature_values),
-old_old_temperature_values(scratch.old_old_temperature_values)
-{}
-
-}  // namespace Scratch
-
-namespace CopyData {
-
-
-template <int dim>
-struct StokesMatrix
-{
-    StokesMatrix(const FiniteElement<dim> &temperature_fe);
-    StokesMatrix(const StokesMatrix<dim> &data);
-
-    FullMatrix<double>      local_matrix;
-    FullMatrix<double>      local_stiffness_matrix;
-
-    std::vector<types::global_dof_index>   local_dof_indices;
-};
-
-template <int dim>
-StokesMatrix<dim>::StokesMatrix(const FiniteElement<dim> &temperature_fe)
-:
-local_matrix(temperature_fe.dofs_per_cell,
-                  temperature_fe.dofs_per_cell),
-local_stiffness_matrix(temperature_fe.dofs_per_cell,
-                       temperature_fe.dofs_per_cell),
-local_dof_indices(temperature_fe.dofs_per_cell)
-{}
-
-template <int dim>
-StokesMatrix<dim>::StokesMatrix(const StokesMatrix<dim> &data)
-:
-local_matrix(data.local_matrix),
-local_stiffness_matrix(data.local_stiffness_matrix),
-local_dof_indices(data.local_dof_indices)
-{}
-
-
-template <int dim>
-struct StokesMatrixRightHandSide
-{
-    StokesMatrixRightHandSide(const FiniteElement<dim> &stokes_fe);
-    StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &data);
-
-    Vector<double>          local_rhs;
-
-    std::vector<types::global_dof_index>   local_dof_indices;
-};
-
-template <int dim>
-StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const FiniteElement<dim> &stokes_fe)
-:
-local_rhs(stokes_fe.dofs_per_cell),
-local_dof_indices(stokes_fe.dofs_per_cell)
-{}
-
-template <int dim>
-StokesMatrixRightHandSide<dim>::StokesMatrixRightHandSide(const StokesMatrixRightHandSide<dim> &data)
-:
-local_rhs(data.local_rhs),
-local_dof_indices(data.local_dof_indices)
-{}
-
-}  // namespace Copy
-
-}  // namespace Assembly
 
 
 namespace Preconditioning
@@ -867,32 +483,32 @@ private:
     // working stream methods for temperature assembly
     void local_assemble_temperature_matrix(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
-            Assembly::Scratch::TemperatureMatrix<dim> &scratch,
-            Assembly::CopyData::TemperatureMatrix<dim> &data);
+            TemperatureAssembly::Scratch::Matrix<dim> &scratch,
+            TemperatureAssembly::CopyData::Matrix<dim> &data);
     void copy_local_to_global_temperature_matrix(
-            const Assembly::CopyData::TemperatureMatrix<dim> &data);
+            const TemperatureAssembly::CopyData::Matrix<dim> &data);
 
     void local_assemble_temperature_rhs(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
-            Assembly::Scratch::TemperatureRightHandSide<dim> &scratch,
-            Assembly::CopyData::TemperatureRightHandSide<dim> &data);
+            TemperatureAssembly::Scratch::RightHandSide<dim> &scratch,
+            TemperatureAssembly::CopyData::RightHandSide<dim> &data);
     void copy_local_to_global_temperature_rhs(
-            const Assembly::CopyData::TemperatureRightHandSide<dim> &data);
+            const TemperatureAssembly::CopyData::RightHandSide<dim> &data);
 
     // working stream methods for stokes assembly
     void local_assemble_stokes_matrix(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
-            Assembly::Scratch::StokesMatrix<dim> &scratch,
-            Assembly::CopyData::StokesMatrix<dim> &data);
+            StokesAssembly::Scratch::Matrix<dim> &scratch,
+            StokesAssembly::CopyData::Matrix<dim> &data);
     void copy_local_to_global_stokes_matrix(
-            const Assembly::CopyData::StokesMatrix<dim> &data);
+            const StokesAssembly::CopyData::Matrix<dim> &data);
 
     void local_assemble_stokes_rhs(
                 const typename DoFHandler<dim>::active_cell_iterator &cell,
-                Assembly::Scratch::StokesMatrixRightHandSide<dim> &scratch,
-                Assembly::CopyData::StokesMatrixRightHandSide<dim> &data);
+                StokesAssembly::Scratch::RightHandSide<dim> &scratch,
+                StokesAssembly::CopyData::RightHandSide<dim> &data);
     void copy_local_to_global_stokes_rhs(
-                const Assembly::CopyData::StokesMatrixRightHandSide<dim> &data);
+                const StokesAssembly::CopyData::RightHandSide<dim> &data);
 };
 
 template<int dim>
@@ -1637,8 +1253,8 @@ void BuoyantFluidSolver<dim>::setup_stokes_matrix(
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_temperature_matrix(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
-        Assembly::Scratch::TemperatureMatrix<dim> &scratch,
-        Assembly::CopyData::TemperatureMatrix<dim> &data)
+        TemperatureAssembly::Scratch::Matrix<dim> &scratch,
+        TemperatureAssembly::CopyData::Matrix<dim> &data)
 {
     const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.temperature_fe_values.n_quadrature_points;
@@ -1675,7 +1291,7 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_matrix(
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix(
-        const Assembly::CopyData::TemperatureMatrix<dim> &data)
+        const TemperatureAssembly::CopyData::Matrix<dim> &data)
 {
     temperature_constraints.distribute_local_to_global(
             data.local_mass_matrix,
@@ -1691,8 +1307,8 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix(
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         const typename DoFHandler<dim>::active_cell_iterator    &cell,
-        Assembly::Scratch::TemperatureRightHandSide<dim>        &scratch,
-        Assembly::CopyData::TemperatureRightHandSide<dim>       &data)
+        TemperatureAssembly::Scratch::RightHandSide<dim>        &scratch,
+        TemperatureAssembly::CopyData::RightHandSide<dim>       &data)
 {
     const std::vector<double> alpha = (timestep_number != 0?
                                             imex_coefficients.alpha(timestep/old_timestep):
@@ -1780,7 +1396,7 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
 
 template <int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs(
-        const Assembly::CopyData::TemperatureRightHandSide<dim> &data)
+        const TemperatureAssembly::CopyData::RightHandSide<dim> &data)
 {
     temperature_constraints.distribute_local_to_global(
             data.local_rhs,
@@ -1815,10 +1431,10 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                 std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
                           this,
                           std::placeholders::_1),
-                Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
+                TemperatureAssembly::Scratch::Matrix<dim>(temperature_fe,
                                                           mapping,
                                                           quadrature_formula),
-                Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
+                TemperatureAssembly::CopyData::Matrix<dim>(temperature_fe));
 
         const std::vector<double> alpha = (timestep_number != 0?
                                                 imex_coefficients.alpha(timestep/old_timestep):
@@ -1864,7 +1480,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
             std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
                       this,
                       std::placeholders::_1),
-            Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
+            TemperatureAssembly::Scratch::RightHandSide<dim>(temperature_fe,
                                                              mapping,
                                                              quadrature_formula,
                                                              update_values|
@@ -1872,7 +1488,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                              update_JxW_values,
                                                              stokes_fe,
                                                              update_values),
-            Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+            TemperatureAssembly::CopyData::RightHandSide<dim>(temperature_fe));
 }
 
 template<int dim>
@@ -1894,13 +1510,11 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
     rebuild_temperature_preconditioner = false;
 }
 
-
-
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
-        Assembly::Scratch::StokesMatrix<dim> &scratch,
-        Assembly::CopyData::StokesMatrix<dim> &data)
+        StokesAssembly::Scratch::Matrix<dim> &scratch,
+        StokesAssembly::CopyData::Matrix<dim> &data)
 {
     const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
@@ -1954,7 +1568,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
-        const Assembly::CopyData::StokesMatrix<dim> &data)
+        const StokesAssembly::CopyData::Matrix<dim> &data)
 {
     stokes_constraints.distribute_local_to_global(
             data.local_matrix,
@@ -1975,8 +1589,8 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
-        Assembly::Scratch::StokesMatrixRightHandSide<dim> &scratch,
-        Assembly::CopyData::StokesMatrixRightHandSide<dim> &data)
+        StokesAssembly::Scratch::RightHandSide<dim> &scratch,
+        StokesAssembly::CopyData::RightHandSide<dim> &data)
 {
     const std::vector<double> alpha = (timestep_number != 0?
                                         imex_coefficients.alpha(timestep/old_timestep):
@@ -2081,7 +1695,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
-        const Assembly::CopyData::StokesMatrixRightHandSide<dim> &data)
+        const StokesAssembly::CopyData::RightHandSide<dim> &data)
 {
     stokes_constraints.distribute_local_to_global(
             data.local_rhs,
@@ -2118,14 +1732,14 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
                     std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
                               this,
                               std::placeholders::_1),
-                    Assembly::Scratch::StokesMatrix<dim>(
+                    StokesAssembly::Scratch::Matrix<dim>(
                             stokes_fe,
                             mapping,
                             quadrature_formula,
                             update_values|
                             update_gradients|
                             update_JxW_values),
-                    Assembly::CopyData::StokesMatrix<dim>(stokes_fe));
+                    StokesAssembly::CopyData::Matrix<dim>(stokes_fe));
 
             // copy velocity mass matrix
             velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
@@ -2223,7 +1837,7 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
             std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
                       this,
                       std::placeholders::_1),
-            Assembly::Scratch::StokesMatrixRightHandSide<dim>(
+            StokesAssembly::Scratch::RightHandSide<dim>(
                     stokes_fe,
                     mapping,
                     quadrature_formula,
@@ -2233,7 +1847,7 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
                     update_gradients,
                     temperature_fe,
                     update_values),
-            Assembly::CopyData::StokesMatrixRightHandSide<dim>(stokes_fe));
+            StokesAssembly::CopyData::RightHandSide<dim>(stokes_fe));
 }
 template<int dim>
 void BuoyantFluidSolver<dim>::build_stokes_preconditioner()

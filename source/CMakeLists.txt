@@ -3,6 +3,7 @@ SET(TARGET "main")
 
 SET(TARGET_SRC
   main.cc
+  assembly_data.cc
   timestepping.cc
   # You can specify additional files here!
 )
