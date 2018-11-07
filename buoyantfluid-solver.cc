@@ -2438,8 +2438,8 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                 + alpha[2] * scratch.old_old_velocity_values[q];
 
         const Tensor<1,dim> nonlinear_term_velocity
-            = beta[0] * scratch.old_velocity_values[q] * scratch.old_velocity_gradients[q]
-                + beta[1] * scratch.old_old_velocity_values[q] * scratch.old_old_velocity_gradients[q];
+            = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
 
         const Tensor<2,dim> linear_term_velocity
             = gamma[1] * scratch.old_velocity_gradients[q]
@@ -3423,19 +3423,22 @@ void BuoyantFluidSolver<dim>::run()
         if (parameters.adaptive_timestep && timestep_number > 1)
             update_timestep(cfl_number);
 
-
         // copy temperature solution
         old_old_temperature_solution = old_temperature_solution;
         old_temperature_solution = temperature_solution;
 
         // extrapolate temperature solution
-        temperature_solution *= (1. + timestep / old_timestep);
-        temperature_solution.sadd(timestep / old_timestep,
+        temperature_solution.sadd(1. + timestep / old_timestep,
+                                  timestep / old_timestep,
                                   old_old_temperature_solution);
 
+        // copy temperature solution
+        old_old_stokes_solution = old_stokes_solution;
+        old_stokes_solution = stokes_solution;
+
         // extrapolate stokes solution
-        stokes_solution *= (1. + timestep / old_timestep);
-        stokes_solution.sadd(timestep / old_timestep,
+        stokes_solution.sadd(1. + timestep / old_timestep,
+                             timestep / old_timestep,
                              old_old_stokes_solution);
         // advance in time
         time += timestep;
