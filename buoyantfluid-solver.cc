@@ -1399,7 +1399,6 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
     }
     prm.leave_subsection();
 
-
     prm.enter_subsection("Time stepping settings");
     {
         prm.declare_entry("n_steps",
@@ -1407,10 +1406,36 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
                 Patterns::Integer(),
                 "Maximum number of iteration. That is the maximum number of time steps.");
 
-        prm.declare_entry("time_step",
+        prm.declare_entry("dt_initial",
                 "1e-4",
                 Patterns::Double(),
-                "time step.");
+                "Initial time step.");
+
+        prm.declare_entry("dt_min",
+                "1e-6",
+                Patterns::Double(),
+                "Maximum time step.");
+
+        prm.declare_entry("dt_max",
+                "1e-1",
+                Patterns::Double(),
+                "Maximum time step.");
+
+        prm.declare_entry("cfl_min",
+                "0.3",
+                Patterns::Double(),
+                "Minimal value for the cfl number.");
+
+        prm.declare_entry("cfl_max",
+                "0.7",
+                Patterns::Double(),
+                "Maximal value for the cfl number.");
+
+        prm.declare_entry("adaptive_timestep",
+                "true",
+                Patterns::Bool(),
+                "Turn adaptive time stepping on or off");
+
 
         // TODO: move to logging
         prm.declare_entry("output_freq",
@@ -1424,7 +1449,6 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
                         "Time stepping scheme applied.");
     }
     prm.leave_subsection();
-
 }
 
 template<int dim>
@@ -2017,82 +2041,81 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
-        // assemble temperature matrices
-        if (rebuild_temperature_matrices)
-        {
-            temperature_mass_matrix = 0;
-            temperature_stiffness_matrix = 0;
+    // assemble temperature matrices
+    if (rebuild_temperature_matrices)
+    {
+        temperature_mass_matrix = 0;
+        temperature_stiffness_matrix = 0;
 
-            WorkStream::run(
-                    temperature_dof_handler.begin_active(),
-                    temperature_dof_handler.end(),
-                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
-                              this,
-                              std::placeholders::_1,
-                              std::placeholders::_2,
-                              std::placeholders::_3),
-                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
-                              this,
-                              std::placeholders::_1),
-                    Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
-                                                              mapping,
-                                                              quadrature_formula),
-                    Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
-
-            const std::vector<double> alpha = (timestep_number != 0?
-                                                    imex_coefficients.alpha(timestep/old_timestep):
-                                                    std::vector<double>({1.0,-1.0,0.0}));
-            const std::vector<double> gamma = (timestep_number != 0?
-                                                    imex_coefficients.gamma(timestep/old_timestep):
-                                                    std::vector<double>({1.0,0.0,0.0}));
-
-            temperature_matrix.copy_from(temperature_mass_matrix);
-            temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                                   temperature_stiffness_matrix);
-
-        rebuild_temperature_matrices = false;
-            rebuild_temperature_preconditioner = true;
-        }
-    else if (timestep_number == 1 || timestep_modified)
-        {
-            Assert(timestep_number != 0, ExcInternalError());
-
-            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
-
-            temperature_matrix.copy_from(temperature_mass_matrix);
-            temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                                   temperature_stiffness_matrix);
-
-            rebuild_temperature_preconditioner = true;
-        }
-    // reset all entries
-    temperature_rhs = 0;
-
-        // assemble temperature right-hand side
         WorkStream::run(
                 temperature_dof_handler.begin_active(),
                 temperature_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
                           this,
                           std::placeholders::_1,
                           std::placeholders::_2,
                           std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
                           this,
                           std::placeholders::_1),
-                Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
-                                                                 mapping,
-                                                                 quadrature_formula,
-                                                                 update_values|
-                                                                 update_gradients|
-                                                                 update_JxW_values,
-                                                                 stokes_fe,
-                                                                 update_values),
-                Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+                Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
+                                                          mapping,
+                                                          quadrature_formula),
+                Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
 
+        const std::vector<double> alpha = (timestep_number != 0?
+                                                imex_coefficients.alpha(timestep/old_timestep):
+                                                std::vector<double>({1.0,-1.0,0.0}));
+        const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+
+        temperature_matrix.copy_from(temperature_mass_matrix);
+        temperature_matrix *= alpha[0];
+        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                               temperature_stiffness_matrix);
+
+        rebuild_temperature_matrices = false;
+        rebuild_temperature_preconditioner = true;
+    }
+    else if (timestep_number == 1 || timestep_modified)
+    {
+        Assert(timestep_number != 0, ExcInternalError());
+
+        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+        const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+        temperature_matrix.copy_from(temperature_mass_matrix);
+        temperature_matrix *= alpha[0];
+        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                               temperature_stiffness_matrix);
+
+        rebuild_temperature_preconditioner = true;
+    }
+    // reset all entries
+    temperature_rhs = 0;
+
+    // assemble temperature right-hand side
+    WorkStream::run(
+            temperature_dof_handler.begin_active(),
+            temperature_dof_handler.end(),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
+                      this,
+                      std::placeholders::_1),
+            Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
+                                                             mapping,
+                                                             quadrature_formula,
+                                                             update_values|
+                                                             update_gradients|
+                                                             update_JxW_values,
+                                                             stokes_fe,
+                                                             update_values),
+            Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
 }
 
 template<int dim>
