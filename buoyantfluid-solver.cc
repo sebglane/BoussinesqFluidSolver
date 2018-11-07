@@ -777,6 +777,7 @@ local_dof_indices(data.local_dof_indices)
 
 namespace Preconditioning
 {
+
 template<class PreconditionerTypeA, class PreconditionerTypeMp, class PreconditionerTypeKp>
 class BlockSchurPreconditioner : public Subscriptor
 {
@@ -860,7 +861,7 @@ vmult(BlockVector<double> &dst, const BlockVector<double> &src) const
                 preconditioner_Mp);
         n_iterations_Mp_ += solver_control.last_step();
 
-        dst.block(1) *= factor_Mp;
+        dst.block(1) *= -factor_Mp;
     }
     {
         SolverControl solver_control(5000, 1e-6 * src.block(1).l2_norm());
@@ -875,7 +876,7 @@ vmult(BlockVector<double> &dst, const BlockVector<double> &src) const
                      preconditioner_Kp);
         n_iterations_Kp_ += solver_control.last_step();
 
-        tmp_pressure *= factor_Kp;
+        tmp_pressure *= -factor_Kp;
 
         dst.block(1) += tmp_pressure;
     }
@@ -884,8 +885,7 @@ vmult(BlockVector<double> &dst, const BlockVector<double> &src) const
     VectorTools::subtract_mean_value(dst.block(1));
      *
      */
-    dst.block(1) *= -1.0;
-    Vector<double> tmp_vel(src.block(0));
+    Vector<double> tmp_vel(src.block(0).size());
     {
         system_matrix->block(0,1).vmult(tmp_vel, dst.block(1));
         tmp_vel *= -1.0;
@@ -893,7 +893,8 @@ vmult(BlockVector<double> &dst, const BlockVector<double> &src) const
     }
     if (do_solve_A)
     {
-        SolverControl solver_control(30, 1e-2 * tmp_vel.l2_norm());
+        SolverControl solver_control(30,
+                                     1e-3 * tmp_vel.l2_norm());
         SolverCG<> solver(solver_control);
 
         dst.block(0) = 0;
@@ -1022,14 +1023,13 @@ private:
 
     // preconditioner types
     typedef TrilinosWrappers::PreconditionAMG           PreconditionerTypeA;
-    typedef TrilinosWrappers::PreconditionAMG           PreconditionerTypeKp;
-    typedef SparseILU<double>                           PreconditionerTypeMp;
+    typedef SparseILU<double>                           PreconditionerTypeKp;
+    typedef PreconditionSSOR<SparseMatrix<double>>      PreconditionerTypeMp;
     typedef PreconditionJacobi<SparseMatrix<double>>    PreconditionerTypeT;
 
     // pointers to preconditioners
     std::shared_ptr<PreconditionerTypeA>        preconditioner_A;
     std::shared_ptr<PreconditionerTypeKp>       preconditioner_Kp;
-    std::shared_ptr<PreconditionIdentity>       preconditioner_Id;
     std::shared_ptr<PreconditionerTypeMp>       preconditioner_Mp;
     std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
 
@@ -1815,7 +1815,6 @@ void BuoyantFluidSolver<dim>::setup_stokes_matrix(
     preconditioner_A.reset();
     preconditioner_Kp.reset();
     preconditioner_Mp.reset();
-    preconditioner_Id.reset();
 
     stokes_matrix.clear();
     stokes_laplace_matrix.clear();
@@ -1860,13 +1859,20 @@ void BuoyantFluidSolver<dim>::setup_stokes_matrix(
 
         BlockDynamicSparsityPattern laplace_dsp(dofs_per_block, dofs_per_block);
 
-        const ConstraintMatrix &constraints_used =(parameters.assemble_schur_complement?
-                                                        stokes_laplace_constraints: stokes_constraints);
+        const ConstraintMatrix &constraints_used =
+                (parameters.assemble_schur_complement?
+                                stokes_laplace_constraints: stokes_constraints);
 
         DoFTools::make_sparsity_pattern(stokes_dof_handler,
                                         stokes_laplace_coupling,
                                         laplace_dsp,
-                                        stokes_laplace_constraints);
+                                        constraints_used);
+
+        if (!parameters.assemble_schur_complement)
+            laplace_dsp.block(1,1)
+            .compute_mmult_pattern(stokes_sparsity_pattern.block(1,0),
+                                   stokes_sparsity_pattern.block(0,1));
+
 
         auxiliary_stokes_sparsity_pattern.copy_from(laplace_dsp);
 
@@ -2396,17 +2402,7 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
             factor_Mp = timestep * gamma[0] * equation_coefficients[1];
 
             // rebuilding pressure stiffness matrix preconditioner
-            if (parameters.assemble_schur_complement)
-            {
-            preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
-            (new PreconditionerTypeKp());
-
-            PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
-            preconditioner_Kp_data.smoother_sweeps = 3;
-            preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
-                                          preconditioner_Kp_data);
-            }
-            else
+            if (parameters.assemble_schur_complement == false)
             {
                 Vector<double> tmp1(velocity_mass_matrix.m()), tmp2(tmp1);
                 tmp1 = 1.0;
@@ -2417,16 +2413,22 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
                                                stokes_matrix.block(0,1),
                                                tmp2,
                                                false);
-
-                preconditioner_Id = std::shared_ptr<PreconditionIdentity>
-                (new PreconditionIdentity());
-                preconditioner_Id->initialize(stokes_laplace_matrix.block(1,1));
             }
+
+            preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
+            (new PreconditionerTypeKp());
+
+            PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
+            preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
+                                          preconditioner_Kp_data);
 
             // rebuilding pressure mass matrix preconditioner
             preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
+            PreconditionerTypeMp::AdditionalData preconditioner_Mp_data;
+            preconditioner_Mp_data.relaxation = 0.75;
 
-            preconditioner_Mp->initialize(pressure_mass_matrix);
+            preconditioner_Mp->initialize(pressure_mass_matrix,
+                                          preconditioner_Mp_data);
 
             // rebuild the preconditioner of the velocity block
             rebuild_stokes_preconditioner = true;
@@ -2900,9 +2902,9 @@ void BuoyantFluidSolver<dim>::solve()
 
         SolverCG<>   cg(solver_control);
         cg.solve(temperature_matrix,
-                temperature_solution,
-                temperature_rhs,
-                *preconditioner_T);
+                 temperature_solution,
+                 temperature_rhs,
+                 *preconditioner_T);
 
         temperature_constraints.distribute(temperature_solution);
 
@@ -2929,44 +2931,17 @@ void BuoyantFluidSolver<dim>::solve()
                vector_memory,
                SolverFGMRES<BlockVector<double>>::AdditionalData(30, true));
 
-
-        if (parameters.assemble_schur_complement)
-        {
-        const Preconditioning::BlockSchurPreconditioner<PreconditionerTypeA, PreconditionerTypeMp, PreconditionerTypeKp>
-            preconditioner(stokes_matrix,
-                           pressure_mass_matrix,
-                           stokes_laplace_matrix.block(1,1),
-                           *preconditioner_A,
-                           *preconditioner_Kp,
-                           factor_Kp,
-                           *preconditioner_Mp,
-                           factor_Mp,
-                           false);
-
-            solver.solve(stokes_matrix,
-                    stokes_solution,
-                    stokes_rhs,
-                    preconditioner);
-            std::cout << "      "
-                      << solver_control.last_step()
-                      << " GMRES iterations for stokes system, "
-                      << " (Kp: " << preconditioner.n_iterations_Kp()
-                      << ", Mp: " << preconditioner.n_iterations_Mp()
-                      << ")"
-                      << std::endl;
-        }
-        else
-        {
-            const Preconditioning::BlockSchurPreconditioner<PreconditionerTypeA, PreconditionerTypeMp, PreconditionIdentity>
-            preconditioner(stokes_matrix,
-                           pressure_mass_matrix,
-                           stokes_laplace_matrix.block(1,1),
-                           *preconditioner_A,
-                           *preconditioner_Id,
-                           factor_Kp,
-                           *preconditioner_Mp,
-                           factor_Mp,
-                           false);
+        const Preconditioning::BlockSchurPreconditioner
+        <PreconditionerTypeA, PreconditionerTypeMp, PreconditionerTypeKp>
+        preconditioner(stokes_matrix,
+                       pressure_mass_matrix,
+                       stokes_laplace_matrix.block(1,1),
+                       *preconditioner_A,
+                       *preconditioner_Kp,
+                       factor_Kp,
+                       *preconditioner_Mp,
+                       factor_Mp,
+                       false);
 
         solver.solve(stokes_matrix,
                      stokes_solution,
@@ -2976,11 +2951,11 @@ void BuoyantFluidSolver<dim>::solve()
         std::cout << "      "
                   << solver_control.last_step()
                   << " GMRES iterations for stokes system, "
-                  << " (Kp: " << preconditioner.n_iterations_Kp()
+                  << " (A: " << preconditioner.n_iterations_A()
+                  << ", Kp: " << preconditioner.n_iterations_Kp()
                   << ", Mp: " << preconditioner.n_iterations_Mp()
                   << ")"
                   << std::endl;
-        }
 
         stokes_constraints.distribute(stokes_solution);
     }
@@ -3082,6 +3057,8 @@ void BuoyantFluidSolver<dim>::run()
 
     if (parameters.n_steps % parameters.output_frequency != 0)
         output_results();
+
+    std::cout << std::fixed;
 
     computing_timer.print_summary();
     computing_timer.reset();
