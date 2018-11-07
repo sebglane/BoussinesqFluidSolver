@@ -60,8 +60,6 @@ end
 
 
 subsection Runtime parameters
-  # Use multi-threading for assembly
-  set workstream_assembly = true
 end
 
 

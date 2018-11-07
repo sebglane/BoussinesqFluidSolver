@@ -770,7 +770,7 @@ local_rhs(data.local_rhs),
 local_dof_indices(data.local_dof_indices)
 {}
 
-}  // namespace Copy
+}  // namespace CopyData
 
 }  // namespace Assembly
 
@@ -1233,7 +1233,6 @@ template<int dim>
 BuoyantFluidSolver<dim>::Parameters::Parameters(const std::string &parameter_filename)
 :
 // runtime parameters
-workstream_assembly(false),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
@@ -1298,10 +1297,6 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
 {
     prm.enter_subsection("Runtime parameters");
     {
-        prm.declare_entry("workstream_assembly",
-                "false",
-                Patterns::Bool(),
-                "Use multi-threading for assembly");
     }
     prm.leave_subsection();
 
@@ -1456,7 +1451,6 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
 {
     prm.enter_subsection("Runtime parameters");
     {
-        workstream_assembly = prm.get_bool("workstream_assembly");
     }
     prm.leave_subsection();
 
@@ -2030,260 +2024,84 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     std::cout << "   Assembling temperature system..." << std::endl;
 
-    if (rebuild_temperature_matrices || timestep_number == 1)
-        temperature_matrix = 0;
-    temperature_rhs = 0;
-
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
-    if (parameters.workstream_assembly == false)
+    // assemble temperature matrices
+    if (rebuild_temperature_matrices)
     {
-        const std::vector<double> alpha = (timestep_number != 0?
-                                            imex_coefficients.alpha(timestep/old_timestep):
-                                            std::vector<double>({1.0,-1.0,0.0}));
-        const std::vector<double> beta = (timestep_number != 0?
-                                                  imex_coefficients.beta(timestep/old_timestep):
-                                                  std::vector<double>({1.0,0.0}));
-        const std::vector<double> gamma = (timestep_number != 0?
-                                                imex_coefficients.gamma(timestep/old_timestep):
-                                                std::vector<double>({1.0,0.0,0.0}));
+        temperature_mass_matrix = 0;
+        temperature_stiffness_matrix = 0;
 
-        const FEValuesExtractors::Vector    velocity(0);
-
-        FEValues<dim>     temperature_fe_values(mapping,
-                                                temperature_fe,
-                                                quadrature_formula,
-                                                update_values|
-                                                update_gradients|
-                                                update_quadrature_points|
-                                                update_JxW_values);
-
-        FEValues<dim>   stokes_fe_values(mapping,
-                                         stokes_fe,
-                                         quadrature_formula,
-                                         update_values);
-
-        const unsigned int   dofs_per_cell   = temperature_fe.dofs_per_cell;
-        const unsigned int   n_q_points      = quadrature_formula.size();
-
-        Vector<double>       local_rhs(dofs_per_cell);
-        FullMatrix<double>   matrix_for_bc(dofs_per_cell);
-        FullMatrix<double>   local_mass_matrix(dofs_per_cell);
-        FullMatrix<double>   local_stiffness_matrix(dofs_per_cell);
-
-        std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-        std::vector<double>         old_temperature_values(n_q_points);
-        std::vector<Tensor<1,dim> > old_temperature_gradients(n_q_points);
-        std::vector<double>         old_old_temperature_values(n_q_points);
-        std::vector<Tensor<1,dim> > old_old_temperature_gradients(n_q_points);
-
-        std::vector<Tensor<1,dim> > old_velocity_values(n_q_points);
-        std::vector<Tensor<1,dim> > old_old_velocity_values(n_q_points);
-
-        std::vector<double>         phi_T(dofs_per_cell);
-        std::vector<Tensor<1,dim> > grad_phi_T(dofs_per_cell);
-
-        typename DoFHandler<dim>::active_cell_iterator
-        cell = temperature_dof_handler.begin_active(),
-        stokes_cell = stokes_dof_handler.begin_active(),
-        endc = temperature_dof_handler.end();
-        for (; cell!= endc; ++cell, ++stokes_cell)
-        {
-
-            if (rebuild_temperature_matrices)
-            {
-                local_mass_matrix = 0;
-                local_stiffness_matrix = 0;
-            }
-            matrix_for_bc = 0;
-            local_rhs = 0;
-
-            temperature_fe_values.reinit(cell);
-            stokes_fe_values.reinit(stokes_cell);
-
-            temperature_fe_values.get_function_values(old_temperature_solution,
-                                                      old_temperature_values);
-            temperature_fe_values.get_function_values(old_old_temperature_solution,
-                                                      old_old_temperature_values);
-            temperature_fe_values.get_function_gradients(old_temperature_solution,
-                                                         old_temperature_gradients);
-            temperature_fe_values.get_function_gradients(old_old_temperature_solution,
-                                                         old_old_temperature_gradients);
-
-            stokes_fe_values[velocity].get_function_values(old_stokes_solution,
-                                                           old_velocity_values);
-            stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
-                                                           old_old_velocity_values);
-
-
-            for (unsigned int q=0; q<n_q_points; ++q)
-            {
-                for (unsigned int k=0; k<dofs_per_cell; ++k)
-                {
-                    grad_phi_T[k] = temperature_fe_values.shape_grad (k,q);
-                    phi_T[k]      = temperature_fe_values.shape_value (k, q);
-                }
-
-                const double time_derivative_temperature =
-                        alpha[1] * old_temperature_values[q]
-                            + alpha[2] * old_old_temperature_values[q];
-
-                const double nonlinear_term_temperature =
-                        beta[0] * old_velocity_values[q] * old_temperature_gradients[q]
-                            + beta[1] * old_old_velocity_values[q] * old_old_temperature_gradients[q];
-
-                const Tensor<1,dim> linear_term_temperature =
-                        gamma[1] * old_temperature_gradients[q]
-                            + gamma[2] * old_old_temperature_gradients[q];
-
-                for (unsigned int i=0; i<dofs_per_cell; ++i)
-                {
-                    local_rhs(i) += (
-                                - time_derivative_temperature * phi_T[i]
-                                - timestep * nonlinear_term_temperature * phi_T[i]
-                                - timestep * equation_coefficients[3] * linear_term_temperature * grad_phi_T[i]
-                                ) * temperature_fe_values.JxW(q);
-
-                    if (rebuild_temperature_matrices || timestep_number == 1)
-                        for (unsigned int j=0; j<=i; ++j)
-                        {
-                            local_mass_matrix(i,j) += phi_T[i] * phi_T[j] * temperature_fe_values.JxW(q);
-                            local_stiffness_matrix(i,j) += grad_phi_T[i] * grad_phi_T[j] * temperature_fe_values.JxW(q);
-                        }
-                    else if (temperature_constraints.is_inhomogeneously_constrained(local_dof_indices[i]))
-                        for (unsigned int j=0; j<dofs_per_cell; ++j)
-                            matrix_for_bc(j,i) += (
-                                      alpha[0] * phi_T[i] * phi_T[j]
-                                    + gamma[0] * timestep * equation_coefficients[3] * grad_phi_T[i] * grad_phi_T[j]
-                                    ) * temperature_fe_values.JxW(q);
-                }
-            }
-
-            cell->get_dof_indices(local_dof_indices);
-
-            if (rebuild_temperature_matrices || timestep_number == 1)
-            {
-                for (unsigned int i=0; i<dofs_per_cell; ++i)
-                    for (unsigned int j=i+1; j<dofs_per_cell; ++j)
-                    {
-                        local_mass_matrix(i,j) = local_mass_matrix(j,i);
-                        local_stiffness_matrix(i,j) = local_stiffness_matrix(j,i);
-                    }
-                temperature_constraints.distribute_local_to_global(
-                        local_mass_matrix,
-                        local_dof_indices,
-                        temperature_mass_matrix);
-                temperature_constraints.distribute_local_to_global(
-                        local_stiffness_matrix,
-                        local_dof_indices,
-                        temperature_stiffness_matrix);
-                temperature_constraints.distribute_local_to_global(
-                        local_rhs,
-                        local_dof_indices,
-                        temperature_rhs,
-                        matrix_for_bc);
-            }
-            else
-                temperature_constraints.distribute_local_to_global(
-                        local_rhs,
-                        local_dof_indices,
-                        temperature_rhs,
-                        matrix_for_bc);
-        }
-        if (rebuild_temperature_matrices || timestep_number == 1)
-        {
-            Assert(timestep_number != 0, ExcInternalError());
-
-            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
-
-            temperature_matrix.copy_from(temperature_mass_matrix);
-            temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                                   temperature_stiffness_matrix);
-
-            rebuild_temperature_preconditioner = true;
-
-
-            rebuild_temperature_preconditioner = true;
-        }
-    }
-    else
-    {
-        // assemble temperature matrices
-        if (rebuild_temperature_matrices)
-        {
-            temperature_mass_matrix = 0;
-            temperature_stiffness_matrix = 0;
-
-            WorkStream::run(
-                    temperature_dof_handler.begin_active(),
-                    temperature_dof_handler.end(),
-                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
-                              this,
-                              std::placeholders::_1,
-                              std::placeholders::_2,
-                              std::placeholders::_3),
-                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
-                              this,
-                              std::placeholders::_1),
-                    Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
-                                                              mapping,
-                                                              quadrature_formula),
-                    Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
-
-            const std::vector<double> alpha = (timestep_number != 0?
-                                                    imex_coefficients.alpha(timestep/old_timestep):
-                                                    std::vector<double>({1.0,-1.0,0.0}));
-            const std::vector<double> gamma = (timestep_number != 0?
-                                                    imex_coefficients.gamma(timestep/old_timestep):
-                                                    std::vector<double>({1.0,0.0,0.0}));
-
-            temperature_matrix.copy_from(temperature_mass_matrix);
-            temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                                   temperature_stiffness_matrix);
-            rebuild_temperature_preconditioner = true;
-        }
-        else if (timestep_number == 1 || timestep_modified)
-        {
-            Assert(timestep_number != 0, ExcInternalError());
-
-            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
-
-            temperature_matrix.copy_from(temperature_mass_matrix);
-            temperature_matrix *= alpha[0];
-            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                                   temperature_stiffness_matrix);
-
-            rebuild_temperature_preconditioner = true;
-        }
-
-        // assemble temperature right-hand side
         WorkStream::run(
                 temperature_dof_handler.begin_active(),
                 temperature_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
                           this,
                           std::placeholders::_1,
                           std::placeholders::_2,
                           std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
                           this,
                           std::placeholders::_1),
-                Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
-                                                                 mapping,
-                                                                 quadrature_formula,
-                                                                 update_values|
-                                                                 update_gradients|
-                                                                 update_JxW_values,
-                                                                 stokes_fe,
-                                                                 update_values),
-                Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+                Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
+                                                          mapping,
+                                                          quadrature_formula),
+                Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
+
+        const std::vector<double> alpha = (timestep_number != 0?
+                                                imex_coefficients.alpha(timestep/old_timestep):
+                                                std::vector<double>({1.0,-1.0,0.0}));
+        const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+
+        temperature_matrix.copy_from(temperature_mass_matrix);
+        temperature_matrix *= alpha[0];
+        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                               temperature_stiffness_matrix);
+
+        rebuild_temperature_matrices = false;
+        rebuild_temperature_preconditioner = true;
     }
-    rebuild_temperature_matrices = false;
+    else if (timestep_number == 1 || timestep_modified)
+    {
+        Assert(timestep_number != 0, ExcInternalError());
+
+        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+        const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+        temperature_matrix.copy_from(temperature_mass_matrix);
+        temperature_matrix *= alpha[0];
+        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                               temperature_stiffness_matrix);
+
+        rebuild_temperature_preconditioner = true;
+    }
+    // reset all entries
+    temperature_rhs = 0;
+
+    // assemble temperature right-hand side
+    WorkStream::run(
+            temperature_dof_handler.begin_active(),
+            temperature_dof_handler.end(),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
+                      this,
+                      std::placeholders::_1),
+            Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
+                                                             mapping,
+                                                             quadrature_formula,
+                                                             update_values|
+                                                             update_gradients|
+                                                             update_JxW_values,
+                                                             stokes_fe,
+                                                             update_values),
+            Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+
 }
 
 template<int dim>
@@ -2510,371 +2328,120 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
         // reset all entries
         stokes_matrix = 0;
         stokes_laplace_matrix = 0;
-    }
 
-    // reset all entries
-    stokes_rhs = 0;
-
-    if (parameters.workstream_assembly == false)
-    {
-        const std::vector<double> alpha = (timestep_number != 0?
-                                            imex_coefficients.alpha(timestep/old_timestep):
-                                            std::vector<double>({1.0,-1.0,0.0}));
-        const std::vector<double> beta = (timestep_number != 0?
-                                            imex_coefficients.beta(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0}));
-        const std::vector<double> gamma = (timestep_number != 0?
-                                            imex_coefficients.gamma(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0,0.0}));
-
-        FEValues<dim>   stokes_fe_values(mapping,
-                                         stokes_fe,
-                                         quadrature_formula,
-                                         update_values|
-                                         update_quadrature_points|
-                                         update_JxW_values|
-                                         update_gradients);
-
-        FEValues<dim>   temperature_fe_values(mapping,
-                                              temperature_fe,
-                                              quadrature_formula,
-                                              update_values);
-
-        const unsigned int   dofs_per_cell   = stokes_fe.dofs_per_cell;
-        const unsigned int   n_q_points      = quadrature_formula.size();
-
-        Vector<double>       local_rhs(dofs_per_cell);
-        FullMatrix<double>   local_matrix(dofs_per_cell);
-        FullMatrix<double>   local_stiffness_matrix(dofs_per_cell);
-
-        std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-        std::vector<double>         div_phi_v(dofs_per_cell);
-        std::vector<Tensor<1,dim>>  phi_v(dofs_per_cell);
-        std::vector<Tensor<2,dim>>  grad_phi_v(dofs_per_cell);
-
-        std::vector<double>         phi_p(dofs_per_cell);
-        std::vector<Tensor<1,dim>>  grad_phi_p(dofs_per_cell);
-
-        std::vector<Tensor<1,dim>>  old_velocity_values(n_q_points);
-        std::vector<Tensor<1,dim>>  old_old_velocity_values(n_q_points);
-        std::vector<Tensor<2,dim>>  old_velocity_gradients(n_q_points);
-        std::vector<Tensor<2,dim>>  old_old_velocity_gradients(n_q_points);
-
-        std::vector<double>         old_temperature_values(n_q_points);
-        std::vector<double>         old_old_temperature_values(n_q_points);
-
-        const FEValuesExtractors::Vector    velocity(0);
-        const FEValuesExtractors::Scalar    pressure(dim);
-
-        typename DoFHandler<dim>::active_cell_iterator
-        cell = stokes_dof_handler.begin_active(),
-        temperature_cell = temperature_dof_handler.begin_active(),
-        endc = stokes_dof_handler.end();
-        for (; cell!= endc; ++cell, ++temperature_cell)
-        {
-            local_matrix = 0;
-            local_stiffness_matrix = 0;
-            local_rhs = 0;
-
-            stokes_fe_values.reinit(cell);
-            temperature_fe_values.reinit(temperature_cell);
-
-            stokes_fe_values[velocity].get_function_values(old_stokes_solution,
-                                                           old_velocity_values);
-            stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
-                                                           old_old_velocity_values);
-            stokes_fe_values[velocity].get_function_gradients(old_stokes_solution,
-                                                              old_velocity_gradients);
-            stokes_fe_values[velocity].get_function_gradients(old_old_stokes_solution,
-                                                              old_old_velocity_gradients);
-
-            temperature_fe_values.get_function_values(old_temperature_solution,
-                                                      old_temperature_values);
-            temperature_fe_values.get_function_values(old_old_temperature_solution,
-                                                      old_old_temperature_values);
-
-            for (unsigned int q=0; q<n_q_points; ++q)
-            {
-                for (unsigned int k=0; k<dofs_per_cell; ++k)
-                {
-                    phi_v[k] = stokes_fe_values[velocity].value(k, q);
-                    grad_phi_v[k] = stokes_fe_values[velocity].gradient(k, q);
-                    div_phi_v[k] = stokes_fe_values[velocity].divergence(k, q);
-                    phi_p[k] = stokes_fe_values[pressure].value(k, q);
-                    grad_phi_p[k] = stokes_fe_values[pressure].gradient(k, q);
-                }
-
-                const Tensor<1,dim> time_derivative_velocity
-                    = alpha[1] * old_velocity_values[q]
-                        + alpha[2] * old_old_velocity_values[q];
-
-                const Tensor<1,dim> nonlinear_term_velocity
-                    = beta[0] * old_velocity_gradients[q] * old_velocity_values[q]
-                        + beta[1] * old_old_velocity_gradients[q] * old_old_velocity_values[q];
-
-                const Tensor<2,dim> linear_term_velocity
-                    = gamma[1] * old_velocity_gradients[q]
-                        + gamma[2] * old_old_velocity_gradients[q];
-
-                const Tensor<1,dim> extrapolated_velocity
-                    = (timestep != 0 ?
-                        (old_velocity_values[q] * (1 + timestep/old_timestep)
-                                - old_old_velocity_values[q] * timestep/old_timestep)
-                                : old_velocity_values[q]);
-                const double extrapolated_temperature
-                    = (timestep != 0 ?
-                        (old_temperature_values[q] * (1 + timestep/old_timestep)
-                                - old_old_temperature_values[q] * timestep/old_timestep)
-                                : old_temperature_values[q]);
-
-                const Tensor<1,dim> gravity_vector = EquationData::gravity_vector(stokes_fe_values.quadrature_point(q));
-
-                Tensor<1,dim>   coriolis_term;
-                if (parameters.rotation)
-                {
-                    if (dim == 2)
-                        coriolis_term = cross_product_2d(extrapolated_velocity);
-                    else if (dim == 3)
-                        coriolis_term = cross_product_3d(rotation_vector,
-                                                         extrapolated_velocity);
-                    else
-                    {
-                        Assert(false, ExcInternalError());
-                    }
-                }
-
-                for (unsigned int i=0; i<dofs_per_cell; ++i)
-                {
-                    local_rhs(i)
-                        += (
-                            - time_derivative_velocity * phi_v[i]
-                            - timestep * nonlinear_term_velocity * phi_v[i]
-                            - timestep * equation_coefficients[1] * scalar_product(linear_term_velocity, grad_phi_v[i])
-                            - timestep * (parameters.rotation ? equation_coefficients[0] * coriolis_term * phi_v[i]: 0)
-                            - timestep * equation_coefficients[2] * extrapolated_temperature * gravity_vector * phi_v[i]
-                            ) * stokes_fe_values.JxW(q);
-
-                    if (rebuild_stokes_matrices)
-                        for (unsigned int j=0; j<=i; ++j)
-                        {
-                            local_matrix(i,j)
-                                += (
-                                      phi_v[i] * phi_v[j]
-                                    - phi_p[i] * div_phi_v[j]
-                                    - div_phi_v[i] * phi_p[j]
-                                    + phi_p[i] * phi_p[j]
-                                    ) * stokes_fe_values.JxW(q);
-                            local_stiffness_matrix(i,j)
-                                += (
-                                      scalar_product(grad_phi_v[i], grad_phi_v[j])
-                                    + grad_phi_p[i] * grad_phi_p[j]
-                                    ) * stokes_fe_values.JxW(q);
-                        }
-                }
-            }
-
-            cell->get_dof_indices(local_dof_indices);
-
-            if (rebuild_stokes_matrices)
-            {
-                for (unsigned int i=0; i<dofs_per_cell; ++i)
-                    for (unsigned int j=i+1; j<dofs_per_cell; ++j)
-                    {
-                        local_matrix(i,j) = local_matrix(j,i);
-                        local_stiffness_matrix(i,j) = local_stiffness_matrix(j,i);
-                    }
-
-                stokes_constraints.distribute_local_to_global(
-                        local_matrix,
-                        local_rhs,
-                        local_dof_indices,
-                        stokes_matrix,
-                        stokes_rhs);
-                stokes_laplace_constraints.distribute_local_to_global(
-                        local_stiffness_matrix,
-                        local_dof_indices,
-                        stokes_laplace_matrix);
-
-            }
-            else
-            {
-                stokes_constraints.distribute_local_to_global(
-                        local_rhs,
-                        local_dof_indices,
-                        stokes_rhs);
-            }
-        }
-
-        if (rebuild_stokes_matrices)
-        {
-            // copy velocity mass matrix
-            velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
-            velocity_mass_matrix.copy_from(stokes_matrix.block(0,0));
-
-            // copy pressure mass matrix
-            pressure_mass_matrix.reinit(stokes_sparsity_pattern.block(1,1));
-            pressure_mass_matrix.copy_from(stokes_matrix.block(1,1));
-            stokes_matrix.block(1,1) = 0;
-
-            // correct (0,0)-block of stokes system
-            stokes_matrix.block(0,0) *= alpha[0];
-            stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
-                                         stokes_laplace_matrix.block(0,0));
-
-            // adjust factors in the pressure matrices
-            factor_Kp = alpha[0];
-            factor_Mp = timestep * gamma[0] * equation_coefficients[1];
-
-            // rebuilding pressure stiffness matrix preconditioner
-            preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
-            (new PreconditionerTypeKp());
-
-            PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
-            preconditioner_Kp_data.smoother_sweeps = 3;
-            preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
-                                          preconditioner_Kp_data);
-
-            // rebuilding pressure mass matrix preconditioner
-            preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
-
-            preconditioner_Mp->initialize(pressure_mass_matrix);
-
-            // rebuild the preconditioner of the velocity block
-            rebuild_stokes_preconditioner = true;
-        }
-        else if (timestep_number == 1 || timestep_modified)
-        {
-            Assert(timestep_number != 0, ExcInternalError());
-
-            // correct (0,0)-block of stokes system
-            stokes_matrix.block(0,0).copy_from(velocity_mass_matrix);
-            stokes_matrix.block(0,0) *= alpha[0];
-            stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
-                                         stokes_laplace_matrix.block(0,0));
-
-            // adjust factors in the pressure matrices
-            factor_Kp = alpha[0];
-            factor_Mp = timestep * gamma[0] * equation_coefficients[1];
-
-            // rebuild the preconditioner of the velocity block
-            rebuild_stokes_preconditioner = true;
-        }
-    }
-    else
-    {
-        if (rebuild_stokes_matrices)
-        {
-            // assemble matrix
-            WorkStream::run(
-                    stokes_dof_handler.begin_active(),
-                    stokes_dof_handler.end(),
-                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
-                              this,
-                              std::placeholders::_1,
-                              std::placeholders::_2,
-                              std::placeholders::_3),
-                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
-                              this,
-                              std::placeholders::_1),
-                    Assembly::Scratch::StokesMatrix<dim>(
-                            stokes_fe,
-                            mapping,
-                            quadrature_formula,
-                            update_values|
-                            update_gradients|
-                            update_JxW_values),
-                    Assembly::CopyData::StokesMatrix<dim>(stokes_fe));
-
-            // copy velocity mass matrix
-            velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
-            velocity_mass_matrix.copy_from(stokes_matrix.block(0,0));
-
-            // copy pressure mass matrix
-            pressure_mass_matrix.reinit(stokes_sparsity_pattern.block(1,1));
-            pressure_mass_matrix.copy_from(stokes_matrix.block(1,1));
-            stokes_matrix.block(1,1) = 0;
-
-            // time stepping coefficients
-            const std::vector<double> alpha = (timestep_number != 0?
-                                                imex_coefficients.alpha(timestep/old_timestep):
-                                                std::vector<double>({1.0,-1.0,0.0}));
-            const std::vector<double> gamma = (timestep_number != 0?
-                                                imex_coefficients.gamma(timestep/old_timestep):
-                                                std::vector<double>({1.0,0.0,0.0}));
-            // correct (0,0)-block of stokes system
-            stokes_matrix.block(0,0) *= alpha[0];
-            stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
-                                         stokes_laplace_matrix.block(0,0));
-
-            // adjust factors in the pressure matrices
-            factor_Kp = alpha[0];
-            factor_Mp = timestep * gamma[0] * equation_coefficients[1];
-
-            // rebuilding pressure stiffness matrix preconditioner
-            preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
-            (new PreconditionerTypeKp());
-
-            PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
-            preconditioner_Kp_data.smoother_sweeps = 3;
-            preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
-                                          preconditioner_Kp_data);
-
-            // rebuilding pressure mass matrix preconditioner
-            preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
-
-            preconditioner_Mp->initialize(pressure_mass_matrix);
-
-            // rebuild the preconditioner of the velocity block
-            rebuild_stokes_preconditioner = true;
-        }
-        else if (timestep_number == 1 || timestep_modified)
-        {
-            Assert(timestep_number != 0, ExcInternalError());
-
-            // time stepping coefficients
-            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
-
-            // correct (0,0)-block of stokes system
-            stokes_matrix.block(0,0).copy_from(velocity_mass_matrix);
-            stokes_matrix.block(0,0) *= alpha[0];
-            stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
-                                         stokes_laplace_matrix.block(0,0));
-
-            // adjust factors in the pressure matrices
-            factor_Kp = alpha[0];
-            factor_Mp = timestep * gamma[0] * equation_coefficients[1];
-
-            // rebuild the preconditioner of the velocity block
-            rebuild_stokes_preconditioner = true;
-        }
-
-        // assemble right-hand side function
+        // assemble matrix
         WorkStream::run(
                 stokes_dof_handler.begin_active(),
                 stokes_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
                           this,
                           std::placeholders::_1,
                           std::placeholders::_2,
                           std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
                           this,
                           std::placeholders::_1),
-                Assembly::Scratch::StokesMatrixRightHandSide<dim>(
+                Assembly::Scratch::StokesMatrix<dim>(
                         stokes_fe,
                         mapping,
                         quadrature_formula,
                         update_values|
-                        update_quadrature_points|
-                        update_JxW_values|
-                        update_gradients,
-                        temperature_fe,
-                        update_values),
-                Assembly::CopyData::StokesMatrixRightHandSide<dim>(stokes_fe));
+                        update_gradients|
+                        update_JxW_values),
+                Assembly::CopyData::StokesMatrix<dim>(stokes_fe));
+
+        // copy velocity mass matrix
+        velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
+        velocity_mass_matrix.copy_from(stokes_matrix.block(0,0));
+
+        // copy pressure mass matrix
+        pressure_mass_matrix.reinit(stokes_sparsity_pattern.block(1,1));
+        pressure_mass_matrix.copy_from(stokes_matrix.block(1,1));
+        stokes_matrix.block(1,1) = 0;
+
+        // time stepping coefficients
+        const std::vector<double> alpha = (timestep_number != 0?
+                                            imex_coefficients.alpha(timestep/old_timestep):
+                                            std::vector<double>({1.0,-1.0,0.0}));
+        const std::vector<double> gamma = (timestep_number != 0?
+                                            imex_coefficients.gamma(timestep/old_timestep):
+                                            std::vector<double>({1.0,0.0,0.0}));
+        // correct (0,0)-block of stokes system
+        stokes_matrix.block(0,0) *= alpha[0];
+        stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
+                                     stokes_laplace_matrix.block(0,0));
+
+        // adjust factors in the pressure matrices
+        factor_Kp = alpha[0];
+        factor_Mp = timestep * gamma[0] * equation_coefficients[1];
+
+        // rebuilding pressure stiffness matrix preconditioner
+        preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
+        (new PreconditionerTypeKp());
+
+        PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
+        preconditioner_Kp_data.smoother_sweeps = 3;
+        preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
+                                      preconditioner_Kp_data);
+
+        // rebuilding pressure mass matrix preconditioner
+        preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
+
+        preconditioner_Mp->initialize(pressure_mass_matrix);
+
+        // rebuild the preconditioner of the velocity block
+        rebuild_stokes_preconditioner = true;
+
+        // do not rebuild stokes matrices
+        rebuild_stokes_matrices = false;
     }
-    rebuild_stokes_matrices = false;
+    else if (timestep_number == 1 || timestep_modified)
+    {
+        Assert(timestep_number != 0, ExcInternalError());
+
+        // time stepping coefficients
+        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+        const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+        // correct (0,0)-block of stokes system
+        stokes_matrix.block(0,0).copy_from(velocity_mass_matrix);
+        stokes_matrix.block(0,0) *= alpha[0];
+        stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
+                                     stokes_laplace_matrix.block(0,0));
+
+        // adjust factors in the pressure matrices
+        factor_Kp = alpha[0];
+        factor_Mp = timestep * gamma[0] * equation_coefficients[1];
+
+        // rebuild the preconditioner of the velocity block
+        rebuild_stokes_preconditioner = true;
+    }
+    // reset all entries
+    stokes_rhs = 0;
+
+    // assemble right-hand side function
+    WorkStream::run(
+            stokes_dof_handler.begin_active(),
+            stokes_dof_handler.end(),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
+                      this,
+                      std::placeholders::_1),
+            Assembly::Scratch::StokesMatrixRightHandSide<dim>(
+                    stokes_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_quadrature_points|
+                    update_JxW_values|
+                    update_gradients,
+                    temperature_fe,
+                    update_values),
+            Assembly::CopyData::StokesMatrixRightHandSide<dim>(stokes_fe));
 }
 
 template<int dim>
