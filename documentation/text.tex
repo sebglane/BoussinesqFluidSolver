@@ -1,0 +1,154 @@
+\section{Introduction}
+The objective is to solve the following set of dimensionless equations for the velocity, $\bm{v}$, a pressure, $P$, the temperature, $T$, and the magnetic field, $\bm{B}$:
+\begin{gather}
+	\nabla\cdot\bm{v}=0\,,\quad
+	\pd{\bm{v}}{t}+\bm{v}\cdot\nabla\otimes\bm{v}+C_1\bm{\Omega}\times\bm{v}=-\nabla P+C_2\laplace\bm{v}-C_3T\bm{g}+C_5(\nabla\times\bm{B})\times\bm{B}\,,\label{eqn:Momentum}\\
+	\pd{T}{t}+\bm{v}\cdot\nabla T=C_4\laplace T\,,\label{eqn:Energy}\\
+	\nabla\cdot\bm{B}=0\,,\qquad
+	\pd{\bm{B}}{t}=\nabla\times(\bm{v}\times\bm{B})-C_5\nabla\times(\nabla\times\bm{B})\,,\label{eqn:MagneticInduction}
+\end{gather}
+The constants $C_1$ to $C_5$ are dimensionless and depend on the case studied. They are selected according to Table\,\ref{tbl:Dimensionless}. In case of a purely hydrodynamic problem the magnetic induction equation is not considered and the Lorentz force vanishes in the momentum equation.
+\begin{table}[!htb]
+	\centering
+	\caption{Dimensionless numbers used in Eqs.\,\eqref{eqn:Momentum}-\eqref{eqn:MagneticInduction}.\label{tbl:Dimensionless}}
+	\begin{tabular}{cccccc}
+		\toprule
+		case & $C_1$ & $C_2$ & $C_3$ & $C_4$ & $C_5$ \\\midrule
+		non-rotating hydrodynamic & 0 & $\sqrt{\Prandtl/\Rayleigh}$ & 1 & $1/\sqrt{\Rayleigh\Prandtl}$ & 0\\
+		rotating hydrodynamic & $2/\Ekman$ & 1 & $\Rayleigh/\Prandtl$ & $1/\Prandtl$ & 0\\
+		rotating magnetohydrodynamic & $2/\Ekman$ & 1 & $\Rayleigh/\Prandtl$ & $1/\Prandtl$ & $1/\magPrandtl$\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+The dimensionless numbers in Table\,\ref{tbl:Dimensionless} are defined as follows:
+\begin{itemize}
+	\item Rayleigh number: $\Rayleigh=\alpha g D^3/(\nu\kappa)$,
+	\item Prandtl number: $\Prandtl=\nu/\kappa$,
+	\item magnetic Prandtl number: $\magPrandtl=\nu/\eta$,
+	\item Ekman number:	$\Ekman=\nu/(\Omega D^2)$.
+%	\item modified Rayleigh number:
+%	\begin{equation*}
+%	\modRayleigh=\frac{\alpha gk D}{\nu\Omega}=\frac{\Rayleigh\Ekman}{\Prandtl}
+%	\end{equation*}
+%	\item Reynolds number:
+%	\begin{equation*}
+%		\Reynolds=\frac{u D}{\nu}=\tilde{u}_\mathrm{rms.}\,,
+%	\end{equation*}
+%	where $\tilde{u}_\mathrm{rms.}$ is the dimensionless rms-value of the velocity.
+%	\item magnetic Reynolds number:
+%	\begin{equation*}
+%		\magReynolds=\frac{uD}{\eta}=\Reynolds\magPrandtl=\tilde{u}_\mathrm{rms.}\magPrandtl
+%	\end{equation*}
+%	\item Elsasser number:
+%	\begin{equation*}
+%		\Elsasser=\frac{B^2}{\rho\gmu_0\eta\Omega}=\tilde{B}_\mathrm{rms}^2\,,
+%	\end{equation*}
+%	where $\tilde{B}_\mathrm{rms}$ is the dimensionless rms-value of the magnetic field.
+\end{itemize}
+Here, $D$ denotes a reference length of the problem, which is typically the shell thickness for spherical problems. Furthermore, $\nu$ is the kinematic viscosity, $\kappa$ and $\eta$ are thermal and magnetic diffusivities, $\alpha$ is the thermal expansion coefficient, and $g$ is a reference gravity magnitude. The dimensionless gravity vector is the only possible field additional variable of the problem. Commonly a constant or linearly varying model in radial direction is chosen for spherical shell problems. The rotation vector is not a field but may be time-dependent. 
+
+First, a discretization of the hydrodynamic case including Eqs.\,\eqref{eqn:Momentum} and \eqref{eqn:Energy} is considered. Then an extension to the full MHD system including the magnetic field~$\bm{B}$ is discussed. Finally the benchmark cases of \citeauthor{Christensen2001} are presented. 
+\section{Weak form of the hydrodynamic equations}
+In the hydrodynamic case, the magnetic field is not present and the Lorentz force in Eq.\,\eqref{eqn:Momentum} vanishes. We introduce the following short-hand notations for volume and surface integrals
+\begin{equation*}
+	\inner{\bm A}{\bm B} = \int\limits_{\Omega} \bm A \star \bm B\, \d V \; , \quad
+	\innerSurf{\bm A}{\bm B}  = \int\limits_{\Gamma} \bm A \star \bm B\, \d A \ ,
+\end{equation*}
+where $\bm A \star \bm B$ represents the contraction of two tensors $\bm A$ and $\bm B$ of arbitrary rank to a scalar. Furthermore, we introduce operators related to viscosity/diffusion~($\mathcal{A}$), incompressible/pressure~($\mathcal{B}$) and convection~($\mathcal{C}$).
+\begin{align*}
+\begin{aligned}
+	\elliptic{\bm{\phi}}{\bm{\psi}}&=\inner{\nabla\otimes\bm{\phi}}{\nabla\otimes\bm{\psi}}\,, &
+	\saddle{\bm{\phi}}{\psi}&=\inner{\nabla\cdot\bm{\phi}}{\psi}\,, &
+	\convec{\bm{\phi}}{\bm{\psi}}{\bm{\chi}}&=\inner{\bm{\phi} \cdot (\nabla\otimes\bm{\psi})}{\bm{\chi}}\,.
+\end{aligned}
+\end{align*}
+The test functions for the incompressible condition are denoted by $Q$, by $\bm{w}$ and $U$ for the momentum equation and the energy equation, respectively. The problem is Dirichlet problem for the velocity and the temperature. This has the consequence that the test functions vanishes on the boundary and the boundary terms that occur during integration by parts vanishes as well. The weak form of the problem reads: Find $\bm{v}$, $P$ and $T$ such that
+\begin{align}
+	\saddle{\bm{v}}{Q}&=0\,, \\
+	\inner{\pd{\bm{v}}{t}}{\bm{w}}+\convec{\bm{v}}{\bm{v}}{\bm{w}}+C_1\inner{\bm{\Omega}\times\bm{v}}{\bm{w}}&=\saddle{\bm{w}}{P}-C_2\elliptic{\bm{v}}{\bm{w}}+C_3\inner{T\bm{g}}{\bm{w}}\,,\\
+	\inner{\pd{T}{t}}{U}+\convec{\bm{v}}{T}{U}&=-C_4\elliptic{T}{U}\,,
+\end{align}
+holds for all test functions $\bm{w}$, $Q$, $U$.
+
+The time stepping method is discussed next in context with the differential equation. An application to the weak is straightforward and presented afterwards. For the time stepping, almost all of the codes discussed in \cite{Matsui2016} use the Crank-Nicolson scheme for the linear terms and Adams-Bashforth extrapolation for the other terms. These scheme falls in the category of linear implicit-explicit multistep methods or IMEX schemes, see \cite{Ascher1995}. IMEX schemes treat the linear stiff terms implicitly and the non-linear terms are treated explicitly. The main advantage of these schemes in contrast of other stiffly accurate schemes is that the resulting system of equation is linear in each time step, which is computationally less expensive in contrast to for example diagonal implicit Runge-Kutta schemes (DIRK). 
+
+In \cite{Ascher1995}, the implicit-explicit are presented by considered the scalar advection-diffusion equation
+\begin{equation}
+	\pd{u}{t}=f(u)+g(u),\quad\text{with}\quad
+	f(u)=-\bm{a}\cdot\nabla u\quad\text{and}\quad
+	g(u)=\nu\laplace u\,.
+\end{equation}
+
+
+\begin{equation}
+	\bm{v}^*=\left(1+\frac{k_n}{k_{n-1}}\right)\bm{v}^{n-1}-\frac{k_n}{k_{n-1}}\bm{v}^{n-2}\,,\qquad
+	T^*=\left(1+\frac{k_n}{k_{n-1}}\right)T^{n-1}-\frac{k_n}{k_{n-1}}T^{n-2}
+\end{equation}
+the scheme reads:
+\begin{gather}
+	-\saddle{\bm{v}^{n}}{Q}=0\,, \\
+	\begin{multlined}[c]
+	\frac{1}{k_n}\inner{\bm{v}^{n}}{\bm{w}}-\saddle{\bm{w}}{P^{n+1}}+\frac{C_2}{2}\elliptic{\bm{v}^n}{\bm{w}}=\frac{1}{k_n}\inner{\bm{v}^{n-1}}{\bm{w}}-\frac{C_2}{2}\elliptic{\bm{v}^{n-1}}{\bm{w}}-{}\\
+	-\convec{\bm{v}^*}{\bm{v}^*}{\bm{w}}+C_1\inner{\ez\times\bm{v}^*}{\bm{w}}-C_3\inner{T^*\bm{g}}{\bm{w}}\,,
+	\end{multlined}\\
+	\frac{1}{k_n}\inner{T^{n+1}}{U}+\frac{C_4}{2}\elliptic{T^{n+1}}{U}=-\frac{C_4}{2}\elliptic{T^n}{U}-\convec{\bm{v}^*}{T^*}{U}\,,
+\end{gather}
+
+\section{Benchmark cases of \citeauthor{Christensen2001}}
+The benchmark cases of \citeauthor{Christensen2001} are specified in Table~\ref{tbl:BenchmarkParameters}. In Table~\ref{tbl:BenchmarkParameters} the hydro case refers to the solutions of Eqs.\,\eqref{eqn:Momentum} and \eqref{eqn:Energy} and the MHD case solve all three equations. Furthermore, the maximum spherical harmonics degree~$\ell_\mathrm{max.}$ and the number of radial points are specified. 
+\begin{table}[!htb]
+	\centering
+	\caption{Benchmark parameters according to \cite{Christensen2001}.\label{tbl:BenchmarkParameters}}
+	\begin{tabular}{ccc|ccccc}
+		\toprule
+		& \multicolumn{2}{c|}{discretization} & \multicolumn{5}{c}{model}\\
+		case & $\ell_\text{max.}$ & $N_r$ & $\Rayleigh$ & $\Prandtl$ & $\magPrandtl$ & $\Ekman$ & $\modRayleigh$ \\\midrule
+		hydro & 65  & 85 & \num{e5} & 1 & -- & \num{e-3} & \num{100}\\
+		MHD & 65 & 85 & \num{e5} & 1 & 3 & \num{e-3} & \num{100}\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+The inner boundary is denoted by $\Gamma_\mathrm{i}$ and the outer boundary by $\Gamma_\mathrm{o}$. Then, the boundary conditions for the velocity and the temperature are given by:
+\begin{equation}
+	\bm{v}|_{\Gamma_\mathrm{i}}=\bm{0}\,,\quad
+	\bm{v}|_{\Gamma_\mathrm{o}}=\bm{0}\,,\quad
+	T|_{\Gamma_\mathrm{i}}=1\,,\quad
+	T|_{\Gamma_\mathrm{o}}=0\,.
+\end{equation}
+The interior and exterior domain are modeled as an electric insulator and the magnetic field is adjusted to scalar potentials at inner and outer boundary.
+
+The initial condition for the temperature is given by:
+\begin{equation}
+	T(\bm{x},t=\num{0})=\frac{r_\mathrm{o}r_\mathrm{i}}{rD}+\frac{r_\mathrm{i}}{D}+\frac{210A}{\sqrt{17920\gpi}}(1-3\xi^2+3\xi^4-\xi^6)\sin^4(\theta)\cos(4\varphi)\,,
+\end{equation}
+where $\xi=(2r-r_\mathrm{i}-r_\mathrm{o})/D$, $A=\num{0.1}$ and $r$, $\theta$ and $\varphi$ are spherical coordinates. The initial condition for the velocity is a vanishing velocity field:
+\begin{equation}
+	\bm{v}(\bm{x},t=\num{0})=\bm{0}\,.
+\end{equation}
+In the MHD case the same initial conditions for the velocity and the temperature apply and the initial condition for the magnetic field is given by:
+\begin{equation}
+\begin{gathered}
+	B_r=\frac{5}{8}\frac{1}{D}\left(r_\mathrm{o}-6r-2\frac{r_\mathrm{i}^4}{r^3}\right)\cos(\theta)\,,\quad
+	B_\theta=\frac{5}{8}\frac{1}{D}\left(9r-8r_\mathrm{o}-\frac{r_\mathrm{i}^4}{r^3}\right)\sin(\theta)\,,\\
+	B_\varphi=5\sin\left(\gpi\frac{r-r_\mathrm{i}}{D}\right)\sin(2\theta)\,.
+\end{gathered}
+\end{equation}
+
+\section{Discretization}
+
+IMEX scheme:
+\begin{multline}
+	\frac{1}{k_n}\left[\alpha_1\bm{v}^n+\alpha_1\bm{v}^{n-1}+\alpha_1\bm{v}^{n-2}\right]+\beta_1\bm{v}^{n-1}\cdot\nabla\bm{v}^{n-1}+\beta_2\bm{v}^{n-2}\cdot\nabla\bm{v}^{n-2}+C_1\bm{\Omega}\times\bm{v}^\star\\
+	=-\nabla p^n+C_2\left[\gamma_1\laplace\bm{v}^n+\gamma_2 \laplace\bm{v}^{n-1}\gamma_3\laplace\bm{v}^{n-2}\right]-C_3T^\star\bm{g}
+\end{multline}
+
+weak form:
+\begin{gather}
+	-\saddle{\bm{v}^{n}}{Q}=0\,, \\
+	\begin{multlined}[c]
+	\frac{1}{k_n}\alpha_1\inner{\bm{v}^{n}}{\bm{w}}-\saddle{\bm{w}}{P^{n+1}}+C_2\gamma_1\elliptic{\bm{v}^{n+1}}{\bm{w}}=-\frac{1}{k_{n+1}}\inner{\alpha_2\bm{v}^{n-1}+\alpha_3\bm{v}^{n-2}}{\bm{w}}-{}\\
+	-C_2\elliptic{\gamma_2\bm{v}^{n-1}+\gamma_3\bm{v}^{n-2}}{\bm{w}}-\beta_1\convec{\bm{v}^{n-1}}{\bm{v}^{n-1}}{\bm{w}}-{}\\
+	-\beta_2\convec{\bm{v}^{n-2}}{\bm{v}^{n-2}}{\bm{w}}-C_1\inner{\ez\times\bm{v}^\star}{\bm{w}}-C_3\inner{T^\star\bm{g}}{\bm{w}}\,,
+	\end{multlined}\\
+	\frac{1}{k_n}\inner{T^{n+1}}{U}+\frac{C_4}{2}\elliptic{T^{n+1}}{U}=-\frac{C_4}{2}\elliptic{T^n}{U}-\convec{\bm{v}^*}{T^*}{U}\,,
+\end{gather}

@@ -1,0 +1,464 @@
+% print or digital version
+\newif\ifprint
+%\printtrue
+%\printfalse
+\printfalse
+% use microtype package or not
+\newif\iffast
+\fasttrue
+%\fastfalse
+% use tikz package or not
+\newif\ifusetikz
+\usetikztrue
+%\usetikzfalse
+%------------------------------------------------------------------------------%
+%---- main packages -----------------------------------------------------------%
+%------------------------------------------------------------------------------%
+\documentclass[%
+	paper=letter,
+	twoside=false,
+	fontsize=12pt,
+	titlepage=false,
+	listof=totoc,
+	bibliography=totoc,
+	listof=flat,
+	cleardoublepage=empty,
+	headsepline=true,
+	footsepline=false,
+	captions=tableheading,
+	numbers=noendperiod,
+%	parskip=half-,
+	headings=normal,
+%	draft
+]{scrartcl}
+% >> scrhack
+%\usepackage{scrhack}
+%\KOMAoptions{hyperref=false}
+% >> lmodern
+\usepackage{lmodern}
+% >> inputenc
+\usepackage[utf8]{inputenc}
+% >> hyphenation of words containing hyphen
+\lccode`\-=`\-
+\defaulthyphenchar=127 
+% >> fontenc
+\usepackage[T1]{fontenc}
+% >> geometry
+\usepackage[letterpaper]{geometry}
+\ifprint
+\geometry{
+	includehead=true,
+	hmarginratio=1:2,
+	vmarginratio=3:5,
+	textwidth=170mm,
+	textheight=230mm,
+	headheight=20pt,
+	footskip=15mm,
+	bindingoffset=6mm
+}
+\else
+\geometry{
+	includehead=true,
+	hmarginratio=1:1,
+	vmarginratio=3:5,
+	textwidth=170mm,
+	textheight=230mm,
+	headheight=20pt,
+	footskip=15mm,
+	bindingoffset=0mm
+}
+\fi
+% >> setspace
+\usepackage{setspace}
+% >> microtype
+\iffast
+\usepackage{microtype}
+\fi
+% >> penalize single lines
+\widowpenalty=10000
+\clubpenalty=10000
+\displaywidowpenalty=10000
+% >> \tolerance und \emergencystretch
+\tolerance 1414
+\emergencystretch 1.5em
+% >> \hbadness
+\hbadness 1414
+% >> \hfuzz \vfuzz
+\hfuzz 0.3pt
+\vfuzz 0.3pt
+% >> \raggedbottom or \flushbottom
+\raggedbottom
+% >> babel
+\usepackage[main=english,ngerman,greek]{babel}
+% >> calc
+\usepackage{calc}
+% >> printlen
+\usepackage{printlen}
+%------------------------------------------------------------------------------%
+%---- math --------------------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> amsmath
+\usepackage[sumlimits,intlimits]{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amsxtra}
+\usepackage{amsfonts}
+% >> esint
+\usepackage{esint}
+% >> mathtools
+\usepackage{mathtools}
+% >> nicefrac
+\usepackage{nicefrac}
+% >> bm
+\usepackage{bm}
+% >> ragged2e
+\usepackage{ragged2e}
+% >> \left- und \righthyphenmin
+\lefthyphenmin=3 % Standard: 2
+\righthyphenmin=3 % Standard: 2
+% >> siunitx
+\usepackage{siunitx}
+\sisetup{range-phrase={\ \text{to}\ }}
+% >> stmaryrd (symbols)
+\usepackage{stmaryrd}
+%------------------------------------------------------------------------------%
+%---- tables, list ------------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% symbols used inside itemize
+\renewcommand\labelitemi{\textbulletsmall}
+\renewcommand\labelitemii{$\triangleright$}
+\renewcommand\labelitemiii{$\diamond$}
+\renewcommand\labelitemiv{--}
+% >> array
+\usepackage{array}
+\setlength{\extrarowheight}{1.5pt}
+% >> multirow
+\usepackage{multirow}
+% >> tabularx
+\usepackage{tabularx}
+% >> booktabs
+\usepackage{booktabs}
+% >> paralist
+\usepackage[neverdecrease]{paralist}
+% >> left margin of lists
+\setdefaultleftmargin{5.0ex}{2.5ex}{2.5ex}{2.5ex}{2.5ex}{2.5ex}
+% >> vertical separation of items
+\setlength{\plitemsep}{2.0pt plus 1.0pt minus 0.5pt} 
+% >> vertical distance of paragraphs inside an item
+\setlength{\plparsep}{3.0pt plus 1.0pt minus 0.5pt}
+% >> adjusted bullet symbol
+\newcommand{\textbulletsmall}{%
+	\raisebox{(\heightof{\textbullet}-\heightof{\small\textbullet})/2}%
+	{\small\textbullet}%
+}
+%------------------------------------------------------------------------------%
+%---- floats ------------------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> top, bottom and total number of floats, default: 2,1,3
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+% >> text and float fractions
+% minimum fraction of float for float page, default: 0.5
+\renewcommand{\floatpagefraction}{0.7}
+% minimum text fraction, default: 0.2
+\renewcommand{\textfraction}{0.1}
+% maximum fraction of floats at top of page, default: 0.7
+\renewcommand{\topfraction}{0.9}
+% maximum fraction of floats at bottom of page, default: 0.3
+\renewcommand{\bottomfraction}{0.7}
+% >> change default placement of floats
+\makeatletter
+\renewcommand{\fps@figure}{htbp}%
+\renewcommand{\fps@table}{htbp}%
+\makeatother
+% >> float
+\usepackage{float}
+%------------------------------------------------------------------------------%
+%---- graphics ----------------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> xcolor
+\usepackage{xcolor}
+% >> graphicx
+\usepackage{graphicx}
+\graphicspath{{./figures/}}
+% >> tikz
+\usepackage{tikz}
+\usetikzlibrary{
+	arrows,
+	shapes,
+	intersections,
+	positioning,
+	calc,
+	patterns,
+%	external
+	}
+%\tikzexternalize[prefix=tikzexternal/]
+% >> pgfplots
+\usepackage{pgfplots}
+\pgfplotsset{
+	compat=newest,
+	colormap={coldwarm}{
+		rgb255(0cm)=(59,76,192);
+		rgb255(0.0625cm)=(68,90,204);
+		rgb255(0.125cm)=(77,104,215);
+		rgb255(0.1875cm)=(87,117,225);
+		rgb255(0.25cm)=(98,130,234);
+		rgb255(0.3125cm)=(108,142,241);
+		rgb255(0.375cm)=(119,154,247);
+		rgb255(0.4375cm)=(130,165,251);
+		rgb255(0.5cm)=(141,176,254);
+		rgb255(0.5625cm)=(152,185,255);
+		rgb255(0.625cm)=(163,194,255);
+		rgb255(0.6875cm)=(174,201,253);
+		rgb255(0.75cm)=(184,208,249);
+		rgb255(0.8125cm)=(194,213,244);
+		rgb255(0.875cm)=(204,217,238);
+		rgb255(0.9375cm)=(213,219,230);
+		rgb255(1cm)=(221,221,221);
+		rgb255(1.0625cm)=(229,216,209);
+		rgb255(1.125cm)=(236,211,197);
+		rgb255(1.1875cm)=(241,204,185);
+		rgb255(1.25cm)=(245,196,173);
+		rgb255(1.3125cm)=(247,187,160);
+		rgb255(1.375cm)=(247,177,148);
+		rgb255(1.4375cm)=(247,166,135);
+		rgb255(1.5cm)=(244,154,123);
+		rgb255(1.5625cm)=(241,141,111);
+		rgb255(1.625cm)=(236,127,99);
+		rgb255(1.6875cm)=(229,112,88);
+		rgb255(1.75cm)=(222,96,77);
+		rgb255(1.8125cm)=(213,80,66);
+		rgb255(1.875cm)=(203,62,56);
+		rgb255(1.9375cm)=(192,40,47);
+		rgb255(2cm)=(180,4,38);
+	}
+}
+% >> pgfplotstable
+\usepackage{pgfplotstable}
+%------------------------------------------------------------------------------%
+%---- hyperlinks, captions ----------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> subfig
+\usepackage{subfig}
+% >> caption
+\usepackage{caption}
+\captionsetup{
+	font=sf,
+	format=hang,
+	justification=RaggedRight,
+	singlelinecheck=true,
+	labelfont=bf,
+	textfont=rm,
+	position=bottom
+}
+\captionsetup[subfloat]{
+	font=small,
+	labelfont=rm,
+	textfont=rm,
+	captionskip=10pt,
+	nearskip=0pt,
+	labelformat=parens
+}
+% >> color definitions
+% note: use before hyperref
+%		use after xcolor
+\definecolor{seclinks}{rgb}{0,0,0.5}  % blau, Verweise auf Abschnitte, Floats
+\definecolor{citelinks}{rgb}{0,0.5,0} % grün, Verweise auf Quellen/Literatur
+\definecolor{urllinks}{rgb}{0,0,0}    % schwarz, Verweise auf externe URLs
+% >> hyperref
+\usepackage{hyperref}
+\hypersetup{%
+	%hyperfootnotes=true,
+	plainpages=false,
+	linktocpage=false,
+	unicode=true,
+	breaklinks=true
+}
+\ifprint
+\hypersetup{%
+	colorlinks=false,
+	pdfborder=0 0 0,
+	pdfpagelayout=TwoColumnRight
+}
+\else
+\hypersetup{%
+	colorlinks=true,             % Links werden farblich dargestellt
+	linkcolor=seclinks,          % "normal internal links" > Farbdefinition s.o.
+	citecolor=citelinks,         % "bibliographical cites" > Farbdefinition s.o.
+	urlcolor=urllinks,           % URLs > Farbdefinition s.o.
+	pdfpagelayout=OneColumn      % eine Seite, kontinuierliches Scrollen
+}
+\fi
+% >> \...autorefname
+\AtBeginDocument{\renewcommand{\figureautorefname}{Fig.}}
+\AtBeginDocument{\newcommand{\subfigureautorefname}{Fig.}}
+\AtBeginDocument{\renewcommand{\tableautorefname}{Tab.}}
+\AtBeginDocument{\renewcommand{\equationautorefname}{Eq.}}
+\AtBeginDocument{\renewcommand{\chapterautorefname}{Chapter}}
+\AtBeginDocument{\renewcommand{\sectionautorefname}{Sect.}}
+\AtBeginDocument{\renewcommand{\subsectionautorefname}{Sect.}}
+\AtBeginDocument{\renewcommand{\subsubsectionautorefname}{Sect.}}
+\AtBeginDocument{\renewcommand{\appendixautorefname}{App.}}
+% >> url
+\usepackage{url}
+% >> bookmark
+\usepackage{bookmark}
+\bookmarksetup{%
+	open=true,        % Bookmark-Baumstruktur ausgeklappt
+	openlevel=1,      % Anzahl der Ebenen, die ausgeklappt werden
+	numbered=true     % Nummerierung d. Bookmarks mit Nummern
+}
+% >> hypcap
+\usepackage[all]{hypcap}
+\renewcommand{\hypcapspace}{\baselineskip}
+%------------------------------------------------------------------------------%
+%---- auxiliary packages ------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> pdfpages
+\usepackage{pdfpages}
+% >> listings
+\usepackage{listings}
+% >> xspace
+\usepackage{xspace}
+% >> \numberwithin
+% note: use after loading amsmath
+%       use after hyperref
+%\numberwithin{equation}{section}
+%\numberwithin{figure}{section}
+%\numberwithin{table}{section}
+% >> blindtext
+\usepackage{blindtext}
+% >> biblatex
+\usepackage[
+	backend=bibtex,
+	style=authoryear,
+	citestyle=numeric
+]{biblatex}
+\addbibresource{references.bib}
+% >> ifdraft
+\usepackage{ifdraft}
+% >> todonotes
+\usepackage{todonotes}
+%------------------------------------------------------------------------------%
+%---- macros ------------------------------------------------------------------%
+%------------------------------------------------------------------------------%
+% >> abbreviations
+\newcommand{\viz}{\textit{viz.}, }
+\newcommand{\ie}{\textit{i.e.}\ }
+\newcommand{\eg}{\textit{e.g.}, }
+\newcommand{\cf}{\textit{cf.}\ }
+\newcommand{\wrt}{w.r.t.\ }
+\newcommand{\etc}{\textit{etc.}\ }
+% >> upright latin letters
+\renewcommand{\d}[1]{\ensuremath{\mathrm{d}#1} }
+\newcommand{\drm}[1]{\ensuremath{\,\mathrm{d}#1}}
+\newcommand{\irm}{\ensuremath{\mathrm{i}}}
+% >> roman numerals
+\makeatletter
+\newcommand*{\rom}[1]{\expandafter\@slowromancap\romannumeral #1@}
+\makeatother
+% >> upright greek letters
+\newcommand{\gpi}{\textrm{\greektext p}}
+\newcommand{\gmu}{\textrm{\greektext m}}
+\newcommand{\geta}{\textrm{\greektext h}}
+\newcommand{\gLambda}{\textit{\greektext L}}
+\newcommand{\laplace}{\text{\textgreek{D}}}
+% >> variant greek letters
+\newcommand{\vr}{\varrho}
+\newcommand{\vt}{\vartheta}
+\newcommand{\vp}{\varphi}
+% >> upright greek letters
+\newcommand{\veps}{\varepsilon}
+% >> basis vectors
+\newcommand{\ex}{\bm{e}_x}
+\newcommand{\ey}{\bm{e}_y}
+\newcommand{\ez}{\bm{e}_z}
+\newcommand{\er}{\bm{e}_r}
+\newcommand{\etheta}{\bm{e}_\theta}
+\newcommand{\ephi}{\bm{e}_\varphi}
+% >> references scales
+\newcommand{\tref}{t_{\mathrm{ref.}}}
+\newcommand{\lref}{\ell_{\mathrm{ref.}}}
+\newcommand{\vref}{v_{\mathrm{ref.}}}
+\newcommand{\pref}{p_{\mathrm{ref.}}}
+\newcommand{\fref}{f_{\mathrm{ref.}}}
+% >> dimensionless numbers
+\newcommand{\Reynolds}{\mathit{Re}}
+\newcommand{\magReynolds}{\mathit{Rm}}
+\newcommand{\Prandtl}{\mathit{Pr}}
+\newcommand{\magPrandtl}{\mathit{Pm}}
+\newcommand{\Rayleigh}{\mathit{Ra}}
+\newcommand{\modRayleigh}{\mathit{Ra}^*}
+\newcommand{\Rossby}{\mathit{Ro}}
+\newcommand{\Elsasser}{\mathit{\gLambda}}
+\newcommand{\Euler}{\mathit{Eu}}
+\newcommand{\Froude}{\mathit{Fr}}
+\newcommand{\Ekman}{\mathit{E}}
+% >> derivatives
+\newcommand{\p}{\partial}
+\newcommand{\dd}[2]{\frac{\mathrm{d} #1}{\mathrm{d} #2}}
+\newcommand{\ddsqr}[2]{\frac{\mathrm{d}^2 #1}{\mathrm{d} #2^2}}
+\newcommand{\pd}[2]{\frac{\p #1}{\p #2}}
+\newcommand{\ppd}[3]{\frac{\p^2 #1}{\p #2\p #3}}
+\newcommand{\pdsqr}[2]{\frac{\p^2 #1}{\p #2^2}}
+% >> big operators
+\makeatletter
+\DeclareRobustCommand\bigop[1]{%
+	\mathop{\vphantom{\sum}\mathpalette\bigop@{#1}}\slimits@
+}
+\newcommand{\bigop@}[2]{%
+	\vcenter{%
+		\sbox\z@{$#1\sum$}%
+		\hbox{\resizebox{\ifx#1\displaystyle.9\fi\dimexpr\ht\z@+\dp\z@}{!}{$\m@th#2$}}%
+	}%
+}
+\makeatother
+% >> new definition of square root, it renames \sqrt as \oldsqrt
+%\let\oldsqrt\sqrt
+%\def\sqrt{\mathpalette\DHLhksqrt}
+%\def\DHLhksqrt#1#2{%
+%	\setbox0=\hbox{$#1\oldsqrt{#2\,}$}\dimen0=\ht0
+%	\advance\dimen0-0.2\ht0
+%	\setbox2=\hbox{\vrule height\ht0 depth -\dimen0}%
+%	{\box0\lower0.4pt\box2}}
+% >> assembly operator
+\newcommand{\assembly}{\bigop{\mathsf{A}}}
+% >> math operators
+\newcommand{\jump}[1]{\ensuremath{\left[\!\left[#1\right]\!\right]}}
+\newcommand{\deter}[1]{\det{\left(\bm{#1}\right)}}
+\newcommand{\trace}[1]{\operatorname{tr}\left(#1\right)}
+\newcommand{\order}[1]{\ensuremath{\mathcal{O}\left(#1\right)}}
+\newcommand{\abs}[1]{\ensuremath{\left| #1 \right|}}
+\newcommand{\norm}[1]{\ensuremath{\left|\!\left| #1 \right|\!\right|}}
+\newcommand{\scalar}[2]{\ensuremath{\left\langle #1,#2\right\rangle}}
+\newcommand{\conj}[1]{\ensuremath{\overline{#1}}}
+\newcommand{\cdott}{{{}\cdot\!\cdot{}\,{}}}
+% >> spherical values
+\newcommand{\sinTheta}{\sin(\theta)}
+\newcommand{\cosTheta}{\cos(\theta)}
+\newcommand{\sinPhi}{\sin(\varphi)}
+\newcommand{\cosPhi}{\cos(\varphi)}
+% >> weak form operators
+\newcommand*{\inner}[2]{\left(#1, #2\right)_{\!{\Omega}}}
+\newcommand*{\innerSurf}[2]{\left\langle#1, #2\right\rangle_{\!{\Gamma}}}
+\newcommand*{\innerSurfCustom}[3]{\left\langle#1, #2\right\rangle_{\!{#3}}}
+\newcommand*{\elliptic}[2]{\mathcal{A}(#1, #2)}
+\newcommand*{\saddle}[2]{\mathcal{B}(#1, #2)}
+\newcommand*{\convec}[3]{\mathcal{C}(#1, #2, #3)}
+%------------------------------------------------------------------------------%
+\begin{document}
+% >> title
+\title{Ideas for the deal.ii dynamo}
+\author{Sebastian Glane}
+\date{\today}
+\maketitle
+% >> table of contents
+\tableofcontents
+% >> main text
+\input{text.tex}
+\cleardoublepage
+% >> \bibliography
+\printbibliography
+%------------------------------------------------------------------------------%
+\end{document}
