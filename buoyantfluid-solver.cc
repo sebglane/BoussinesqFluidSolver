@@ -770,7 +770,7 @@ local_rhs(data.local_rhs),
 local_dof_indices(data.local_dof_indices)
 {}
 
-}  // namespace CopyData
+}  // namespace Copy
 
 }  // namespace Assembly
 
@@ -1029,6 +1029,7 @@ private:
     // pointers to preconditioners
     std::shared_ptr<PreconditionerTypeA>        preconditioner_A;
     std::shared_ptr<PreconditionerTypeKp>       preconditioner_Kp;
+    std::shared_ptr<PreconditionIdentity>       preconditioner_Id;
     std::shared_ptr<PreconditionerTypeMp>       preconditioner_Mp;
     std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
 
@@ -1051,6 +1052,7 @@ public:
 
         // runtime parameters
         bool    workstream_assembly;
+        bool    assemble_schur_complement;
 
         // physics parameters
         double aspect_ratio;
@@ -1233,6 +1235,7 @@ template<int dim>
 BuoyantFluidSolver<dim>::Parameters::Parameters(const std::string &parameter_filename)
 :
 // runtime parameters
+assemble_schur_complement(true),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
@@ -1297,6 +1300,10 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
 {
     prm.enter_subsection("Runtime parameters");
     {
+        prm.declare_entry("assemble_schur_complement",
+                "false",
+                Patterns::Bool(),
+                "Perform an explicit assembly of pressure stiffness matrix");
     }
     prm.leave_subsection();
 
@@ -1400,36 +1407,10 @@ void BuoyantFluidSolver<dim>::Parameters::declare_parameters(ParameterHandler &p
                 Patterns::Integer(),
                 "Maximum number of iteration. That is the maximum number of time steps.");
 
-        prm.declare_entry("dt_initial",
+        prm.declare_entry("time_step",
                 "1e-4",
                 Patterns::Double(),
-                "Initial time step.");
-
-        prm.declare_entry("dt_min",
-                "1e-6",
-                Patterns::Double(),
-                "Maximum time step.");
-
-        prm.declare_entry("dt_max",
-                "1e-1",
-                Patterns::Double(),
-                "Maximum time step.");
-
-        prm.declare_entry("cfl_min",
-                "0.3",
-                Patterns::Double(),
-                "Minimal value for the cfl number.");
-
-        prm.declare_entry("cfl_max",
-                "0.7",
-                Patterns::Double(),
-                "Maximal value for the cfl number.");
-
-        prm.declare_entry("adaptive_timestep",
-                "true",
-                Patterns::Bool(),
-                "Turn adaptive time stepping on or off");
-
+                "time step.");
 
         // TODO: move to logging
         prm.declare_entry("output_freq",
@@ -1451,6 +1432,7 @@ void BuoyantFluidSolver<dim>::Parameters::parse_parameters(ParameterHandler &prm
 {
     prm.enter_subsection("Runtime parameters");
     {
+        assemble_schur_complement = prm.get_bool("assemble_schur_complement");
     }
     prm.leave_subsection();
 
@@ -1724,6 +1706,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         stokes_constraints.close();
     }
     // stokes constraints for pressure laplace matrix
+    if (parameters.assemble_schur_complement)
     {
         stokes_laplace_constraints.clear();
 
@@ -1763,6 +1746,10 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         stokes_laplace_constraints.add_line(first_boundary_dof);
 
         stokes_laplace_constraints.close();
+    }
+    else
+    {
+        stokes_laplace_constraints.clear();
     }
     // stokes matrix and vector setup
     setup_stokes_matrix(dofs_per_block);
@@ -1804,6 +1791,7 @@ void BuoyantFluidSolver<dim>::setup_stokes_matrix(
     preconditioner_A.reset();
     preconditioner_Kp.reset();
     preconditioner_Mp.reset();
+    preconditioner_Id.reset();
 
     stokes_matrix.clear();
     stokes_laplace_matrix.clear();
@@ -1847,6 +1835,9 @@ void BuoyantFluidSolver<dim>::setup_stokes_matrix(
                     stokes_laplace_coupling[c][d] = DoFTools::none;
 
         BlockDynamicSparsityPattern laplace_dsp(dofs_per_block, dofs_per_block);
+
+        const ConstraintMatrix &constraints_used =(parameters.assemble_schur_complement?
+                                                        stokes_laplace_constraints: stokes_constraints);
 
         DoFTools::make_sparsity_pattern(stokes_dof_handler,
                                         stokes_laplace_coupling,
@@ -2026,81 +2017,81 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
-    // assemble temperature matrices
-    if (rebuild_temperature_matrices)
-    {
-        temperature_mass_matrix = 0;
-        temperature_stiffness_matrix = 0;
+        // assemble temperature matrices
+        if (rebuild_temperature_matrices)
+        {
+            temperature_mass_matrix = 0;
+            temperature_stiffness_matrix = 0;
 
+            WorkStream::run(
+                    temperature_dof_handler.begin_active(),
+                    temperature_dof_handler.end(),
+                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
+                              this,
+                              std::placeholders::_1,
+                              std::placeholders::_2,
+                              std::placeholders::_3),
+                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
+                              this,
+                              std::placeholders::_1),
+                    Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
+                                                              mapping,
+                                                              quadrature_formula),
+                    Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
+
+            const std::vector<double> alpha = (timestep_number != 0?
+                                                    imex_coefficients.alpha(timestep/old_timestep):
+                                                    std::vector<double>({1.0,-1.0,0.0}));
+            const std::vector<double> gamma = (timestep_number != 0?
+                                                    imex_coefficients.gamma(timestep/old_timestep):
+                                                    std::vector<double>({1.0,0.0,0.0}));
+
+            temperature_matrix.copy_from(temperature_mass_matrix);
+            temperature_matrix *= alpha[0];
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                                   temperature_stiffness_matrix);
+
+        rebuild_temperature_matrices = false;
+            rebuild_temperature_preconditioner = true;
+        }
+    else if (timestep_number == 1 || timestep_modified)
+        {
+            Assert(timestep_number != 0, ExcInternalError());
+
+            const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+            const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
+
+            temperature_matrix.copy_from(temperature_mass_matrix);
+            temperature_matrix *= alpha[0];
+            temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+                                   temperature_stiffness_matrix);
+
+            rebuild_temperature_preconditioner = true;
+        }
+    // reset all entries
+    temperature_rhs = 0;
+
+        // assemble temperature right-hand side
         WorkStream::run(
                 temperature_dof_handler.begin_active(),
                 temperature_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
                           this,
                           std::placeholders::_1,
                           std::placeholders::_2,
                           std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
                           this,
                           std::placeholders::_1),
-                Assembly::Scratch::TemperatureMatrix<dim>(temperature_fe,
-                                                          mapping,
-                                                          quadrature_formula),
-                Assembly::CopyData::TemperatureMatrix<dim>(temperature_fe));
-
-        const std::vector<double> alpha = (timestep_number != 0?
-                                                imex_coefficients.alpha(timestep/old_timestep):
-                                                std::vector<double>({1.0,-1.0,0.0}));
-        const std::vector<double> gamma = (timestep_number != 0?
-                                                imex_coefficients.gamma(timestep/old_timestep):
-                                                std::vector<double>({1.0,0.0,0.0}));
-
-        temperature_matrix.copy_from(temperature_mass_matrix);
-        temperature_matrix *= alpha[0];
-        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                               temperature_stiffness_matrix);
-
-        rebuild_temperature_matrices = false;
-        rebuild_temperature_preconditioner = true;
-    }
-    else if (timestep_number == 1 || timestep_modified)
-    {
-        Assert(timestep_number != 0, ExcInternalError());
-
-        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-        const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
-
-        temperature_matrix.copy_from(temperature_mass_matrix);
-        temperature_matrix *= alpha[0];
-        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
-                               temperature_stiffness_matrix);
-
-        rebuild_temperature_preconditioner = true;
-    }
-    // reset all entries
-    temperature_rhs = 0;
-
-    // assemble temperature right-hand side
-    WorkStream::run(
-            temperature_dof_handler.begin_active(),
-            temperature_dof_handler.end(),
-            std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
-                      this,
-                      std::placeholders::_1,
-                      std::placeholders::_2,
-                      std::placeholders::_3),
-            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
-                      this,
-                      std::placeholders::_1),
-            Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
-                                                             mapping,
-                                                             quadrature_formula,
-                                                             update_values|
-                                                             update_gradients|
-                                                             update_JxW_values,
-                                                             stokes_fe,
-                                                             update_values),
-            Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
+                Assembly::Scratch::TemperatureRightHandSide<dim>(temperature_fe,
+                                                                 mapping,
+                                                                 quadrature_formula,
+                                                                 update_values|
+                                                                 update_gradients|
+                                                                 update_JxW_values,
+                                                                 stokes_fe,
+                                                                 update_values),
+                Assembly::CopyData::TemperatureRightHandSide<dim>(temperature_fe));
 
 }
 
@@ -2152,6 +2143,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
             scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
             scratch.div_phi_v[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
             scratch.phi_p[k] = scratch.stokes_fe_values[pressure].value(k, q);
+            if (parameters.assemble_schur_complement)
             scratch.grad_phi_p[k] = scratch.stokes_fe_values[pressure].gradient(k, q);
         }
         for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -2167,7 +2159,8 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
                 data.local_stiffness_matrix(i,j)
                     += (
                           scalar_product(scratch.grad_phi_v[i], scratch.grad_phi_v[j])
-                        + scratch.grad_phi_p[i] * scratch.grad_phi_p[j]
+                        + (parameters.assemble_schur_complement?
+                                scratch.grad_phi_p[i] * scratch.grad_phi_p[j] : 0)
                         ) * scratch.stokes_fe_values.JxW(q);
             }
     }
@@ -2187,7 +2180,12 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
             data.local_matrix,
             data.local_dof_indices,
             stokes_matrix);
-    stokes_laplace_constraints.distribute_local_to_global(
+
+    const ConstraintMatrix &constraints_used
+    = (parameters.assemble_schur_complement?
+            stokes_laplace_constraints: stokes_constraints);
+
+    constraints_used.distribute_local_to_global(
             data.local_stiffness_matrix,
             data.local_dof_indices,
             stokes_laplace_matrix);
@@ -2250,7 +2248,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
             scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
         }
 
-        // TODO: initial step
         const Tensor<1,dim> time_derivative_velocity
             = alpha[1] * scratch.old_velocity_values[q]
                 + alpha[2] * scratch.old_old_velocity_values[q];
@@ -2329,68 +2326,87 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
         stokes_matrix = 0;
         stokes_laplace_matrix = 0;
 
-        // assemble matrix
-        WorkStream::run(
-                stokes_dof_handler.begin_active(),
-                stokes_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
-                          this,
-                          std::placeholders::_1,
-                          std::placeholders::_2,
-                          std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
-                          this,
-                          std::placeholders::_1),
-                Assembly::Scratch::StokesMatrix<dim>(
-                        stokes_fe,
-                        mapping,
-                        quadrature_formula,
-                        update_values|
-                        update_gradients|
-                        update_JxW_values),
-                Assembly::CopyData::StokesMatrix<dim>(stokes_fe));
+            // assemble matrix
+            WorkStream::run(
+                    stokes_dof_handler.begin_active(),
+                    stokes_dof_handler.end(),
+                    std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
+                              this,
+                              std::placeholders::_1,
+                              std::placeholders::_2,
+                              std::placeholders::_3),
+                    std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
+                              this,
+                              std::placeholders::_1),
+                    Assembly::Scratch::StokesMatrix<dim>(
+                            stokes_fe,
+                            mapping,
+                            quadrature_formula,
+                            update_values|
+                            update_gradients|
+                            update_JxW_values),
+                    Assembly::CopyData::StokesMatrix<dim>(stokes_fe));
 
-        // copy velocity mass matrix
-        velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
-        velocity_mass_matrix.copy_from(stokes_matrix.block(0,0));
+            // copy velocity mass matrix
+            velocity_mass_matrix.reinit(stokes_sparsity_pattern.block(0,0));
+            velocity_mass_matrix.copy_from(stokes_matrix.block(0,0));
 
-        // copy pressure mass matrix
-        pressure_mass_matrix.reinit(stokes_sparsity_pattern.block(1,1));
-        pressure_mass_matrix.copy_from(stokes_matrix.block(1,1));
-        stokes_matrix.block(1,1) = 0;
+            // copy pressure mass matrix
+            pressure_mass_matrix.reinit(stokes_sparsity_pattern.block(1,1));
+            pressure_mass_matrix.copy_from(stokes_matrix.block(1,1));
+            stokes_matrix.block(1,1) = 0;
 
-        // time stepping coefficients
-        const std::vector<double> alpha = (timestep_number != 0?
-                                            imex_coefficients.alpha(timestep/old_timestep):
-                                            std::vector<double>({1.0,-1.0,0.0}));
-        const std::vector<double> gamma = (timestep_number != 0?
-                                            imex_coefficients.gamma(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0,0.0}));
-        // correct (0,0)-block of stokes system
-        stokes_matrix.block(0,0) *= alpha[0];
-        stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
-                                     stokes_laplace_matrix.block(0,0));
+            // time stepping coefficients
+            const std::vector<double> alpha = (timestep_number != 0?
+                                                imex_coefficients.alpha(timestep/old_timestep):
+                                                std::vector<double>({1.0,-1.0,0.0}));
+            const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+            // correct (0,0)-block of stokes system
+            stokes_matrix.block(0,0) *= alpha[0];
+            stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
+                                         stokes_laplace_matrix.block(0,0));
 
-        // adjust factors in the pressure matrices
-        factor_Kp = alpha[0];
-        factor_Mp = timestep * gamma[0] * equation_coefficients[1];
+            // adjust factors in the pressure matrices
+            factor_Kp = alpha[0];
+            factor_Mp = timestep * gamma[0] * equation_coefficients[1];
 
-        // rebuilding pressure stiffness matrix preconditioner
-        preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
-        (new PreconditionerTypeKp());
+            // rebuilding pressure stiffness matrix preconditioner
+            if (parameters.assemble_schur_complement)
+            {
+            preconditioner_Kp = std::shared_ptr<PreconditionerTypeKp>
+            (new PreconditionerTypeKp());
 
-        PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
-        preconditioner_Kp_data.smoother_sweeps = 3;
-        preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
-                                      preconditioner_Kp_data);
+            PreconditionerTypeKp::AdditionalData preconditioner_Kp_data;
+            preconditioner_Kp_data.smoother_sweeps = 3;
+            preconditioner_Kp->initialize(stokes_laplace_matrix.block(1,1),
+                                          preconditioner_Kp_data);
+            }
+            else
+            {
+                Vector<double> tmp1(velocity_mass_matrix.m()), tmp2(tmp1);
+                tmp1 = 1.0;
+                tmp2 = 0.0;
 
-        // rebuilding pressure mass matrix preconditioner
-        preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
+                velocity_mass_matrix.precondition_Jacobi(tmp2, tmp1);
+                stokes_matrix.block(1,0).mmult(stokes_laplace_matrix.block(1,1),
+                                               stokes_matrix.block(0,1),
+                                               tmp2,
+                                               false);
 
-        preconditioner_Mp->initialize(pressure_mass_matrix);
+                preconditioner_Id = std::shared_ptr<PreconditionIdentity>
+                (new PreconditionIdentity());
+                preconditioner_Id->initialize(stokes_laplace_matrix.block(1,1));
+            }
 
-        // rebuild the preconditioner of the velocity block
-        rebuild_stokes_preconditioner = true;
+            // rebuilding pressure mass matrix preconditioner
+            preconditioner_Mp = std::shared_ptr<PreconditionerTypeMp>(new PreconditionerTypeMp());
+
+            preconditioner_Mp->initialize(pressure_mass_matrix);
+
+            // rebuild the preconditioner of the velocity block
+            rebuild_stokes_preconditioner = true;
 
         // do not rebuild stokes matrices
         rebuild_stokes_matrices = false;
@@ -2443,7 +2459,6 @@ void BuoyantFluidSolver<dim>::assemble_stokes_system()
                     update_values),
             Assembly::CopyData::StokesMatrixRightHandSide<dim>(stokes_fe));
 }
-
 template<int dim>
 void BuoyantFluidSolver<dim>::build_stokes_preconditioner()
 {
@@ -2880,6 +2895,20 @@ void BuoyantFluidSolver<dim>::solve()
 
         stokes_constraints.set_zero(stokes_solution);
 
+        PrimitiveVectorMemory<BlockVector<double>> vector_memory;
+
+        SolverControl solver_control(parameters.n_max_iter,
+                                     std::max(parameters.abs_tol,
+                                              parameters.rel_tol * stokes_rhs.l2_norm()));
+
+        SolverFGMRES<BlockVector<double>>
+        solver(solver_control,
+               vector_memory,
+               SolverFGMRES<BlockVector<double>>::AdditionalData(30, true));
+
+
+        if (parameters.assemble_schur_complement)
+        {
         const Preconditioning::BlockSchurPreconditioner<PreconditionerTypeA, PreconditionerTypeMp, PreconditionerTypeKp>
             preconditioner(stokes_matrix,
                            pressure_mass_matrix,
@@ -2891,16 +2920,30 @@ void BuoyantFluidSolver<dim>::solve()
                            factor_Mp,
                            false);
 
-        PrimitiveVectorMemory<BlockVector<double>> vector_memory;
-
-        SolverControl solver_control(parameters.n_max_iter,
-                                     std::max(parameters.abs_tol,
-                                              parameters.rel_tol * stokes_rhs.l2_norm()));
-
-        SolverFGMRES<BlockVector<double>>
-        solver(solver_control,
-               vector_memory,
-               SolverFGMRES<BlockVector<double>>::AdditionalData(30, true));
+            solver.solve(stokes_matrix,
+                    stokes_solution,
+                    stokes_rhs,
+                    preconditioner);
+            std::cout << "      "
+                      << solver_control.last_step()
+                      << " GMRES iterations for stokes system, "
+                      << " (Kp: " << preconditioner.n_iterations_Kp()
+                      << ", Mp: " << preconditioner.n_iterations_Mp()
+                      << ")"
+                      << std::endl;
+        }
+        else
+        {
+            const Preconditioning::BlockSchurPreconditioner<PreconditionerTypeA, PreconditionerTypeMp, PreconditionIdentity>
+            preconditioner(stokes_matrix,
+                           pressure_mass_matrix,
+                           stokes_laplace_matrix.block(1,1),
+                           *preconditioner_A,
+                           *preconditioner_Id,
+                           factor_Kp,
+                           *preconditioner_Mp,
+                           factor_Mp,
+                           false);
 
         solver.solve(stokes_matrix,
                      stokes_solution,
@@ -2914,6 +2957,7 @@ void BuoyantFluidSolver<dim>::solve()
                   << ", Mp: " << preconditioner.n_iterations_Mp()
                   << ")"
                   << std::endl;
+        }
 
         stokes_constraints.distribute(stokes_solution);
     }
@@ -2999,7 +3043,7 @@ void BuoyantFluidSolver<dim>::run()
                                   timestep / old_timestep,
                                   old_old_temperature_solution);
 
-        // copy temperature solution
+        // extrapolate stokes solution
         old_old_stokes_solution = old_stokes_solution;
         old_stokes_solution = stokes_solution;
 
