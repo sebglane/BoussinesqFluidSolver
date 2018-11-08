@@ -4,9 +4,10 @@ SET(TARGET "main")
 SET(TARGET_SRC
   main.cc
   assembly_data.cc
+  buoyant_fluid_solver.cc
+  initial_values.cc
   preconditioning.cc
   timestepping.cc
-  initial_values.cc
   # You can specify additional files here!
 )
 
