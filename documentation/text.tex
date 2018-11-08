@@ -1,8 +1,8 @@
 \section{Introduction}
-The objective is to solve the following set of dimensionless equations for the velocity, $\bm{v}$, a pressure, $P$, the temperature, $T$, and the magnetic field, $\bm{B}$:
+The objective of this code is to solve the following set of dimensionless equations for the velocity, $\bm{v}$, a pressure, $P$, the temperature, $T$, and the magnetic field, $\bm{B}$:
 \begin{gather}
 	\nabla\cdot\bm{v}=0\,,\quad
-	\pd{\bm{v}}{t}+\bm{v}\cdot\nabla\otimes\bm{v}+C_1\bm{\Omega}\times\bm{v}=-\nabla P+C_2\laplace\bm{v}-C_3T\bm{g}+C_5(\nabla\times\bm{B})\times\bm{B}\,,\label{eqn:Momentum}\\
+	\pd{\bm{v}}{t}+\bm{v}\cdot\nabla\bm{v}+C_1\bm{\Omega}\times\bm{v}=-\nabla P+C_2\laplace\bm{v}-C_3T\bm{g}+C_5(\nabla\times\bm{B})\times\bm{B}\,,\label{eqn:Momentum}\\
 	\pd{T}{t}+\bm{v}\cdot\nabla T=C_4\laplace T\,,\label{eqn:Energy}\\
 	\nabla\cdot\bm{B}=0\,,\qquad
 	\pd{\bm{B}}{t}=\nabla\times(\bm{v}\times\bm{B})-C_5\nabla\times(\nabla\times\bm{B})\,,\label{eqn:MagneticInduction}
@@ -57,42 +57,156 @@ In the hydrodynamic case, the magnetic field is not present and the Lorentz forc
 where $\bm A \star \bm B$ represents the contraction of two tensors $\bm A$ and $\bm B$ of arbitrary rank to a scalar. Furthermore, we introduce operators related to viscosity/diffusion~($\mathcal{A}$), incompressible/pressure~($\mathcal{B}$) and convection~($\mathcal{C}$).
 \begin{align*}
 \begin{aligned}
-	\elliptic{\bm{\phi}}{\bm{\psi}}&=\inner{\nabla\otimes\bm{\phi}}{\nabla\otimes\bm{\psi}}\,, &
+	\elliptic{\bm{\phi}}{\bm{\psi}}&=\inner{\nabla\bm{\phi}}{\nabla\bm{\psi}}\,, &
 	\saddle{\bm{\phi}}{\psi}&=\inner{\nabla\cdot\bm{\phi}}{\psi}\,, &
-	\convec{\bm{\phi}}{\bm{\psi}}{\bm{\chi}}&=\inner{\bm{\phi} \cdot (\nabla\otimes\bm{\psi})}{\bm{\chi}}\,.
+	\convec{\bm{\phi}}{\bm{\psi}}{\bm{\chi}}&=\inner{\bm{\phi} \cdot (\nabla\bm{\psi})}{\bm{\chi}}\,.
 \end{aligned}
 \end{align*}
-The test functions for the incompressible condition are denoted by $Q$, by $\bm{w}$ and $U$ for the momentum equation and the energy equation, respectively. The problem is Dirichlet problem for the velocity and the temperature. This has the consequence that the test functions vanishes on the boundary and the boundary terms that occur during integration by parts vanishes as well. The weak form of the problem reads: Find $\bm{v}$, $P$ and $T$ such that
+The test functions are denoted by $Q$, $\bm{w}$ and $U$. We test the incompressibility constraint by $Q$, the momentum equation by $\bm{w}$ and the energy equation by $U$. The problem considered herre shall be a Dirichlet problem for the velocity and the temperature. This has the consequence that the test functions vanishes on the boundary and the boundary terms that occur when applying integration by parts vanishes as well. The weak form of the problem reads: Find $\bm{v}$, $P$ and $T$ such that
 \begin{align}
-	\saddle{\bm{v}}{Q}&=0\,, \\
-	\inner{\pd{\bm{v}}{t}}{\bm{w}}+\convec{\bm{v}}{\bm{v}}{\bm{w}}+C_1\inner{\bm{\Omega}\times\bm{v}}{\bm{w}}&=\saddle{\bm{w}}{P}-C_2\elliptic{\bm{v}}{\bm{w}}+C_3\inner{T\bm{g}}{\bm{w}}\,,\\
+	\saddle{\bm{v}}{Q}&=0\,,\label{eqn:WeakIncompressibility} \\
+	\inner{\pd{\bm{v}}{t}}{\bm{w}}+\convec{\bm{v}}{\bm{v}}{\bm{w}}+C_1\inner{\bm{\Omega}\times\bm{v}}{\bm{w}}&=\saddle{\bm{w}}{P}-C_2\elliptic{\bm{v}}{\bm{w}}+C_3\inner{T\bm{g}}{\bm{w}}\,,\label{eqn:WeakMomentum}\\
 	\inner{\pd{T}{t}}{U}+\convec{\bm{v}}{T}{U}&=-C_4\elliptic{T}{U}\,,
+	\label{eqn:WeakEnergy}
 \end{align}
-holds for all test functions $\bm{w}$, $Q$, $U$.
+holds for all test functions $\bm{w}$, $Q$, $U$. Note that due to integration by parts the signs associated to $\mathcal{A}$ and $\mathcal{B}$ are reversed on the right-hand sides of Eqs.\,\eqref{eqn:WeakMomentum} and \eqref{eqn:WeakEnergy}.
 
-The time stepping method is discussed next in context with the differential equation. An application to the weak is straightforward and presented afterwards. For the time stepping, almost all of the codes discussed in \cite{Matsui2016} use the Crank-Nicolson scheme for the linear terms and Adams-Bashforth extrapolation for the other terms. These scheme falls in the category of linear implicit-explicit multistep methods or IMEX schemes, see \cite{Ascher1995}. IMEX schemes treat the linear stiff terms implicitly and the non-linear terms are treated explicitly. The main advantage of these schemes in contrast of other stiffly accurate schemes is that the resulting system of equation is linear in each time step, which is computationally less expensive in contrast to for example diagonal implicit Runge-Kutta schemes (DIRK). 
+\subsection{Time discretization}
+The time stepping method is discussed first in context with the differential equation (strong form). An application to the weak is straightforward and presented afterwards. For the time stepping, almost all of the codes discussed in \cite{Matsui2016} use the Crank-Nicolson scheme for the linear terms and Adams-Bashforth extrapolation for the other terms. This scheme falls in the category of linear implicit-explicit multistep methods or IMEX schemes, see \cite{Ascher1995}. IMEX schemes treat the linear stiff terms implicitly and the non-linear terms are treated explicitly. The main advantage of these schemes in contrast to other stiffly accurate schemes is that the resulting system of equations is linear in each time step, which is computationally less expensive in contrast to, for example, diagonal implicit Runge-Kutta schemes (DIRK). DIRK schemes require a solution of a non-linear problem during each stage. In summary, DIRK methods allow adaptive time stepping through embedded error computation and may possess a larger domain of stability but they are computationally much more expensive. Recently, Runge-Kutta methods and IMEX schemes have combined and are sometimes referred to as additive Runge-Kutta schemes (ARK), see \cite{Ascher1997,Kennedy2003}. These schemes apply a splitting of the right-hand into implicit and explicit terms while preserving the properties of a Runge-Kutta scheme. The main advantage of these schemes is that only a linear system needs to be solved in each time step and an adaptive time step control is applicable if the Runge-Kutta scheme has an embedded lower order variant. Such schemes are made publicly available, for example, through the SUNDIALS library, see \cite{Hindmarsh2005}.
 
-In \cite{Ascher1995}, the implicit-explicit are presented by considered the scalar advection-diffusion equation
+In the following, we focus on the classical second-order multistep IMEX schemes. In \cite{Ascher1995}, these are presented by considering the scalar convection-diffusion equation
 \begin{equation}
 	\pd{u}{t}=f(u)+g(u),\quad\text{with}\quad
 	f(u)=-\bm{a}\cdot\nabla u\quad\text{and}\quad
-	g(u)=\nu\laplace u\,.
+	g(u)=\nu\laplace u\,,
 \end{equation}
-
-
+where $\bm{a}$ shall denote an convection field. The term~$g$ is treated implicitly and the term~$f$ is treated explicitly. If $u^n=u(t_n)$ and $k_n=t_{n+1}-t_n$, the resulting IMEX scheme reads:
 \begin{equation}
-	\bm{v}^*=\left(1+\frac{k_n}{k_{n-1}}\right)\bm{v}^{n-1}-\frac{k_n}{k_{n-1}}\bm{v}^{n-2}\,,\qquad
-	T^*=\left(1+\frac{k_n}{k_{n-1}}\right)T^{n-1}-\frac{k_n}{k_{n-1}}T^{n-2}
+	\frac{1}{k_n}\left(\alpha_1 u^{n+1}+ \alpha_2 u^{n}+\alpha_3 u^{n-1}\right)=\beta_2 f(u^n) + \beta_3 f(u^{n-1})+\gamma_1 g(u^{n+1}) +\gamma_2 g(u^n)+\gamma_3 g(u^{n-1})\,,
 \end{equation}
-the scheme reads:
+where $\alpha_i$, $\beta_i$ and $\gamma_i$ are the coefficients of the time stepping scheme. Table\,\ref{tbl:TimeSteppingCoefficients} lists the coefficients of the common IMEX schemes found in literature for constant and adaptive or variable step size time stepping. If the step size is variable the time step ratio~$\omega_n$ enters the coefficients. It is defined by $\omega_n=k_n/k_{n-1}$. All schemes listed are second order in time and the main difference between is their stability region, which depends on the ration of the viscous term, $g$, relative to the convective term, $f$.
+\begin{table}[!htb]
+	\centering
+	\caption{Coefficients of typical IMEX schemes, see \cite{Ascher1995,Wang2008}. CNAB---Crank-Nicolson-Adams-Bashforth, SBDF2---semi-implicit backward differentiation formula, MCNAB---modified Crank-Nicolson-Adams-Bashforth, CNLF---Crank-Nicolson leap frog.\label{tbl:TimeSteppingCoefficients}}
+	\begin{tabular}{ccrrr|ccc}
+		\toprule
+		\multirow{3}{*}{type}& & \multicolumn{5}{c}{time stepping} \\
+		& & \multicolumn{3}{c|}{constant} & \multicolumn{3}{c}{adaptive}\\
+		& $i$ & 1 & 2 & 3 & 1 & 2 & 3 \\
+		\midrule
+		\multirow{3}{*}{CNAB} & $\alpha_i$ & $1$ & $-1$ & $0$ &
+		$1$ & $-1$ & $0$\\
+		& $\beta_i$ & -- & $\frac{3}{2}$ & $-\frac{1}{2}$ & 
+		-- & $(1+\frac{1}{2}\omega_n)$ & $-\frac{1}{2}\omega_n$\\
+		& $\gamma_i$ & $\frac{1}{2}$ & $\frac{1}{2}$ & $0$ &
+		$\frac{1}{2}$ & $\frac{1}{2}$ & $0$\\
+		\midrule
+  		\multirow{3}{*}{SBDF2} & $\alpha_i$ & $\frac{3}{2}$ & $-2$ &
+  		$\frac{1}{2}$ & $\frac{1+2\omega_n}{1+\omega_n}$ & $-(1+\omega_n)$ & $\frac{\omega_n^2}{1+\omega_n}$\\
+  		& $\beta_i$ & -- & $2$ & $-1$ &
+  		-- & $(1+\omega_n)$ & $-\omega_n$\\
+  		& $\gamma_i$ & $1$ & $0$ & $0$ & $1$ & $0$ & $0$\\
+  		\midrule
+  		\multirow{3}{*}{MCNAB} & $\alpha_i$ & $1$ & $-1$ & $0$ & $1$ & $-1$ & $0$\\
+  		& $\beta_i$  & -- & $\frac{3}{2}$ & $-\frac{1}{2}$ & 
+		-- & $(1+\frac{1}{2}\omega_n)$ & $-\frac{1}{2}\omega_n$\\
+  		& $\gamma_i$ & $\frac{9}{16}$ & $\frac{3}{8}$ & $\frac{1}{16}$ & 
+  		$\frac{8\omega_n+1}{16\omega_n}$ & $\frac{7\omega_n-1}{16\omega_n}$ & $\frac{1}{16}$\\
+  		\midrule
+  		\multirow{3}{*}{CNLF} & $\alpha_i$ & $1$ & $-1$ & $0$ 
+  		& $\frac{1}{1+\omega_n}$ & $\omega_n-1$ & $-\frac{\omega_n^2}{1+\omega_n}$\\
+  		& $\beta_i$ & -- & $1$ & $0$ & -- & $1$ & $0$ \\
+  		& $\gamma_i$  & $\frac{1}{2}$ & $\frac{1}{2}$ & $0$ &
+  		$\frac{1}{2\omega_n}$ & $\frac{\omega_n-1}{2\omega_n}$ & $\frac{1}{2}$\\
+  		\bottomrule
+	\end{tabular}
+\end{table}
+
+If an IMEX schemes is applied to the hydrodynamic equations, the stiff term ($g$) in the momentum equation is the viscous term, $\laplace\bm{v}$, and in the energy equation it is the conduction term, $\laplace T$. The non-linear  term ($f$) is the convective term $\bm{v}\cdot\nabla\bm{v}$ and $\bm{v}\cdot\nabla T$, respectively. Up to now, I have treated the other terms in the momentum equation as source terms and used extrapolation from the previous two time steps. In order to ensure incompressibility the pressure is treated implicit. Finally, the resulting system of linear equations to compute the solution at the next time level, \ie, $\bm{v}^{n+1}$, $p^{n+1}$ and $T^{n+1}$, reads:
 \begin{gather}
-	-\saddle{\bm{v}^{n}}{Q}=0\,, \\
+	\nabla\cdot\bm{v}^{n+1}=0\,,\\
 	\begin{multlined}[c]
-	\frac{1}{k_n}\inner{\bm{v}^{n}}{\bm{w}}-\saddle{\bm{w}}{P^{n+1}}+\frac{C_2}{2}\elliptic{\bm{v}^n}{\bm{w}}=\frac{1}{k_n}\inner{\bm{v}^{n-1}}{\bm{w}}-\frac{C_2}{2}\elliptic{\bm{v}^{n-1}}{\bm{w}}-{}\\
-	-\convec{\bm{v}^*}{\bm{v}^*}{\bm{w}}+C_1\inner{\ez\times\bm{v}^*}{\bm{w}}-C_3\inner{T^*\bm{g}}{\bm{w}}\,,
-	\end{multlined}\\
-	\frac{1}{k_n}\inner{T^{n+1}}{U}+\frac{C_4}{2}\elliptic{T^{n+1}}{U}=-\frac{C_4}{2}\elliptic{T^n}{U}-\convec{\bm{v}^*}{T^*}{U}\,,
+		\frac{1}{k_n}\left(\alpha_1 \bm{v}^{n+1}+ \alpha_2 \bm{v}^{n}+\alpha_3 \bm{v}^{n-1}\right)=-\left(\beta_2\bm{v}^{n}\cdot\nabla\bm{v}^{n}+\beta_3\bm{v}^{n-1}\cdot\nabla\bm{v}^{n-1}\right)-\nabla P^{n+1}+{}\\
+		+C_2\left(\gamma_1\laplace\bm{v}^{n+1}+\gamma_2\laplace\bm{v}^{n}+\gamma_3\laplace\bm{v}^{n-1}\right)-C_1\bm{\Omega}\times\bm{v}^*-C_3T^*\bm{g}\,,
+	\end{multlined}\label{eqn:MomentumIMEX}\\
+	\begin{multlined}[c]
+		\frac{1}{k_n}\left(\alpha_1 T^{n+1}+ \alpha_2 T^{n}+\alpha_3 T^{n-1}\right)=-\left(\beta_2\bm{v}^{n}\cdot\nabla T^{n}+\beta_3\bm{v}^{n-1}\cdot\nabla T^{n-1}\right)+{}\\
+		+C_4\left(\gamma_1\laplace T^{n+1}+\gamma_2\laplace T^{n}+\gamma_3\laplace T^{n-1}\right)\,,
+	\end{multlined}\label{eqn:EnergyIMEX}
 \end{gather}
+where $T^*$ and $\bm{v}^*$ are the extrapolated quantities and computed as
+\begin{equation}
+	\bm{v}^*=\left(1+\omega_n\right)\bm{v}^{n-1}-\omega_n\bm{v}^{n-2}\,,\qquad
+	T^*=\left(1+\omega_n\right)T^{n-1}-\omega_nT^{n-2}\,.
+\end{equation}
+Reordering Eqs.\,\eqref{eqn:MomentumIMEX} and \eqref{eqn:EnergyIMEX} and using the abbreviations $\bm{a}_v=(\alpha_2 \bm{v}^{n}+\alpha_3 \bm{v}^{n-1})/k_n$ for the accelerative part on the right-hand side, $\bm{c}_v=\beta_2\bm{v}^{n}\cdot\nabla\bm{v}^{n}+\beta_3\bm{v}^{n-1}\cdot\nabla\bm{v}^{n-1}$, $\bm{d}_v=\gamma_2\laplace\bm{v}^{n}+\gamma_3\laplace\bm{v}^{n-1}$ and likewise $a_T$, $c_T$ and $d_T$ for part occurring in the energy equation gives:
+\begin{gather}
+	\frac{\alpha_1}{k_n}\bm{v}^{n+1}-C_2\gamma_1\laplace\bm{v}^{n+1}+\nabla P^{n+1}=-\bm{a}-\bm{c}_v+C_2\bm{d}_v-C_1\bm{\Omega}\times\bm{v}^*-C_3T^*\bm{g}\,,\label{eqn:MomentumIMEXReorder}\\
+	\frac{\alpha_1}{k_n}T^{n+1}-C_4\laplace T^{n+1}=-a_T-c_T+C_4d_T\,.
+	\label{eqn:EnergyIMEXReorder}
+\end{gather}
+
+\subsection{Linear system}
+If Eqs.\,\eqref{eqn:MomentumIMEXReorder} and \eqref{eqn:EnergyIMEXReorder} are multiplied by the test functions in order to obtain the weak formulations, the following linear system results for the coefficient vectors $\mathbf{v}$, $\mathrm{p}$ and \gtheta for velocity, presure and temperature:
+\begin{equation}
+	M\begin{bmatrix} \mathbf{v} \\ \mathrm{p} \end{bmatrix}
+	=\begin{bmatrix}
+		\mathbf{A} & B\\
+		B^T & 0
+	\end{bmatrix}
+	\begin{bmatrix}	\mathbf{v} \\ \mathrm{p}	\end{bmatrix}
+	=\begin{bmatrix} \mathbf{f} \\ 0 \end{bmatrix}\quad\text{and}\quad
+	A_T\gtheta=\mathrm{g}\,,
+\end{equation}
+where the matrices $\mathbf{A}$, $B$ and $A_T$ are defined as explained below. The matrix~$\mathrm{A}$ represents the discretization of the velocity part of the left-hand side of Eq.\,\eqref{eqn:MomentumIMEXReorder}. With $\bm{\phi}$ being a function from finite element space of the velocity, it is given by:
+\begin{equation}
+	\mathbf{A}=\frac{\alpha_1}{k_n}\mathbf{M}+C_2\gamma_1\mathbf{K}\,,\quad
+	\text{with}\quad
+	\mathbf{M}_{ij}=\int\bm{\phi}_i\cdot\bm{\phi}_j\drm{V}\quad
+	\text{and}\quad
+	\mathbf{K}_{ij}=\int\nabla\bm{\phi}_i\cdott\nabla\bm{\phi}_j\drm{V}\,.
+\end{equation}
+Clearly, $\mathbf{M}$ is the velocity mass matrix and~$\mathbf{K}$ the velocity stiffness matrix. The matrix $B$ results from the pressure term in the momentum equation. It is the discrete equivalent of the operator~$\mathcal{B}$ defined above and its components are computed by: $B_{ij}=\int(\nabla\cdot\bm{\phi}_i)\psi_i\drm{V}$, where $\psi$ is function form the finite element space of the pressure. Finally, the matrix~$A_T$ is the scalar equivalent of the matrix~$\mathbf{A}$. Hence,
+\begin{equation}
+	A_T=\frac{\alpha_1}{k_n}M+C_4\gamma_1K\,,\quad
+	\text{with}\quad
+	M_{ij}=\int\varphi_i\varphi_j\drm{V}\quad
+	\text{and}\quad
+	K_{ij}=\int\nabla\varphi_i\cdot\nabla\varphi_j\drm{V}\,.
+\end{equation}
+Note that the temperature equation is decoupled from the momentum equation. Hence, a possibility to circumvent the extrapolation of the buoyancy term in the momentum equation by $T^*$ is to first solve the temperature equation in each time step, then assemble the right-hand side with the correct buoyancy term including $T^{n+1}$ and then solve for the velocity.
+
+\subsection{Linear solvers and Schur complement approximation}
+The matrices~$\bm{A}$ and $A_T$ defined above have nice properties because both are symmetric and positive definite. For these class of matrices the most efficient iterative linear solver is a preconditioned conjugate gradient method (CG) with multigrid preconditioning. These methods allow to solve the linear system with number of linear iterations that is independent of the size of the system. The Trilinos and PETSc libraries provides highly efficient parallel multigrid preconditioners, which can be accesses through an interface of the deal.ii library \cite{deal.ii-9.0,Trilinos,PETSc}.
+
+The Stokes system consisting of the block matrix $M$ cannot be solved with a such a simple method because although symmetric in case of an IMEX scheme it is not positive definite. It is easy to see that there is at least one zero eigenvalue because the pressure is only defined up to a constant. However an inverse exists if the matrix $\mathbf{A}$ is invertible, which is the case here. By block elimination we find that the matrix~$M$ has the following $L$-$U$-decomposition, see \cite{Elman2014},
+\begin{equation}
+	M
+	=\begin{bmatrix} \mathbf{A} & B\\ B^T & 0 \end{bmatrix}
+	=\begin{bmatrix} \mathbf{I} & 0\\ B\mathbf{A}^{-1} & I \end{bmatrix}
+	\begin{bmatrix} \mathbf{A} & B^T\\ 0 & -S \end{bmatrix}\quad\text{with}\quad
+	S=B\mathbf{A}^{-1}B^T\,,
+	\label{eqn:StokesLU}
+\end{equation}
+where $S$ is the Schur complement. The matrix~$S$ is the magic ingredient here because it is not feasible to compute this matrix. Moreover the inverse of $\mathbf{A}$ would be a dense matrix and therefore $S$ would be dense as well. The idea is now to precondition the GMRES method with an approximation of the $L$-$U$-decomposition above. Specifically the Schur complement is replaced by an approximation, whose inverse is be computed easily. The construction of the correct Schur is the topic of numerous papers published in the last two decades. An good introduction related to the Navier-Stokes system is given in \cite{Elman2014} and a broader view is taken in the review paper of \citeauthor{Benzi2005}.
+
+For the problem at hand, the suitable Schur complement approximation is given by the so-called Cahouet-Chabbard preconditioner, which also attributed to Bramble-Pasciak, see \cite{Benzi2005,Bramble1997,Cahouet1988,Mardal2004}. The approximation of $S$ is denoted by $\hat{S}$ and its inverse action is given by:
+\begin{equation}
+	\hat{S}^{-1}=\frac{\alpha_1}{k_n}K_p^{-1}+C_1\gamma_1M_p^{-1}\,,
+\end{equation}
+where $K_p$ is a stiffness matrix on the pressure space and $M_p$ is the mass matrix. Note the linear systems associated to $K_p$ and $M_p$ are symmetric positive definite, for which efficient iterative methods are available. However, the choice how to generate the stiffness matrix is crucial for the preconditioner to be successful. Note that there are no boundary conditions on the pressure (pure Neumann problem), which makes the stiffness matrix singular. A successful method is the approximate the stiffness matrix by $K_p=B \diag{\mathbf{M}}^{-1} B^T$, \cf \cite{Cahouet1988}. Assembling of $K_p$ explicitly and constraining a single degree of freedom on the pressure space has not been successful but may be more efficient.
+
+In summary, the preconditioner~$P$ is given by an approximation of the upper triangular matrix in Eq.\,\eqref{eqn:StokesLU}.
+\begin{equation}
+	P=\begin{bmatrix} \hat{\mathbf{A}} & B^T \\ 0 & -\hat{S}\end{bmatrix}\qquad
+	P^{-1}=\begin{bmatrix} \hat{\mathbf{A}}^{-1} & \hat{\mathbf{A}}^{-1}B^T\hat{S}^{-1} \\ 0 & -\hat{S}^{-1}\end{bmatrix}\,.
+\end{equation}
+In fact, only the application of the inverse of $P$ is required and $P$ itself is never constructed. From a first inspection, the inverse of $P$ involves a lot of solution of linear system but actually there are just three system involved. By block algebra, it is easy to see that the system may be solve by going through the following steps:
+\begin{enumerate}
+	\item Solve $-\hat{S}\mathrm{p}=\mathrm{g}$ for the pressure $\mathrm{p}$. This involves two linear solves. 
+	\item Compute $\hat{\mathbf{f}}=\mathbf{f}-B^T\mathrm{p}$.
+	\item Solve $\hat{\mathbf{A}}\mathbf{v}=\hat{\mathbf{f}}$ for the velocity $\mathbf{v}$. This operation is often replaced by an application of the preconditioner, which is computationally less cumbersome.
+\end{enumerate}
 
 \section{Benchmark cases of \citeauthor{Christensen2001}}
 The benchmark cases of \citeauthor{Christensen2001} are specified in Table~\ref{tbl:BenchmarkParameters}. In Table~\ref{tbl:BenchmarkParameters} the hydro case refers to the solutions of Eqs.\,\eqref{eqn:Momentum} and \eqref{eqn:Energy} and the MHD case solve all three equations. Furthermore, the maximum spherical harmonics degree~$\ell_\mathrm{max.}$ and the number of radial points are specified. 
@@ -133,22 +247,3 @@ In the MHD case the same initial conditions for the velocity and the temperature
 	B_\varphi=5\sin\left(\gpi\frac{r-r_\mathrm{i}}{D}\right)\sin(2\theta)\,.
 \end{gathered}
 \end{equation}
-
-\section{Discretization}
-
-IMEX scheme:
-\begin{multline}
-	\frac{1}{k_n}\left[\alpha_1\bm{v}^n+\alpha_1\bm{v}^{n-1}+\alpha_1\bm{v}^{n-2}\right]+\beta_1\bm{v}^{n-1}\cdot\nabla\bm{v}^{n-1}+\beta_2\bm{v}^{n-2}\cdot\nabla\bm{v}^{n-2}+C_1\bm{\Omega}\times\bm{v}^\star\\
-	=-\nabla p^n+C_2\left[\gamma_1\laplace\bm{v}^n+\gamma_2 \laplace\bm{v}^{n-1}\gamma_3\laplace\bm{v}^{n-2}\right]-C_3T^\star\bm{g}
-\end{multline}
-
-weak form:
-\begin{gather}
-	-\saddle{\bm{v}^{n}}{Q}=0\,, \\
-	\begin{multlined}[c]
-	\frac{1}{k_n}\alpha_1\inner{\bm{v}^{n}}{\bm{w}}-\saddle{\bm{w}}{P^{n+1}}+C_2\gamma_1\elliptic{\bm{v}^{n+1}}{\bm{w}}=-\frac{1}{k_{n+1}}\inner{\alpha_2\bm{v}^{n-1}+\alpha_3\bm{v}^{n-2}}{\bm{w}}-{}\\
-	-C_2\elliptic{\gamma_2\bm{v}^{n-1}+\gamma_3\bm{v}^{n-2}}{\bm{w}}-\beta_1\convec{\bm{v}^{n-1}}{\bm{v}^{n-1}}{\bm{w}}-{}\\
-	-\beta_2\convec{\bm{v}^{n-2}}{\bm{v}^{n-2}}{\bm{w}}-C_1\inner{\ez\times\bm{v}^\star}{\bm{w}}-C_3\inner{T^\star\bm{g}}{\bm{w}}\,,
-	\end{multlined}\\
-	\frac{1}{k_n}\inner{T^{n+1}}{U}+\frac{C_4}{2}\elliptic{T^{n+1}}{U}=-\frac{C_4}{2}\elliptic{T^n}{U}-\convec{\bm{v}^*}{T^*}{U}\,,
-\end{gather}
