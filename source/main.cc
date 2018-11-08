@@ -57,6 +57,7 @@
 #include "assembly_data.h"
 #include "timestepping.h"
 #include "preconditioning.h"
+#include "initial_values.h"
 
 namespace BuoyantFluid {
 
@@ -72,76 +73,6 @@ enum BoundaryIds
     ICB,
     CMB,
 };
-
-namespace EquationData {
-
-template<int dim>
-class TemperatureInitialValues : public Function<dim>
-{
-public:
-    TemperatureInitialValues(const double inner_radius,
-                             const double outer_radius,
-                             const double inner_temperature,
-                             const double outer_temperature);
-
-    virtual double value(const Point<dim>   &point,
-                         const unsigned int component = 0) const;
-
-    virtual void vector_value(const Point<dim>  &point,
-                              Vector<double>    &values) const;
-
-private:
-    const double ri;
-    const double ro;
-    const double Ti;
-    const double To;
-};
-
-template <int dim>
-TemperatureInitialValues<dim>::TemperatureInitialValues(
-        const double inner_radius,
-        const double outer_radius,
-        const double inner_temperature,
-        const double outer_temperature)
-:
-Function<dim>(1),
-ri(inner_radius),
-ro(outer_radius),
-Ti(inner_temperature),
-To(outer_temperature)
-{
-    Assert(To < Ti, ExcLowerRangeType<double>(To, Ti));
-    Assert(ri < ro, ExcLowerRangeType<double>(ri, ro));
-}
-
-template <int dim>
-double TemperatureInitialValues<dim>::value(
-        const Point<dim>    &point,
-        const unsigned int component) const
-{
-    const double radius = point.distance(Point<dim>());
-    const double value = Ti + (To - Ti) / (ro - ri) * (radius - ri);
-    return value;
-}
-
-template <int dim>
-void TemperatureInitialValues<dim>::vector_value(
-        const Point<dim> &p,
-        Vector<double>   &values) const
-{
-    for (unsigned int c=0; c<this->n_components; ++c)
-        values(c) = value(p, c);
-}
-
-template <int dim>
-Tensor<1,dim> gravity_vector(const Point<dim> &p)
-{
-    const double r = p.norm();
-    return -p / r;
-}
-
-}  // namespace EquationData
-
 
 /*
  *
@@ -1510,7 +1441,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
-        const Tensor<1,dim> gravity_vector = EquationData::gravity_vector(scratch.stokes_fe_values.quadrature_point(q));
+        const Tensor<1,dim> gravity_vector = EquationData::GravityVector<dim>().value(scratch.stokes_fe_values.quadrature_point(q));
 
         Tensor<1,dim>   coriolis_term;
         if (parameters.rotation)
@@ -2178,6 +2109,18 @@ void BuoyantFluidSolver<dim>::run()
     make_grid();
 
     setup_dofs();
+
+    const EquationData::TemperatureInitialValues<dim>
+    initial_temperature(parameters.aspect_ratio,
+                        1.0,
+                        -0.5,
+                        0.5);
+
+    VectorTools::interpolate(mapping,
+                             temperature_dof_handler,
+                             initial_temperature,
+                             old_temperature_solution);
+
 
     VectorTools::interpolate(mapping,
                              temperature_dof_handler,
