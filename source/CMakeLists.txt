@@ -6,6 +6,7 @@ SET(TARGET_SRC
   assembly_data.cc
   buoyant_fluid_solver.cc
   initial_values.cc
+  parameters.cc
   preconditioning.cc
   timestepping.cc
   # You can specify additional files here!

@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
             parameter_filename = "default_parameters.prm";
 
         const int dim = 2;
-        BuoyantFluidSolver<dim>::Parameters parameters_2D(parameter_filename);
+        Parameters              parameters_2D(parameter_filename);
         BuoyantFluidSolver<dim> problem_2D(parameters_2D);
         problem_2D.run();
     }
