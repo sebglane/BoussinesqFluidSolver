@@ -140,7 +140,7 @@ private:
     std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
 
     // postprocessor class
-    class PostProcessor;
+//    class PostProcessor<dim>;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;

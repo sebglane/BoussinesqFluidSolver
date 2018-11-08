@@ -7,6 +7,7 @@ SET(TARGET_SRC
   buoyant_fluid_solver.cc
   initial_values.cc
   parameters.cc
+  postprocessor.cc
   preconditioning.cc
   timestepping.cc
   # You can specify additional files here!

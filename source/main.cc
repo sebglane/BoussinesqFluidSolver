@@ -1,6 +1,5 @@
 #include <iostream>
 #include <exception>
-#include <vector>
 
 #include "buoyant_fluid_solver.h"
 

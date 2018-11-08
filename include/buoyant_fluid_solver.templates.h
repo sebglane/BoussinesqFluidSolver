@@ -28,6 +28,7 @@
 
 #include "buoyant_fluid_solver.h"
 #include "initial_values.h"
+#include "postprocessor.h"
 #include "preconditioning.h"
 
 namespace BuoyantFluid {
@@ -1219,75 +1220,6 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
                   << std::endl;
 }
 
-template <int dim>
-class BuoyantFluidSolver<dim>::PostProcessor : public DataPostprocessor<dim>
-{
-public:
-    PostProcessor() : DataPostprocessor<dim>()  {};
-
-    virtual void evaluate_vector_field(
-            const DataPostprocessorInputs::Vector<dim> &inputs,
-            std::vector<Vector<double> >               &computed_quantities) const;
-
-    virtual std::vector<std::string> get_names() const;
-
-    virtual std::vector<DataComponentInterpretation::DataComponentInterpretation>
-    get_data_component_interpretation() const;
-
-    virtual UpdateFlags get_needed_update_flags() const;
-};
-
-
-template<int dim>
-std::vector<std::string> BuoyantFluidSolver<dim>::PostProcessor::get_names() const
-{
-    std::vector<std::string> solution_names(dim, "velocity");
-    solution_names.push_back("pressure");
-    solution_names.push_back("temperature");
-
-    return solution_names;
-}
-
-template<int dim>
-UpdateFlags BuoyantFluidSolver<dim>::PostProcessor::get_needed_update_flags() const
-{
-    return update_values;
-}
-
-template<int dim>
-std::vector<DataComponentInterpretation::DataComponentInterpretation>
-BuoyantFluidSolver<dim>::PostProcessor::get_data_component_interpretation() const
-{
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-    component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-
-    return component_interpretation;
-}
-
-template <int dim>
-void BuoyantFluidSolver<dim>::PostProcessor::evaluate_vector_field(
-        const DataPostprocessorInputs::Vector<dim> &inputs,
-        std::vector<Vector<double> >               &computed_quantities) const
-{
-    const unsigned int n_quadrature_points = inputs.solution_values.size();
-    Assert(computed_quantities.size() == n_quadrature_points,
-            ExcInternalError());
-    Assert(inputs.solution_values[0].size() == dim+2,
-            ExcInternalError());
-    for (unsigned int q=0; q<n_quadrature_points; ++q)
-    {
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](d) = inputs.solution_values[q](d);
-        const double pressure = inputs.solution_values[q](dim);
-        computed_quantities[q](dim) = pressure;
-        const double temperature = inputs.solution_values[q](dim+1);
-        computed_quantities[q](dim+1) = temperature;
-    }
-}
-
-
 template<int dim>
 void BuoyantFluidSolver<dim>::output_results() const
 {
@@ -1346,7 +1278,7 @@ void BuoyantFluidSolver<dim>::output_results() const
     }
 
     // create post processor
-    PostProcessor   postprocessor;
+    PostProcessor<dim>   postprocessor;
 
     // prepare data out object
     DataOut<dim>    data_out;
