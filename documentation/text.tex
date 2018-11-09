@@ -1,4 +1,4 @@
-\section{Introduction}
+\section{Introduction\label{sec:Introduction}}
 The objective of this code is to solve the following set of dimensionless equations for the velocity, $\bm{v}$, a pressure, $P$, the temperature, $T$, and the magnetic field, $\bm{B}$:
 \begin{gather}
 	\nabla\cdot\bm{v}=0\,,\quad
@@ -48,7 +48,7 @@ The dimensionless numbers in Table\,\ref{tbl:Dimensionless} are defined as follo
 Here, $D$ denotes a reference length of the problem, which is typically the shell thickness for spherical problems. Furthermore, $\nu$ is the kinematic viscosity, $\kappa$ and $\eta$ are thermal and magnetic diffusivities, $\alpha$ is the thermal expansion coefficient, and $g$ is a reference gravity magnitude. The dimensionless gravity vector is the only possible field additional variable of the problem. Commonly a constant or linearly varying model in radial direction is chosen for spherical shell problems. The rotation vector is not a field but may be time-dependent. 
 
 First, a discretization of the hydrodynamic case including Eqs.\,\eqref{eqn:Momentum} and \eqref{eqn:Energy} is considered. Then an extension to the full MHD system including the magnetic field~$\bm{B}$ is discussed. Finally the benchmark cases of \citeauthor{Christensen2001} are presented. 
-\section{Weak form of the hydrodynamic equations}
+\section{The hydrodynamic problem}
 In the hydrodynamic case, the magnetic field is not present and the Lorentz force in Eq.\,\eqref{eqn:Momentum} vanishes. We introduce the following short-hand notations for volume and surface integrals
 \begin{equation*}
 	\inner{\bm A}{\bm B} = \int\limits_{\Omega} \bm A \star \bm B\, \d V \; , \quad
@@ -72,7 +72,7 @@ The test functions are denoted by $Q$, $\bm{w}$ and $U$. We test the incompressi
 holds for all test functions $\bm{w}$, $Q$, $U$. Note that due to integration by parts the signs associated to $\mathcal{A}$ and $\mathcal{B}$ are reversed on the right-hand sides of Eqs.\,\eqref{eqn:WeakMomentum} and \eqref{eqn:WeakEnergy}.
 
 \subsection{Time discretization}
-The time stepping method is discussed first in context with the differential equation (strong form). An application to the weak is straightforward and presented afterwards. For the time stepping, almost all of the codes discussed in \cite{Matsui2016} use the Crank-Nicolson scheme for the linear terms and Adams-Bashforth extrapolation for the other terms. This scheme falls in the category of linear implicit-explicit multistep methods or IMEX schemes, see \cite{Ascher1995}. IMEX schemes treat the linear stiff terms implicitly and the non-linear terms are treated explicitly. The main advantage of these schemes in contrast to other stiffly accurate schemes is that the resulting system of equations is linear in each time step, which is computationally less expensive in contrast to, for example, diagonal implicit Runge-Kutta schemes (DIRK). DIRK schemes require a solution of a non-linear problem during each stage. In summary, DIRK methods allow adaptive time stepping through embedded error computation and may possess a larger domain of stability but they are computationally much more expensive. Recently, Runge-Kutta methods and IMEX schemes have combined and are sometimes referred to as additive Runge-Kutta schemes (ARK), see \cite{Ascher1997,Kennedy2003}. These schemes apply a splitting of the right-hand into implicit and explicit terms while preserving the properties of a Runge-Kutta scheme. The main advantage of these schemes is that only a linear system needs to be solved in each time step and an adaptive time step control is applicable if the Runge-Kutta scheme has an embedded lower order variant. Such schemes are made publicly available, for example, through the SUNDIALS library, see \cite{Hindmarsh2005}.
+The time stepping method is discussed first in context with the differential equation (strong form). An application to the weak is straightforward and presented afterwards. For the time stepping, almost all of the codes discussed in \cite{Matsui2016} use the Crank-Nicolson scheme for the linear terms and Adams-Bashforth extrapolation for the other terms. This scheme falls in the category of linear implicit-explicit multistep methods or IMEX schemes, see \cite{Ascher1995}. IMEX schemes treat the linear stiff terms implicitly and the non-linear terms are treated explicitly. The main advantage of these schemes in contrast to other stiffly accurate schemes is that the resulting system of equations is linear in each time step, which is computationally less expensive in contrast to, for example, diagonal implicit Runge-Kutta schemes (DIRK). DIRK schemes require a solution of a non-linear problem during each stage. In summary, DIRK methods allow adaptive time stepping through embedded error computation and may possess a larger domain of stability but they are computationally much more expensive. Recently, Runge-Kutta methods and IMEX schemes have combined and are sometimes referred to as additive Runge-Kutta schemes (ARK), see \cite{Ascher1997,Kennedy2003,Nikitin2005}. These schemes apply a splitting of the right-hand into implicit and explicit terms while preserving the properties of a Runge-Kutta scheme. The main advantage of these schemes is that only a linear system needs to be solved in each time step and an adaptive time step control is applicable if the Runge-Kutta scheme has an embedded lower order variant. Such schemes are made publicly available, for example, through the SUNDIALS library, see \cite{Hindmarsh2005}.
 
 In the following, we focus on the classical second-order multistep IMEX schemes. In \cite{Ascher1995}, these are presented by considering the scalar convection-diffusion equation
 \begin{equation}
@@ -206,6 +206,109 @@ In fact, only the application of the inverse of $P$ is required and $P$ itself i
 	\item Solve $-\hat{S}\mathrm{p}=\mathrm{g}$ for the pressure $\mathrm{p}$. This involves two linear solves. 
 	\item Compute $\hat{\mathbf{f}}=\mathbf{f}-B^T\mathrm{p}$.
 	\item Solve $\hat{\mathbf{A}}\mathbf{v}=\hat{\mathbf{f}}$ for the velocity $\mathbf{v}$. This operation is often replaced by an application of the preconditioner, which is computationally less cumbersome.
+\end{enumerate}
+
+A concluding remark is concerned with a comparison of the Schur complement approach to classical pressure projection. The review paper by \citeauthor{Guermond2006} points out that pressure projection separate the problem into a solution for the velocity and one for the pressure. This requires two linear solves per time step only. However, the pressure projection schemes presented in \cite{Guermond2006} rely on the application of backward differentiation formulas for the time derivative and a discussion of the treatment of the non-linear term is omitted. In how far the pressure projection schemes can be extended to higher order schemes is questionable but recent publication indicate that the IMEX Runge-Kutta schemes combined with a segregated treatment of the pressure may be a successful approach \cite{Ansorge2017,Colomes2015}.
+
+\section{The magnetic problem}
+For the magnetic problem a vector potential formulation is used and the weak form of the induction is derived from Maxwell's equation after the magnetohydrodynamics approximation, \ie, $\order{\nicefrac{\p\bm{D}}{\p t}}\ll\order{\nabla\times\bm{H}}$. The system reads
+\begin{equation}
+	\nabla\cdot\bm{B}=0\,,\qquad
+	\pd{\bm{B}}{t}+\nabla\times\bm{E}=0\,,\qquad
+	-\nabla\times\bm{H}=\bm{J}
+\end{equation}
+and is supplemented by the \ae ther relation $\bm{H}=\bm{B}/\gmu_0$. A vector potential~$\tilde{\bm{A}}$ having the property $\bm{B}=\nabla\times\tilde{\bm{A}}$ is introduced. This yields
+\begin{equation}
+	\nabla\times\Big(\pd{\tilde{\bm{A}}}{t}+\bm{E}\Big)=\bm{0 \quad }\Rightarrow \quad 
+	\bm{E}=-\pd{\tilde{\bm{A}}}{t}-\nabla\phi\,.
+\end{equation}
+We apply Ohm's law for a moving conductor, \ie, $\bm{J}=\sigma(\bm{E}+\bm{v}\times\bm{B})$, where the convective current $q\bm{v}$ is neglected due to the magnetohydrodynamic approximation. Then Amp\`ere's law reads:
+\begin{equation}
+	\frac{1}{\gmu_0\sigma}\nabla\times\bm{B}=(\bm{E}+\bm{v}\times\bm{B})\,.
+\end{equation}
+By introducing the magnetic diffusivity~$\eta=\nicefrac{1}{\gmu_0\sigma}$ and substituting the expression for the magnetic field and the electric field we have
+\begin{equation}\label{eqn:InductionPotential}
+	\nabla\times(\eta\nabla\times\tilde{\bm{A}})=\Big(-\pd{\tilde{\bm{A}}}{t}-\nabla\phi+\bm{v}\times(\nabla\times\tilde{\bm{A}})\Big)\,.
+\end{equation}
+In order to eliminate the scalar potential~$\phi$ from the equation above, a shift of the vector potential is performed, which is given by
+\begin{equation}
+	\pd{\bm{A}}{t}=\pd{\tilde{\bm{A}}}{t}+\nabla\phi \quad \Leftrightarrow \quad 
+	\bm{A}=\tilde{\bm{A}}+\int\limits_0^t\nabla\phi\drm{\tau}\,,\quad
+	\bm{A}(\bm{x},0)=\tilde{\bm{A}}(\bm{x},0)\,.
+\end{equation}
+Since $\nabla\times\tilde{\bm{A}}=\nabla\times\bm{A}$, Eq.\,\eqref{eqn:InductionPotential} can now be expressed as:
+\begin{equation}
+	\label{eqn:InductionPotentialMod}
+	\pd{\bm{A}}{t}+\nabla\times(\eta\nabla\times\bm{A})=\bm{v}\times(\nabla\times\bm{A})\,.
+\end{equation}
+To obtain a weak form the double curl term is transformed using integration by parts.\footnote{The vector calculus identity applied here reads: $\nabla\cdot(\bm{u}\times\bm{v})=(\nabla\times\bm{u})\cdot\bm{v}-\bm{u}\cdot(\nabla\times\bm{v})$.} Let $\bm{A}'$ denote the test function, then the weak form of Eq.\,\eqref{eqn:InductionPotentialMod} can be expressed as: Find $\bm{A}\in H(\curl)$, such  that
+\begin{equation}
+	\left(\pd{\bm{A}}{t},\bm{A}'\right)_{\!\mathrlap{\Omega}\ }
+	+\left(\eta\nabla\times\bm{A},\nabla\times\bm{A}'\right)_{\mathrlap{\Omega}\ \ }+\left\langle\bm{n}\times(\eta\nabla\times\bm{A}),\bm{A}'\right\rangle_{\p\Omega}=\left(\bm{v}\times(\nabla\times\bm{A}),\bm{A}'\right)_{\Omega}
+\end{equation}
+holds for all $\bm{A}'\in H(\curl, \Omega)$.
+
+In the non-dimensional case, the magnetic diffusivity is replaced by the dimensionless nubmer~$C_5$ or magnetic Prandtl number, see Section\,\ref{sec:Introduction}. Hence, the weak form is given by: Find $\bm{A}\in H(\curl)$, such  that
+\begin{equation}
+	\label{eqn:WeakFormA}
+	\left(\pd{\bm{A}}{t},\bm{A}'\right)_{\!\mathrlap{\Omega}\ }
+	+C_5\left(\nabla\times\bm{A},\nabla\times\bm{A}'\right)_{\mathrlap{\Omega}\ \ }
+	+C_5\left\langle\bm{n}\times(\nabla\times\bm{A}),\bm{A}'\right\rangle_{\p\Omega}=\left(\bm{v}\times(\nabla\times\bm{A}),\bm{A}'\right)_{\Omega}
+\end{equation}
+holds for all $\bm{A}'\in H(\curl, \Omega)$.
+
+Clearly the magnetic field is continuous across interface if the surrounding domain is an isolator. The following transition conditions apply on the boundary~$\p \Omega$:
+\begin{equation}\label{eqn:JumpCondition}
+\begin{aligned}
+	\bm{n}\cdot\jump{\bm{B}}&=0\,, &
+	\bm{n}\times\jump{\bm{B}}&=\bm{0}\,, &
+	\bm{x}&\in\p\Omega\,.
+\end{aligned}
+\end{equation}
+There are multiple possibilities to handle boundary term in the weak form: 
+\begin{enumerate}
+	\item The pseudo-vacuum boundary $\bm{n}\cdot\bm{B}=0$ on the boundary~$\p\Omega$ could be applied. Then the boundary term in the weak form vanishes. However in this case, there is no boundary condition available to constrain $\bm{A}$ (pure Neumann problem).
+	\item The domain~$\Omega$ could be extended by a large exterior domain. In the exterior domain the same equation but with $\bm{v}=\bm{0}$ and $C_5=1$ is solved to mimic the vacuum. On the boundary of the exterior boundary the magnetic potential is commonly set to zero then.
+	\item In an isolating exterior domain, a scalar potential exists, which has an analytical solution for spherical geometries in form of a series. The coefficients of a truncated series could be coupled to the solution for the magnetic obtained from the weak form.
+	\item The domain~$\Omega$ could be extended by a large exterior domain. On the exterior domain the Laplace equation is solved for the scalar potential. This reduces the number of degrees of freedom because scalar elements can be used. The weak form in Eq.\,\eqref{eqn:WeakFormA} is tailor-made coupled with the one of the Laplace problem. In order to couple both potentials, the transition conditions are utilized. We have:
+	\begin{gather}
+		\bm{n}\times\jump{\bm{B}}=\bm{0}\quad \Leftrightarrow \quad \bm{n}\times\bm{B}_\mathrm{int.}=\bm{n}\times\bm{B}_\mathrm{ext.} \quad \Leftrightarrow \quad \bm{n}\times(\nabla\times\bm{A})=\bm{n}\times\nabla\vp\,,
+	\end{gather}
+	where $\varphi$ is the scalar potential in the exterior domain. Applying integration by parts on the boundary, \cite[58\psq]{Monk2003}, the boundary term in Eq.\,\eqref{eqn:WeakFormA} can be recasted to:
+	\begin{equation}
+		\left\langle\bm{n}\times(\nabla\times\bm{A}),\bm{A}'\right\rangle_{\varGamma}
+		=\left\langle\bm{n}\times\nabla\vp,\bm{A}'\right\rangle_{\varGamma}
+		=\left\langle\vp,\bm{n}\cdot\nabla\times\bm{A}'\right\rangle_{\varGamma}\,.
+	\end{equation}
+
+	Next the weak form in the exterior domain $\Omega_\mathrm{ext.}$ is discussed. The boundary of the exterior is decomposed into a boundary~$\varGamma=\varOmega_\mathrm{int.}\cap\varOmega_\mathrm{ext.}$ that is shared with the exterior domain and a part~$\varGamma_\infty$, which represent exterior envelope of the domain. On the interface~$\varGamma$ the outward normals of both domains are opposed, \ie $\tilde{\bm{n}}=-\bm{n}$, where $\tilde{\bm{n}}$ is the outward normal of the domain~$\varOmega_\mathrm{ext.}$. With this decomposition of the domain the weak form of $\laplace\varphi=0$ in the exterior domain is given by: Find $\vp\in H^1(\Omega_\mathrm{ext.})$, such that
+	\begin{equation}
+		\label{eqn:WeakFormPhi}
+		\left(\nabla\vp,\nabla\vp'\right)_{\mathrlap{\Omega_\mathrm{ext.}}\, \ \ \ }
+		+\left\langle\bm{n}\cdot\nabla\vp,\vp'\right\rangle_{\varGamma}
+		-\left\langle\tilde{\bm{n}}\cdot\nabla\vp,\vp'\right\rangle_{\varGamma_\infty}=0\,.
+	\end{equation}
+	for all $\vp'\in H^1(\Omega_\mathrm{ext.})$ gilt.
+	
+	Because of $\bm{n}\cdot\jump{\bm{B}}=0$ the boundary term above on $\varGamma$  can be replaced by the magnetic vector potential:
+	\begin{equation}
+		\label{eqn:RandPhi}
+		\left\langle\bm{n}\cdot\nabla\vp,\vp'\right\rangle_{\varGamma}=\left\langle\bm{n}\cdot\nabla\times\bm{A},\vp'\right\rangle_{\varGamma}\,.
+	\end{equation}
+	This yields a symmetric coupling and with $\varphi=0$ on $\varGamma_\infty$ the coupled weak form is given by: Find $\vp\in H^1(\Omega_\mathrm{ext.})$ and $\bm{A}\in H(\curl, \Omega_\mathrm{int.})$, such that
+	\begin{subequations}
+		\label{eqn:WeakFormFinal}
+		\begin{gather}
+		\begin{multlined}[c]
+		\left(\pd{\bm{A}}{t},\bm{A}'\right)_{\!\mathrlap{\Omega_\mathrm{int.}}\ }
+		+C_5\left(\nabla\times\bm{A},\nabla\times\bm{A}'\right)_{\mathrlap{\Omega_\mathrm{int.}}\ \ }+C_5\left\langle\vp,\bm{n}\cdot\nabla\times\bm{A}'\right\rangle_{\varGamma}\\
+		=\left(\bm{v}\times(\nabla\times\bm{A}),\bm{A}'\right)_{\Omega_\mathrm{int.}}\,,
+		\end{multlined}\\
+		\left(\nabla\vp,\nabla\vp'\right)_{\mathrlap{\Omega_\mathrm{ext.}}\,\ \ \ }+\left\langle\bm{n}\cdot\nabla\times\bm{A},\vp'\right\rangle_{\varGamma}-\left\langle\tilde{\bm{n}}\cdot\nabla\vp,\vp'\right\rangle_{\varGamma_\infty}=0\,.
+		\end{gather}
+	\end{subequations}
+	holds for all $\vp'\in H^1(\Omega_\mathrm{ext.})$ and $\bm{A}'\in H(\curl, \Omega_\mathrm{int.})$.
+	\item The fact that there is a Green's function of the Laplace equation can also be utilized in relation to the problem at hand. Boundary element methods make use of this fact and only require a discretization of the boundary. A mathematical treatment and analysis of the BEM-FEM coupling for the induction equation is discussed in \cite{Lemster2014,Lemster2010}. The BEM method is not a local method because all degrees of freedom are coupled on the boundary. Therefore the matrices are not sparse any more and this can become a problem when solving the linear system. However, there are special matrix types for boundary element matrices known as hierarchical matrices, which cluster the matrix entries into smaller classes. These allow to efficiently handle the data structures.
 \end{enumerate}
 
 \section{Benchmark cases of \citeauthor{Christensen2001}}
