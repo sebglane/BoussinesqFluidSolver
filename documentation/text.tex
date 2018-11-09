@@ -210,6 +210,41 @@ In fact, only the application of the inverse of $P$ is required and $P$ itself i
 
 A concluding remark is concerned with a comparison of the Schur complement approach to classical pressure projection. The review paper by \citeauthor{Guermond2006} points out that pressure projection separate the problem into a solution for the velocity and one for the pressure. This requires two linear solves per time step only. However, the pressure projection schemes presented in \cite{Guermond2006} rely on the application of backward differentiation formulas for the time derivative and a discussion of the treatment of the non-linear term is omitted. In how far the pressure projection schemes can be extended to higher order schemes is questionable but recent publication indicate that the IMEX Runge-Kutta schemes combined with a segregated treatment of the pressure may be a successful approach \cite{Ansorge2017,Colomes2015}.
 
+\subsection{Preconditioner performance}
+The results below show the performance of the preconditioner for the depending on the size of the mesh and the length of the time step. A start-up phase of the non-rotating hydrodynamic case is computed with $\Prandtl=1$ and $\Rayleigh=\num{e5}$.
+\begin{table}
+	\centering
+	\caption{Dependency on the time step for the first 25 iterations.}
+	\begin{tabular}{rc}
+		\toprule
+		\multicolumn{1}{c}{$k_n$} & $n_\mathrm{iter.}$\\
+		\midrule
+		\num{1e-1} & 23 to 24\\
+		\num{1e-2} & 12 to 14\\
+		\num{1e-3} & 11 to 12\\
+		\num{1e-4} & 9  to 10\\
+		\num{1e-5} & 6  to 7\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\begin{table}
+	\centering
+	\caption{Dependency on the time step for the first 25 iterations.}
+	\begin{tabular}{rrc}
+		\toprule
+		\multicolumn{1}{c}{level} & \multicolumn{1}{c}{DoFs} & $n_\mathrm{iter.}$\\
+		\midrule
+		2 & \num{4608} & 9 to 10\\
+		3 & \num{13920} & 9 to 10\\
+		4 & \num{41664} & 9 to 10\\
+		5 & \num{138624} & 8 to 9\\
+		6 & \num{498432}  & 8 to 9\\
+		7 & \num{1881600} & 8 to 9\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
 \section{The magnetic problem}
 For the magnetic problem a vector potential formulation is used and the weak form of the induction is derived from Maxwell's equation after the magnetohydrodynamics approximation, \ie, $\order{\nicefrac{\p\bm{D}}{\p t}}\ll\order{\nabla\times\bm{H}}$. The system reads
 \begin{equation}
