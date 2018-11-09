@@ -305,6 +305,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         cfl_max = prm.get_double("cfl_max");
         Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
 
+        adaptive_timestep = prm.get_bool("adaptive_timestep");
+
         std::string imex_type_str;
         imex_type_str = prm.get("time_stepping_scheme");
 
@@ -316,6 +318,7 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             imex_scheme = TimeStepping::IMEXType::CNLF;
         else if (imex_type_str == "SBDF")
             imex_scheme = TimeStepping::IMEXType::SBDF;
+
 
         // TODO: move to logging
         output_frequency = prm.get_integer("output_freq");
