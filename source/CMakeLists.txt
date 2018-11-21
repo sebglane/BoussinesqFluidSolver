@@ -5,6 +5,7 @@ SET(TARGET_SRC
   main.cc
   assembly_data.cc
   buoyant_fluid_solver.cc
+  grid_factory.cc
   initial_values.cc
   parameters.cc
   postprocessor.cc
