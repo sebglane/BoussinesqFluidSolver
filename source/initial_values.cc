@@ -38,16 +38,6 @@ double TemperatureInitialValues<dim>::value(
 }
 
 template<int dim>
-void TemperatureInitialValues<dim>::vector_value(const Point<dim> &point,
-                                                 Vector<double>   &values) const
-{
-    AssertDimension(values.size(), this->n_components);
-
-    for (unsigned int i=0; i < this->n_components; ++i)
-        values(i) = this->value(point, i);
-}
-
-template<int dim>
 GravityVector<dim>::GravityVector()
 :
 TensorFunction<1,dim>()
