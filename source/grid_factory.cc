@@ -9,6 +9,45 @@
 
 namespace GridFactory {
 
+template <int dim>
+SinusoidalManifold<dim>::SinusoidalManifold(const double wavenumber,
+                                            const double amplitude)
+:
+ChartManifold<dim,dim,dim-1>(),
+wavenumber(wavenumber),
+amplitude(amplitude)
+{}
+
+template <int dim>
+std::unique_ptr<Manifold<dim,dim>> SinusoidalManifold<dim>::clone() const
+{
+  return std::make_unique<SinusoidalManifold<dim>>();
+}
+
+template<int dim>
+Point<dim-1> SinusoidalManifold<dim>::pull_back(const Point<dim> &space_point) const
+{
+    Point<dim-1> chart_point;
+    for (unsigned int d=0; d<dim-1; ++d)
+        chart_point[d] = space_point[d];
+    return chart_point;
+}
+
+template<int dim>
+Point<dim> SinusoidalManifold<dim>::push_forward(const Point<dim-1> &chart_point) const
+{
+    Point<dim> space_point;
+    space_point[dim-1] = amplitude;
+    for (unsigned int d=0; d<dim-1; ++d)
+    {
+        space_point[d] = chart_point[d];
+        space_point[dim-1] *= std::sin(wavenumber * chart_point[d]);
+    }
+    space_point[dim-1] += 1.0;
+    return space_point;
+}
+
+
 template<int dim>
 SphericalShell<dim>::SphericalShell(
         const double aspect_ratio_,
@@ -297,6 +336,112 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 }
 }
 
+template<int dim>
+TopographyBox<dim>::TopographyBox(const double wavenumber,
+                                const double amplitude,
+                                const bool   include_exterior,
+                                const double exterior_length)
+:
+include_exterior(include_exterior),
+exterior_length(exterior_length),
+sinus_manifold(wavenumber, amplitude)
+{
+    Assert(amplitude < 1.0, ExcLowerRangeType<double>(amplitude,1.0));
+}
+
+
+template<int dim>
+void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
+{
+    if (!include_exterior)
+    {
+        GridGenerator::hyper_cube(coarse_grid);
+
+        coarse_grid.set_all_manifold_ids(0);
+        coarse_grid.set_all_manifold_ids_on_boundary(0);
+
+        for (auto cell: coarse_grid.active_cell_iterators())
+        {
+            cell->set_material_id(MaterialIds::Fluid);
+
+            if (cell->at_boundary())
+                for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (cell->face(f)->at_boundary())
+                    {
+                        std::vector<double> coord(GeometryInfo<dim>::vertices_per_face);
+                        for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                            coord[v] = cell->face(f)->vertex(v)[dim-1];
+
+                        if (std::all_of(coord.begin(), coord.end(),
+                                [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
+                        {
+                            cell->face(f)->set_boundary_id(BoundaryIds::TopoBndry);
+                            cell->face(f)->set_manifold_id(1);
+                            break;
+                        }
+                    }
+        }
+        interpolation_manifold.initialize(coarse_grid);
+        coarse_grid.set_manifold(0, interpolation_manifold);
+        coarse_grid.set_manifold(1, sinus_manifold);
+    }
+    else if (include_exterior)
+    {
+        const Point<dim> origin;
+        Point<dim> corner;
+        for (unsigned int d=0; d<dim-1; ++d)
+            corner[d] = 1.0;
+        corner[dim-1] = exterior_length + 1.0;
+
+        std::vector<std::vector<double>> step_sizes;
+        for (unsigned int d=0; d<dim-1; ++d)
+            step_sizes.push_back(std::vector<double>(1,1.));
+
+        step_sizes.push_back(std::vector<double>{1.0, exterior_length});
+
+        GridGenerator::subdivided_hyper_rectangle(
+                coarse_grid,
+                step_sizes,
+                origin,
+                corner);
+
+        coarse_grid.set_all_manifold_ids(0);
+        coarse_grid.set_all_manifold_ids_on_boundary(0);
+
+        for (auto cell: coarse_grid.active_cell_iterators())
+        {
+            if (cell->center()[dim-1] < 1.0)
+                cell->set_material_id(MaterialIds::Fluid);
+            else if (cell->center()[dim-1] > 1.0)
+                cell->set_material_id(MaterialIds::Vacuum);
+
+            if (cell->at_boundary())
+                for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (!cell->face(f)->at_boundary())
+                    {
+                        std::vector<double> coord(GeometryInfo<dim>::vertices_per_face);
+                        for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                            coord[v] = cell->face(f)->vertex(v)[dim-1];
+
+                        if (std::all_of(coord.begin(), coord.end(),
+                                [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
+                        {
+                            cell->face(f)->set_manifold_id(1);
+                            break;
+                        }
+                    }
+        }
+        interpolation_manifold.initialize(coarse_grid);
+        coarse_grid.set_manifold(0, interpolation_manifold);
+        coarse_grid.set_manifold(1, sinus_manifold);
+    }
+    else
+        Assert(false, ExcInternalError());
+}
 }  // namespace GridFactory
 
 template class GridFactory::SphericalShell<2>;
+template class GridFactory::TopographyBox<2>;
+template class GridFactory::TopographyBox<3>;
+template class GridFactory::SinusoidalManifold<2>;
+template class GridFactory::SinusoidalManifold<3>;
