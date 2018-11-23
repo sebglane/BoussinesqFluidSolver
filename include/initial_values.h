@@ -40,9 +40,6 @@ public:
     virtual double value(const Point<dim>   &point,
                          const unsigned int component = 0) const;
 
-    virtual void   vector_value(const Point<dim>  &point,
-                                Vector<double>    &values) const;
-
 private:
     const double ri;
     const double ro;
