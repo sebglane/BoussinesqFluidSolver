@@ -61,5 +61,6 @@ void PostProcessor<dim>::evaluate_vector_field(
 
 }  // namespace BuoyantFluid
 
+// explicit instantiation
 template class BuoyantFluid::PostProcessor<2>;
 template class BuoyantFluid::PostProcessor<3>;

@@ -125,6 +125,7 @@ unsigned int BlockSchurPreconditioner<PreconditionerTypeA,PreconditionerTypeMp,P
     return n_iterations_Mp_;
 }
 
+// explicit instantiation
 template class BlockSchurPreconditioner
 <TrilinosWrappers::PreconditionAMG,
  SparseILU<double>,

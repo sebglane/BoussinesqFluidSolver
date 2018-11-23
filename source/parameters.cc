@@ -336,5 +336,3 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 }
 
 }  // namespace BuoyantFluid
-
-

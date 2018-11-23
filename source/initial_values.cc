@@ -63,7 +63,7 @@ void GravityVector<dim>::value_list(const std::vector<Point<dim>>    &points,
 
 }  // namespace EquationData
 
-
+// explicit instantiation
 template class EquationData::TemperatureInitialValues<1>;
 template class EquationData::TemperatureInitialValues<2>;
 template class EquationData::TemperatureInitialValues<3>;
