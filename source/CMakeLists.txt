@@ -10,6 +10,7 @@ SET(TARGET_SRC
   initial_values.cc
   local_temperature_assemble.cc
   local_stokes_assemble.cc
+  make_grid.cc
   parameters.cc
   postprocessor.cc
   preconditioning.cc
