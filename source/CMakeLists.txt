@@ -3,12 +3,13 @@ SET(TARGET "main")
 
 SET(TARGET_SRC
   main.cc
+  assemble_system.cc
   assembly_data.cc
   buoyant_fluid_solver.cc
   grid_factory.cc
   initial_values.cc
-  local_temperature_assembly.cc
-  local_stokes_assembly.cc
+  local_temperature_assemble.cc
+  local_stokes_assemble.cc
   parameters.cc
   postprocessor.cc
   preconditioning.cc
