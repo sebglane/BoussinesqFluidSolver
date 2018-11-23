@@ -8,6 +8,7 @@ SET(TARGET_SRC
   grid_factory.cc
   initial_values.cc
   local_temperature_assembly.cc
+  local_stokes_assembly.cc
   parameters.cc
   postprocessor.cc
   preconditioning.cc
