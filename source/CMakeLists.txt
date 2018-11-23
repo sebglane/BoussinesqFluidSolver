@@ -7,9 +7,11 @@ SET(TARGET_SRC
   buoyant_fluid_solver.cc
   grid_factory.cc
   initial_values.cc
+  local_temperature_assembly.cc
   parameters.cc
   postprocessor.cc
   preconditioning.cc
+  setup.cc
   timestepping.cc
   # You can specify additional files here!
 )
