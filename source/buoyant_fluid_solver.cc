@@ -118,77 +118,7 @@ old_timestep(parameters.initial_timestep)
 
 
 
-template<int dim>
-void BuoyantFluidSolver<dim>::make_grid()
-{
-    TimerOutput::Scope timer_section(computing_timer, "make grid");
 
-    std::cout << "   Making grid..." << std::endl;
-
-    const Point<dim> center;
-    const double ri = parameters.aspect_ratio;
-    const double ro = 1.0;
-
-    GridGenerator::hyper_shell(triangulation, center, ri, ro, (dim==3) ? 96 : 12);
-
-    std::cout << "   Number of initial cells: "
-              << triangulation.n_active_cells()
-              << std::endl;
-
-    static SphericalManifold<dim>       manifold(center);
-
-    triangulation.set_all_manifold_ids(0);
-    triangulation.set_all_manifold_ids_on_boundary(1);
-
-    triangulation.set_manifold (0, manifold);
-    triangulation.set_manifold (1, manifold);
-
-    // setting boundary ids on coarsest grid
-    const double tol = 1e-12;
-    for(auto cell: triangulation.active_cell_iterators())
-      if (cell->at_boundary())
-          for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-              if (cell->face(f)->at_boundary())
-              {
-                  std::vector<double> dist(GeometryInfo<dim>::vertices_per_face);
-                  for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
-                      dist[v] = cell->face(f)->vertex(v).distance(center);
-                  if (std::all_of(dist.begin(), dist.end(),
-                          [&ri,&tol](double d){return std::abs(d - ri) < tol;}))
-                      cell->face(f)->set_boundary_id(EquationData::BoundaryIds::ICB);
-                  if (std::all_of(dist.begin(), dist.end(),
-                          [&ro,&tol](double d){return std::abs(d - ro) < tol;}))
-                      cell->face(f)->set_boundary_id(EquationData::BoundaryIds::CMB);
-              }
-
-    // initial global refinements
-    if (parameters.n_global_refinements > 0)
-    {
-        triangulation.refine_global(parameters.n_global_refinements);
-        std::cout << "      Number of cells after "
-                  << parameters.n_global_refinements
-                  << " global refinements: "
-                  << triangulation.n_active_cells()
-                  << std::endl;
-    }
-
-    // initial boundary refinements
-    if (parameters.n_boundary_refinements > 0)
-    {
-        for (unsigned int step=0; step<parameters.n_boundary_refinements; ++step)
-        {
-            for (auto cell: triangulation.active_cell_iterators())
-                if (cell->at_boundary())
-                    cell->set_refine_flag();
-            triangulation.execute_coarsening_and_refinement();
-        }
-        std::cout << "      Number of cells after "
-                  << parameters.n_boundary_refinements
-                  << " boundary refinements: "
-                  << triangulation.n_active_cells()
-                  << std::endl;
-    }
-}
 
 
 template<int dim>
