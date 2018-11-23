@@ -158,7 +158,7 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
                     if (cell->neighbor(f)->material_id() != cell->material_id())
                     {
-                        cell->face(f)->set_manifold_id(1);
+                        cell->face(f)->set_all_manifold_ids(1);
                         break;
                     }
 
@@ -230,7 +230,7 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 if (!cell->face(f)->at_boundary())
                     if (cell->neighbor(f)->material_id() != cell->material_id())
                     {
-                        cell->face(f)->set_manifold_id(0);
+                        cell->face(f)->set_all_manifold_ids(0);
                         break;
                     }
 
@@ -310,7 +310,7 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
                     if (cell->neighbor(f)->material_id() != cell->material_id())
                     {
-                        cell->face(f)->set_manifold_id(2);
+                        cell->face(f)->set_all_manifold_ids(2);
                         break;
                     }
 
