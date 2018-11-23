@@ -449,11 +449,11 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
                 SubCellData());
 
         for (auto cell: coarse_grid.active_cell_iterators())
-            if (!cell->at_boundary())
-                for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+            for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                if (!cell->face(f)->at_boundary())
                     if (cell->neighbor(f)->material_id() != cell->material_id())
                     {
-                        cell->face(f)->set_all_manifold_ids(1);
+                        cell->face(f)->set_all_manifold_ids(0);
                         break;
                     }
 
@@ -466,12 +466,224 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
     // shell mesh including exterior sphere
     else if (!include_core && include_exterior)
     {
-        Assert(false, ExcNotImplemented());
+        // from the inner part to the radial cells
+        const unsigned int n_vertices           = 24;
+        const Point<dim>     vertices[n_vertices] =
+        {
+                // first the eight vertices on the inner sphere
+                Point<dim>(-1, -1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                // now the eight vertices on the middle sphere
+                Point<dim>(-1, -1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (1.0 / std::sqrt(3.0)),
+                // now the eight vertices on the outer sphere
+                Point<dim>(-1, -1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (exterior_length / std::sqrt(3.0)),
+        };
+
+        // one needs to draw the seven cubes to
+        // understand what's going on here
+        const unsigned int n_cells                   = 12;
+        const int          cell_vertices[n_cells][8] =
+        {
+                // now the six cells of the inner ring
+                {8, 9, 12, 13, 0, 1, 4, 5},    // bottom
+                {9, 13, 1, 5, 10, 14, 2, 6},   // right
+                {11, 10, 3, 2, 15, 14, 7, 6},  // top
+                {8, 0, 12, 4, 11, 3, 15, 7},   // left
+                {8, 9, 0, 1, 11, 10, 3, 2},    // front
+                {12, 4, 13, 5, 15, 7, 14, 6},  // back
+                // now the six cells of the outer ring
+                {16, 17, 20, 21, 8, 9, 12, 13},    // bottom
+                {17, 21, 9, 13, 18, 22, 10, 14},   // right
+                {19, 18, 11, 10, 23, 22, 15, 14},  // top
+                {16, 8, 20, 12, 19, 11, 23, 15},   // left
+                {16, 17, 8, 9, 19, 18, 11, 10},    // front
+                {20, 12, 21, 13, 23, 15, 22, 14},  // back
+        };
+
+        const types::material_id v = MaterialIds::Vacuum;
+        const types::material_id f = MaterialIds::Fluid;
+
+        const types::manifold_id manifold_ids[n_cells] =
+        {
+                0,0,0,0,0,0,
+                0,0,0,0,0,0
+        };
+        const types::material_id material_ids[n_cells] =
+        {
+                f,f,f,f,f,f,
+                v,v,v,v,v,v
+        };
+
+        std::vector<CellData<dim>> cells(n_cells, CellData<dim>());
+
+        for (unsigned int i = 0; i < n_cells; ++i)
+          {
+            for (unsigned int j = 0; j < GeometryInfo<dim>::vertices_per_cell; ++j)
+              cells[i].vertices[j] = cell_vertices[i][j];
+            cells[i].material_id = material_ids[i];
+            cells[i].manifold_id = manifold_ids[i];
+          }
+
+        coarse_grid.create_triangulation(
+                std::vector<Point<dim>>(std::begin(vertices),std::end(vertices)),
+                cells,
+                SubCellData());
+
+        for (auto cell: coarse_grid.active_cell_iterators())
+            if (!cell->at_boundary())
+                for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (cell->neighbor(f)->material_id() != cell->material_id())
+                    {
+                        cell->face(f)->set_all_manifold_ids(0);
+                        break;
+                    }
+
+        coarse_grid.set_all_manifold_ids_on_boundary(0);
+        coarse_grid.set_manifold(0, spherical_manifold);
     }
     // shell mesh including interior and exterior sphere
     else if (include_core && include_exterior)
     {
-        Assert(false, ExcNotImplemented());
+        // equilibrate cell sizes at transition
+        const double a = 1. / (1 + std::sqrt(3.0));
+
+        // from the inner part to the radial cells
+        const unsigned int n_vertices           = 32;
+        const Point<dim>     vertices[n_vertices] =
+        {
+                // first the vertices of the inner cell
+                Point<dim>(-1, -1, -1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(+1, -1, -1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(+1, -1, +1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(-1, -1, +1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(-1, +1, -1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(+1, +1, -1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(+1, +1, +1) * (aspect_ratio / std::sqrt(3.0) * a),
+                Point<dim>(-1, +1, +1) * (aspect_ratio / std::sqrt(3.0) * a),
+                // now the eight vertices on the inner sphere
+                Point<dim>(-1, -1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (aspect_ratio / std::sqrt(3.0)),
+                // now the eight vertices on the middle sphere
+                Point<dim>(-1, -1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (1.0 / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (1.0 / std::sqrt(3.0)),
+                // now the eight vertices on the outer sphere
+                Point<dim>(-1, -1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, -1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, -1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, -1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, +1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, +1, -1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(+1, +1, +1) * (exterior_length / std::sqrt(3.0)),
+                Point<dim>(-1, +1, +1) * (exterior_length / std::sqrt(3.0)),
+        };
+
+        // one needs to draw the seven cubes to
+        // understand what's going on here
+        const unsigned int n_cells                   = 19;
+        const int          cell_vertices[n_cells][8] =
+        {
+                {0, 1, 4, 5, 3, 2, 7, 6},      // center
+                // now the six cells of the inner ring
+                {8, 9, 12, 13, 0, 1, 4, 5},    // bottom
+                {9, 13, 1, 5, 10, 14, 2, 6},   // right
+                {11, 10, 3, 2, 15, 14, 7, 6},  // top
+                {8, 0, 12, 4, 11, 3, 15, 7},   // left
+                {8, 9, 0, 1, 11, 10, 3, 2},    // front
+                {12, 4, 13, 5, 15, 7, 14, 6},  // back
+                // now the six cells of the shell ring
+                {16, 17, 20, 21, 8, 9, 12, 13},    // bottom
+                {17, 21, 9, 13, 18, 22, 10, 14},   // right
+                {19, 18, 11, 10, 23, 22, 15, 14},  // top
+                {16, 8, 20, 12, 19, 11, 23, 15},   // left
+                {16, 17, 8, 9, 19, 18, 11, 10},    // front
+                {20, 12, 21, 13, 23, 15, 22, 14},  // back
+                // now the six cells of the outer ring
+                {16+8, 17+8, 20+8, 21+8, 8+8, 9+8, 12+8, 13+8},    // bottom
+                {17+8, 21+8, 9+8, 13+8, 18+8, 22+8, 10+8, 14+8},   // right
+                {19+8, 18+8, 11+8, 10+8, 23+8, 22+8, 15+8, 14+8},  // top
+                {16+8, 8+8, 20+8, 12+8, 19+8, 11+8, 23+8, 15+8},   // left
+                {16+8, 17+8, 8+8, 9+8, 19+8, 18+8, 11+8, 10+8},    // front
+                {20+8, 12+8, 21+8, 13+8, 23+8, 15+8, 22+8, 14+8},  // back
+        };
+
+        const types::material_id v = MaterialIds::Vacuum;
+        const types::material_id f = MaterialIds::Fluid;
+
+        const types::manifold_id manifold_ids[n_cells] =
+        {
+                numbers::invalid_manifold_id,
+                0,0,0,0,0,0,
+                1,1,1,1,1,1,
+                1,1,1,1,1,1
+        };
+        const types::material_id material_ids[n_cells] =
+        {
+                v,
+                v,v,v,v,v,v,
+                f,f,f,f,f,f,
+                v,v,v,v,v,v
+        };
+
+        std::vector<CellData<dim>> cells(n_cells, CellData<dim>());
+
+        for (unsigned int i = 0; i < n_cells; ++i)
+          {
+            for (unsigned int j = 0; j < GeometryInfo<dim>::vertices_per_cell; ++j)
+              cells[i].vertices[j] = cell_vertices[i][j];
+            cells[i].material_id = material_ids[i];
+            cells[i].manifold_id = manifold_ids[i];
+          }
+
+        coarse_grid.create_triangulation(
+                std::vector<Point<dim>>(std::begin(vertices),std::end(vertices)),
+                cells,
+                SubCellData());
+
+        for (auto cell: coarse_grid.active_cell_iterators())
+            if (!cell->at_boundary())
+                for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (cell->neighbor(f)->material_id() != cell->material_id())
+                    {
+                        cell->face(f)->set_all_manifold_ids(1);
+                        break;
+                    }
+
+        coarse_grid.set_all_manifold_ids_on_boundary(1);
+        interpolation_manifold.initialize(coarse_grid);
+        coarse_grid.set_manifold(0, interpolation_manifold);
+        coarse_grid.set_manifold(1, spherical_manifold);
     }
 
     for (auto cell: coarse_grid.active_cell_iterators())
