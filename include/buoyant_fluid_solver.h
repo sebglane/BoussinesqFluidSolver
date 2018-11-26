@@ -12,14 +12,10 @@
 
 #include <deal.II/dofs/dof_handler.h>
 
-#include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
-#include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/mapping_q.h>
 
-#include <deal.II/grid/manifold_lib.h>
 #include <deal.II/grid/tria.h>
-
 
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/block_sparse_matrix.h>
@@ -138,9 +134,6 @@ private:
     std::shared_ptr<PreconditionerTypeKp>       preconditioner_Kp;
     std::shared_ptr<PreconditionerTypeMp>       preconditioner_Mp;
     std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
-
-    // postprocessor class
-//    class PostProcessor<dim>;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;

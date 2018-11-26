@@ -10,7 +10,6 @@
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
 
-#include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/grid/grid_refinement.h>
@@ -565,12 +564,6 @@ void BuoyantFluidSolver<dim>::run()
     VectorTools::interpolate(mapping,
                              temperature_dof_handler,
                              initial_temperature,
-                             old_temperature_solution);
-
-
-    VectorTools::interpolate(mapping,
-                             temperature_dof_handler,
-                             Functions::ZeroFunction<dim>(1),
                              old_temperature_solution);
 
     temperature_constraints.distribute(old_temperature_solution);
