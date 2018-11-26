@@ -86,7 +86,7 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                                    aspect_ratio, 1.0);
 
         for(auto cell: coarse_grid.active_cell_iterators())
-            cell->set_material_id(MaterialIds::Fluid);
+            cell->set_material_id(DomainIdentifiers::MaterialIds::Fluid);
     }
     // shell mesh including interior sphere
     else if (include_core && !include_exterior)
@@ -127,8 +127,8 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 {8,4,11,7}
         };
 
-        const types::material_id v = MaterialIds::Vacuum;
-        const types::material_id f = MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
 
         const types::manifold_id manifold_ids[n_cells] =
         {
@@ -205,8 +205,8 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 {8,4,11,7}
         };
 
-        const types::material_id f = MaterialIds::Fluid;
-        const types::material_id v = MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
 
         const types::manifold_id manifold_ids[n_cells] = {0,0,0,0,0,0,0,0};
         const types::material_id material_ids[n_cells] = {f,f,f,f,v,v,v,v};
@@ -285,8 +285,8 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
                 {12,8,15,11}
         };
 
-        const types::material_id f = MaterialIds::Fluid;
-        const types::material_id v = MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
 
         const types::manifold_id manifold_ids[n_cells] = {0,1,1,1,1,2,2,2,2,2,2,2,2};
         const types::material_id material_ids[n_cells] = {v,v,v,v,v,f,f,f,f,v,v,v,v};
@@ -331,13 +331,13 @@ void SphericalShell<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
 
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - aspect_ratio) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::ICB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::ICB);
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::CMB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::CMB);
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - exterior_length) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::FVB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::FVB);
                 }
 }
 
@@ -354,7 +354,7 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
                                    aspect_ratio, 1.0);
 
         for(auto cell: coarse_grid.active_cell_iterators())
-            cell->set_material_id(MaterialIds::Fluid);
+            cell->set_material_id(DomainIdentifiers::MaterialIds::Fluid);
     }
     // shell mesh including interior sphere
     else if (include_core && !include_exterior)
@@ -417,8 +417,8 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
                 {20, 12, 21, 13, 23, 15, 22, 14},  // back
         };
 
-        const types::material_id v = MaterialIds::Vacuum;
-        const types::material_id f = MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
 
         const types::manifold_id manifold_ids[n_cells] =
         {
@@ -520,8 +520,8 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
                 {20, 12, 21, 13, 23, 15, 22, 14},  // back
         };
 
-        const types::material_id v = MaterialIds::Vacuum;
-        const types::material_id f = MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
 
         const types::manifold_id manifold_ids[n_cells] =
         {
@@ -638,8 +638,8 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
                 {20+8, 12+8, 21+8, 13+8, 23+8, 15+8, 22+8, 14+8},  // back
         };
 
-        const types::material_id v = MaterialIds::Vacuum;
-        const types::material_id f = MaterialIds::Fluid;
+        const types::material_id v = DomainIdentifiers::MaterialIds::Vacuum;
+        const types::material_id f = DomainIdentifiers::MaterialIds::Fluid;
 
         const types::manifold_id manifold_ids[n_cells] =
         {
@@ -697,13 +697,13 @@ void SphericalShell<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
 
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - aspect_ratio) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::ICB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::ICB);
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::CMB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::CMB);
                     if (std::all_of(dist.begin(), dist.end(),
                             [&](double d)->bool{return std::abs(d - exterior_length) < tol;}))
-                        cell->face(f)->set_boundary_id(BoundaryIds::FVB);
+                        cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::FVB);
                 }
 }
 
@@ -733,7 +733,7 @@ void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
 
         for (auto cell: coarse_grid.active_cell_iterators())
         {
-            cell->set_material_id(MaterialIds::Fluid);
+            cell->set_material_id(DomainIdentifiers::MaterialIds::Fluid);
 
             if (cell->at_boundary())
                 for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
@@ -746,7 +746,7 @@ void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
                         if (std::all_of(coord.begin(), coord.end(),
                                 [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
                         {
-                            cell->face(f)->set_boundary_id(BoundaryIds::TopoBndry);
+                            cell->face(f)->set_boundary_id(DomainIdentifiers::BoundaryIds::TopoBndry);
                             cell->face(f)->set_manifold_id(1);
                             break;
                         }
@@ -782,9 +782,9 @@ void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
         for (auto cell: coarse_grid.active_cell_iterators())
         {
             if (cell->center()[dim-1] < 1.0)
-                cell->set_material_id(MaterialIds::Fluid);
+                cell->set_material_id(DomainIdentifiers::MaterialIds::Fluid);
             else if (cell->center()[dim-1] > 1.0)
-                cell->set_material_id(MaterialIds::Vacuum);
+                cell->set_material_id(DomainIdentifiers::MaterialIds::Vacuum);
 
             if (cell->at_boundary())
                 for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)

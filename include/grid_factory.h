@@ -55,7 +55,6 @@ enum MaterialIds
 namespace GridFactory {
 
 using namespace dealii;
-using namespace DomainIdentifiers;
 
 template<int dim>
 class SinusoidalManifold: public ChartManifold<dim,dim,dim-1>
