@@ -131,7 +131,8 @@ void ConductingFluidSolver<dim>::refine_mesh()
     // set rebuild flags
     rebuild_magnetic_matrices = true;
 }
-
+ *
+ */
 
 template <int dim>
 void ConductingFluidSolver<dim>::solve()
@@ -170,8 +171,7 @@ void ConductingFluidSolver<dim>::solve()
         magnetic_constraints.distribute(magnetic_solution);
     }
 }
- *
- */
+
 
 
 template<int dim>

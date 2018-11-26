@@ -3,21 +3,15 @@ SET(TARGET "main")
 
 SET(TARGET_SRC
   main.cc
-  assemble_system.cc
-  assembly_data.cc
-  buoyant_fluid_solver.cc
   grid_factory.cc
-  initial_values.cc
-  local_temperature_assemble.cc
-  local_stokes_assemble.cc
-  make_grid.cc
-  parameters.cc
-  postprocessor.cc
-  preconditioning.cc
-  setup.cc
   timestepping.cc
+  conducting_fluid/assemble_system.cc
+  conducting_fluid/conducting_fluid_solver.cc
+  conducting_fluid/make_grid.cc
+  conducting_fluid/setup.cc
   # You can specify additional files here!
 )
+
 
 PROJECT(${TARGET} CXX)
 

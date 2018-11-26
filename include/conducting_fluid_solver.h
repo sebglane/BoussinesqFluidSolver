@@ -70,19 +70,23 @@ private:
 
     void assemble_magnetic_system();
 
-    /*
-     *
     void assemble_magnetic_interface_term(
             const FEFaceValuesBase<dim> &int_fe_face_values,
             const FEFaceValuesBase<dim> &ext_fe_face_values,
             std::vector<Tensor<1,dim>>  &int_phi_values,
             std::vector<typename FEValuesViews::Vector<dim>::curl_type>  &int_curl_values,
             std::vector<double> &ext_phi_values,
-            FullMatrix<double> &local_interface_matrix,
-            Vector<double> &local_interface_rhs) const;
+            FullMatrix<double> &local_interface_matrix) const;
+
+    void distribute_magnetic_interface_term(
+            const FullMatrix<double> &local_interface_matrix,
+            const std::vector<types::global_dof_index> &local_fluid_dof_indices,
+            const std::vector<types::global_dof_index> &local_vacuum_dof_indices);
 
     void solve();
 
+    /*
+     *
     void output_results() const;
 
     void refine_mesh();
