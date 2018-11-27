@@ -22,7 +22,7 @@ update_gamma(true),
 omega(0)
 {}
 
-std::vector<double> IMEXCoefficients::alpha(const double    timestep_ratio)
+std::vector<double> IMEXCoefficients::alpha(const double timestep_ratio)
 {
     if (timestep_ratio != omega)
     {
@@ -56,7 +56,7 @@ std::vector<double> IMEXCoefficients::beta(const double timestep_ratio)
     return beta_;
 }
 
-std::vector<double> IMEXCoefficients::gamma(const double    timestep_ratio)
+std::vector<double> IMEXCoefficients::gamma(const double timestep_ratio)
 {
     if (timestep_ratio != omega)
     {

@@ -47,6 +47,19 @@ private:
     const double To;
 };
 
+template<int dim>
+class MagneticInitialValues : public Function<dim>
+{
+public:
+    MagneticInitialValues(const double outer_radius = 1.0);
+
+    virtual void vector_value(const Point<dim>   &point,
+                              Vector<double>     &values) const;
+
+private:
+    const double ro;
+};
+
 template <int dim>
 class GravityVector : public TensorFunction<1,dim>
 {

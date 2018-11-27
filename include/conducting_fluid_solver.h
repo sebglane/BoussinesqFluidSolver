@@ -85,13 +85,16 @@ private:
 
     void solve();
 
-    /*
-     *
     void output_results() const;
 
+    std::pair<double, double> compute_rms_values() const;
+
+    /*
+     *
     void refine_mesh();
      *
      */
+
     const unsigned int magnetic_degree;
 
     TimeStepping::IMEXCoefficients  imex_coefficients;

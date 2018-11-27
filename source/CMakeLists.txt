@@ -8,7 +8,9 @@ SET(TARGET_SRC
   conducting_fluid/assemble_interface.cc
   conducting_fluid/assemble_system.cc
   conducting_fluid/conducting_fluid_solver.cc
+  conducting_fluid/initial_values.cc
   conducting_fluid/make_grid.cc
+  conducting_fluid/postprocessor.cc
   conducting_fluid/setup.cc
   # You can specify additional files here!
 )
