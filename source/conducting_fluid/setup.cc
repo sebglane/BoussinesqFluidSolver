@@ -86,6 +86,8 @@ void ConductingFluidSolver<dim>::setup_dofs()
     setup_magnetic_matrices(dofs_per_block);
 
     magnetic_solution.reinit(dofs_per_block);
+    old_magnetic_solution.reinit(dofs_per_block);
+    old_old_magnetic_solution.reinit(dofs_per_block);
     magnetic_rhs.reinit(dofs_per_block);
 }
 

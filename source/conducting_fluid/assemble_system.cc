@@ -96,7 +96,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
 
     for (auto cell: magnetic_dof_handler.active_cell_iterators())
     {
-        hp_fe_values.reinit (cell);
+        hp_fe_values.reinit(cell);
 
         const FEValues<dim> &fe_values = hp_fe_values.get_present_fe_values();
         const unsigned int dofs_per_cell = cell->get_fe().dofs_per_cell;
@@ -178,7 +178,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                     // TODO: put volume right-hand side for the exterior here
             }
         }
-        else
+        else if (rebuild_magnetic_matrices)
             Assert(false, ExcInternalError());
 
         // symmetrize local matrix
@@ -190,12 +190,18 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
         // distribute local matrix to global matrix
         local_dof_indices.resize(dofs_per_cell);
         cell->get_dof_indices(local_dof_indices);
-        magnetic_constraints.distribute_local_to_global(
-                local_matrix,
-                local_rhs,
-                local_dof_indices,
-                magnetic_matrix,
-                magnetic_rhs);
+        if (rebuild_magnetic_matrices)
+            magnetic_constraints.distribute_local_to_global(
+                    local_matrix,
+                    local_rhs,
+                    local_dof_indices,
+                    magnetic_matrix,
+                    magnetic_rhs);
+        else
+            magnetic_constraints.distribute_local_to_global(
+                    local_rhs,
+                    local_dof_indices,
+                    magnetic_rhs);
 
         // assemble interface term
         if (cell->material_id() == DomainIdentifiers::MaterialIds::Fluid &&
@@ -214,11 +220,11 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
 
                         // test functions come from the fluid domain
                         assemble_magnetic_interface_term(fluid_fe_face_values,
-                                vacuum_fe_face_values,
-                                fluid_phi_values,
-                                fluid_curl_values,
-                                vacuum_phi_values,
-                                local_interface_matrix);
+                                                         vacuum_fe_face_values,
+                                                         fluid_phi_values,
+                                                         fluid_curl_values,
+                                                         vacuum_phi_values,
+                                                         local_interface_matrix);
 
                         // get dof indices of vacuum domain
                         cell->neighbor(f)
@@ -245,11 +251,11 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
 
                                 // projection space is test function space of interior domain
                                 assemble_magnetic_interface_term(fluid_fe_face_values,
-                                        vacuum_fe_face_values,
-                                        fluid_phi_values,
-                                        fluid_curl_values,
-                                        vacuum_phi_values,
-                                        local_interface_matrix);
+                                                                 vacuum_fe_face_values,
+                                                                 fluid_phi_values,
+                                                                 fluid_curl_values,
+                                                                 vacuum_phi_values,
+                                                                 local_interface_matrix);
 
                                 // get dof indices of exterior domain
                                 cell->neighbor_child_on_subface(f, subface)
@@ -289,6 +295,8 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                     }
                 }
     }
+
+    rebuild_magnetic_matrices = false;
 }
 }  // namespace ConductingFluid
 
