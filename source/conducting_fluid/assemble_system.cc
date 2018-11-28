@@ -116,6 +116,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                             fe_values.n_quadrature_points);
             AssertDimension(old_old_magnetic_values.size(),
                             fe_values.n_quadrature_points);
+
             AssertDimension(old_magnetic_curls.size(),
                             fe_values.n_quadrature_points);
             AssertDimension(old_old_magnetic_curls.size(),
@@ -125,6 +126,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                                                             old_magnetic_values);
             fe_values[vector_potential].get_function_values(old_old_magnetic_solution,
                                                             old_old_magnetic_values);
+
             fe_values[vector_potential].get_function_curls(old_magnetic_solution,
                                                            old_magnetic_curls);
             fe_values[vector_potential].get_function_curls(old_old_magnetic_solution,
@@ -147,19 +149,18 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                     = gamma[1] * old_magnetic_curls[q]
                         + gamma[2] * old_old_magnetic_curls[q];
 
-
                 // symmetric local matrix assembly
                 for (unsigned int i=0; i<dofs_per_cell; ++i)
                 {
                     if (rebuild_magnetic_matrices)
-                        for (unsigned int j=i; j<dofs_per_cell; ++j)
+                        for (unsigned int j=0; j<=i; ++j)
                             local_matrix(i, j) += (
-                                      alpha[0] * fluid_phi_values[i] * fluid_phi_values[j]
-                                    + timestep * equation_coefficients[0] * gamma[0] * fluid_curl_values[i] * fluid_curl_values[j]
+                                      (1./ timestep) * fluid_phi_values[i] * fluid_phi_values[j]
+                                    + 0.5 * equation_coefficients[0] * fluid_curl_values[i] * fluid_curl_values[j]
                                     ) * fe_values.JxW(q);
                     local_rhs(i) += (
-                            - time_derivative_magnetic * fluid_phi_values[i]
-                            - timestep * equation_coefficients[0] * linear_term_magnetic * fluid_curl_values[i]
+                            - (1./ timestep) * time_derivative_magnetic * fluid_phi_values[i]
+                            - equation_coefficients[0] * linear_term_magnetic * fluid_curl_values[i]
                             ) * fe_values.JxW(q);
                 }
             }
@@ -174,19 +175,15 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
             {
                 // pre-computation of values
                 for (unsigned int k=0; k<dofs_per_cell; ++k)
-                {
-                    vacuum_phi_values[k] = fe_values[scalar_potential].value(k, q);
                     vacuum_grad_values[k] = fe_values[scalar_potential].gradient(k, q);
-                }
                 // symmetric local matrix assembly
                 for (unsigned int i=0; i<dofs_per_cell; ++i)
-                    for (unsigned int j=i; j<dofs_per_cell; ++j)
+                    for (unsigned int j=0; j<=i; ++j)
                         local_matrix(i,j) += vacuum_grad_values[i] * vacuum_grad_values[j] * fe_values.JxW(q);
             }
         }
         else if (rebuild_magnetic_matrices)
             Assert(false, ExcInternalError());
-
         // symmetrize local matrix
         if (rebuild_magnetic_matrices)
             for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -196,6 +193,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
         // distribute local matrix to global matrix
         local_dof_indices.resize(dofs_per_cell);
         cell->get_dof_indices(local_dof_indices);
+
         if (rebuild_magnetic_matrices)
             magnetic_constraints.distribute_local_to_global(
                     local_matrix,
@@ -227,7 +225,6 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                         // test functions come from the fluid domain
                         assemble_magnetic_interface_term(fluid_fe_face_values,
                                                          vacuum_fe_face_values,
-                                                         fluid_phi_values,
                                                          fluid_curl_values,
                                                          vacuum_phi_values,
                                                          local_interface_matrix);
@@ -258,7 +255,6 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                                 // projection space is test function space of interior domain
                                 assemble_magnetic_interface_term(fluid_fe_face_values,
                                                                  vacuum_fe_face_values,
-                                                                 fluid_phi_values,
                                                                  fluid_curl_values,
                                                                  vacuum_phi_values,
                                                                  local_interface_matrix);
@@ -285,24 +281,22 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
 
                         // projection space is test function space of interior domain
                         assemble_magnetic_interface_term(fluid_fe_face_values,
-                                vacuum_fe_face_values,
-                                fluid_phi_values,
-                                fluid_curl_values,
-                                vacuum_phi_values,
-                                local_interface_matrix);
+                                                         vacuum_fe_face_values,
+                                                         fluid_curl_values,
+                                                         vacuum_phi_values,
+                                                         local_interface_matrix);
 
                         // get dof indices of exterior domain
                         cell->neighbor(f)
                             ->get_dof_indices(neighbor_dof_indices);
 
                         distribute_magnetic_interface_term(local_interface_matrix,
-                                local_dof_indices,
-                                neighbor_dof_indices);
+                                                           local_dof_indices,
+                                                           neighbor_dof_indices);
                     }
                 }
     }
-
-    rebuild_magnetic_matrices = false;
+    rebuild_magnetic_matrices = true;
 }
 }  // namespace ConductingFluid
 

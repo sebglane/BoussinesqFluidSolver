@@ -73,7 +73,6 @@ private:
     void assemble_magnetic_interface_term(
             const FEFaceValuesBase<dim> &int_fe_face_values,
             const FEFaceValuesBase<dim> &ext_fe_face_values,
-            std::vector<Tensor<1,dim>>  &int_phi_values,
             std::vector<typename FEValuesViews::Vector<dim>::curl_type>  &int_curl_values,
             std::vector<double> &ext_phi_values,
             FullMatrix<double> &local_interface_matrix) const;

@@ -14,7 +14,6 @@ template<>
 void ConductingFluidSolver<2>::assemble_magnetic_interface_term(
         const FEFaceValuesBase<2> &/* fluid_fe_face_values */,
         const FEFaceValuesBase<2> &/* vacuum_fe_face_values */,
-        std::vector<Tensor<1,2>>  &/* int_phi_values */,
         std::vector<typename FEValuesViews::Vector<2>::curl_type> &/* int_curl_values */,
         std::vector<double> &/* ext_phi_values */,
         FullMatrix<double> &/* local_interface_matrix */) const
@@ -26,9 +25,8 @@ template<>
 void ConductingFluidSolver<3>::assemble_magnetic_interface_term(
         const FEFaceValuesBase<3> &fluid_fe_face_values,
         const FEFaceValuesBase<3> &vacuum_fe_face_values,
-        std::vector<Tensor<1,3>>  &int_phi_values,
         std::vector<typename FEValuesViews::Vector<3>::curl_type>  &int_curl_values,
-        std::vector<double> &ext_phi_values,
+        std::vector<double>                                        &ext_phi_values,
         FullMatrix<double> &local_interface_matrix) const
 {
     const unsigned int dim = 3;
@@ -52,16 +50,13 @@ void ConductingFluidSolver<3>::assemble_magnetic_interface_term(
     for (unsigned int q=0; q<n_face_quadrature_points; ++q)
     {
         for (unsigned int k=0; k<fluid_fe_face_values.dofs_per_cell; ++k)
-        {
-            int_phi_values[k] = fluid_fe_face_values[vector_potential].value(k, q);
             int_curl_values[k] = fluid_fe_face_values[vector_potential].curl(k, q);
-        }
         for (unsigned int k=0; k<vacuum_fe_face_values.dofs_per_cell; ++k)
             ext_phi_values[k] = vacuum_fe_face_values[scalar_potential].value(k, q);
 
         for (unsigned int i=0; i<fluid_fe_face_values.dofs_per_cell; ++i)
             for (unsigned int j=0; j<vacuum_fe_face_values.dofs_per_cell; ++j)
-                local_interface_matrix(i, j) += normal_vectors[q] * int_curl_values[i] *
+                local_interface_matrix(i, j) += equation_coefficients[0] * normal_vectors[q] * int_curl_values[i] *
                                                 ext_phi_values[j] * fluid_fe_face_values.JxW(q);
     }
 }
@@ -111,7 +106,6 @@ template
 void ConductingFluid::ConductingFluidSolver<3>::assemble_magnetic_interface_term(
         const FEFaceValuesBase<3> &fluid_fe_face_values,
         const FEFaceValuesBase<3> &vacuum_fe_face_values,
-        std::vector<Tensor<1,3>>  &int_phi_values,
         std::vector<typename FEValuesViews::Vector<3>::curl_type>  &int_curl_values,
         std::vector<double> &ext_phi_values,
         FullMatrix<double> &local_interface_matrix) const;
