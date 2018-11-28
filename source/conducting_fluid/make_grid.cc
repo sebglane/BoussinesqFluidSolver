@@ -63,43 +63,6 @@ void ConductingFluidSolver<dim>::make_grid()
                   << triangulation.n_active_cells()
                   << std::endl;
     }
-
-    // check normal vectors
-    const QMidpoint<dim-1> face_quadrature;
-
-    FEFaceValues<dim> fe_face_values(interior_magnetic_fe,
-                                     face_quadrature,
-                                     update_normal_vectors|
-                                     update_quadrature_points);
-
-    for (auto cell: triangulation.active_cell_iterators())
-    {
-        if (!cell->at_boundary() &&
-                cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
-            for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
-                if (cell->neighbor(f)->material_id() == DomainIdentifiers::MaterialIds::Vacuum)
-                {
-                    std::cout << "   On cell ("
-                              << cell->level() << ","
-                              << cell->index() << "): ";
-
-                    fe_face_values.reinit(cell, f);
-
-                    const std::vector<Tensor<1,dim>> normal_vectors = fe_face_values.get_normal_vectors();
-
-                    const std::vector<Point<dim>>    q_points = fe_face_values.get_quadrature_points();
-
-                    for (unsigned int q=0; q<fe_face_values.n_quadrature_points; ++q)
-                    {
-                        const double tmp = (q_points[q] / q_points[q].norm()) * normal_vectors[q];
-                        std::cout << tmp << ", ";
-                    }
-
-                    std::cout << std::endl;
-                }
-    }
-
-
 }
 }  // namespace BuoyantFluid
 
