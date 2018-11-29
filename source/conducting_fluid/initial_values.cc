@@ -30,9 +30,16 @@ void MagneticInitialValues<3>::vector_value(
 
     const double radius = point.distance(Point<dim>());
 
-    value[0] = - point[1] * (ro - radius);
-    value[1] = point[0] * (ro - radius);
-    value[2] = 0.;
+    if (radius - ro <= tol)
+    {
+        value[0] = - point[1] * (ro - radius);
+        value[1] = point[0] * (ro - radius);
+        value[2] = 0.;
+    }
+    else
+    {
+        value = 0.;
+    }
 }
 
 }  // namespace EquationData

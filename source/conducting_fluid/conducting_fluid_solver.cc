@@ -5,8 +5,6 @@
  *      Author: sg
  */
 
-#include <deal.II/base/parameter_handler.h>
-
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
 
@@ -17,6 +15,7 @@
 #include <deal.II/grid/grid_refinement.h>
 
 #include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/vector.h>
 
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
@@ -82,8 +81,19 @@ void ConductingFluidSolver<dim>::output_results() const
                              solution_names,
                              DataOut<dim,hp::DoFHandler<dim> >::type_dof_data,
                              data_component_interpretation);
-    data_out.build_patches();
 
+    Vector<float>   material_ids(triangulation.n_active_cells());
+    for (auto cell: triangulation.active_cell_iterators())
+        if (cell->is_locally_owned())
+            if (cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
+                material_ids(cell->active_cell_index()) = 0.;
+            else if (cell->material_id() == DomainIdentifiers::MaterialIds::Vacuum)
+                material_ids(cell->active_cell_index()) = 1.;
+            else
+                Assert(false, ExcInternalError());
+    data_out.add_data_vector(material_ids, "material_id");
+
+    data_out.build_patches();
     // write output to disk
     const std::string filename = ("solution-" +
                                   Utilities::int_to_string(timestep_number, 5) +
@@ -155,12 +165,12 @@ void ConductingFluidSolver<dim>::solve()
     PrimitiveVectorMemory<BlockVector<double>> vector_memory;
 
     SolverControl solver_control(1000,
-            1e-6 * magnetic_rhs.l2_norm());
+                                 1e-6 * magnetic_rhs.l2_norm());
 
     SolverGMRES<BlockVector<double>>
     solver(solver_control,
-            vector_memory,
-            SolverGMRES<BlockVector<double>>::AdditionalData(30, true));
+           vector_memory,
+           SolverGMRES<BlockVector<double>>::AdditionalData(30, true));
 
     PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
     preconditioner.initialize(magnetic_matrix,
@@ -175,8 +185,6 @@ void ConductingFluidSolver<dim>::solve()
             << solver_control.last_step()
             << " GMRES iterations for magnetic system, "
             << std::endl;
-
-    magnetic_constraints.distribute(magnetic_solution);
 }
 
 
@@ -272,17 +280,23 @@ void ConductingFluidSolver<dim>::run()
     const EquationData::MagneticInitialValues<dim> initial_potential;
     const Functions::ZeroFunction<dim>             zero_function(dim+1);
 
-
     const std::map<types::material_id, const Function<dim>*>
     initial_values = {{DomainIdentifiers::MaterialIds::Fluid, &initial_potential},
                       {EquationData::BoundaryIds::CMB, &zero_function}};
-    VectorTools::interpolate_based_on_material_id(
-                             mapping,
-                             magnetic_dof_handler,
-                             initial_values,
-                             old_magnetic_solution);
+
+    VectorTools::interpolate_based_on_material_id(mapping,
+                                                  magnetic_dof_handler,
+                                                  initial_values,
+                                                  old_magnetic_solution);
 
     magnetic_constraints.distribute(old_magnetic_solution);
+
+    std::cout << "   vector potential linfty_norm: "
+                     << old_magnetic_solution.block(0).linfty_norm()
+                     << std::endl
+                     << "   scalar potential linfty_norm: "
+                     << old_magnetic_solution.block(1).linfty_norm()
+                     << std::endl;
 
     magnetic_solution = old_magnetic_solution;
 
@@ -312,6 +326,13 @@ void ConductingFluidSolver<dim>::run()
                       << rms_values.second
                       << std::endl;
         }
+
+        std::cout << "   vector potential linfty_norm: "
+                         << magnetic_solution.block(0).linfty_norm()
+                         << std::endl
+                         << "   scalar potential linfty_norm: "
+                         << magnetic_solution.block(1).linfty_norm()
+                         << std::endl;
 
         if (timestep_number % output_frequency == 0 && timestep_number != 0)
         {

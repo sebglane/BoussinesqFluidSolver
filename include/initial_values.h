@@ -58,6 +58,7 @@ public:
 
 private:
     const double ro;
+    const double tol = 1e-12;
 };
 
 template <int dim>
