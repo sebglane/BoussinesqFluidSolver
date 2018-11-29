@@ -56,7 +56,8 @@ old_timestep(timestep),
 // TODO: goes to parameter file later
 n_steps(n_steps),
 output_frequency(output_frequency),
-refinement_frequency(refinement_frequency)
+refinement_frequency(refinement_frequency),
+interpolate_initial_values(false)
 {
     fe_collection.push_back(interior_magnetic_fe);
     fe_collection.push_back(exterior_magnetic_fe);
@@ -277,19 +278,40 @@ void ConductingFluidSolver<dim>::run()
 
     setup_dofs();
 
-    const EquationData::MagneticInitialValues<dim> initial_potential;
-    const Functions::ZeroFunction<dim>             zero_function(dim+1);
+    if (interpolate_initial_values)
+    {
+        const EquationData::MagneticInitialValues<dim> initial_potential;
+        const Functions::ZeroFunction<dim>             zero_function(dim+1);
 
-    const std::map<types::material_id, const Function<dim>*>
-    initial_values = {{DomainIdentifiers::MaterialIds::Fluid, &initial_potential},
-                      {EquationData::BoundaryIds::CMB, &zero_function}};
+        const std::map<types::material_id, const Function<dim>*>
+        initial_values = {{DomainIdentifiers::MaterialIds::Fluid, &initial_potential},
+                          {EquationData::BoundaryIds::CMB, &zero_function}};
 
-    VectorTools::interpolate_based_on_material_id(mapping,
-                                                  magnetic_dof_handler,
-                                                  initial_values,
-                                                  old_magnetic_solution);
+        VectorTools::interpolate_based_on_material_id(mapping,
+                                                      magnetic_dof_handler,
+                                                      initial_values,
+                                                      old_magnetic_solution);
 
-    magnetic_constraints.distribute(old_magnetic_solution);
+        magnetic_constraints.distribute(old_magnetic_solution);
+    }
+    else
+    {
+        const EquationData::MagneticInitialValues<dim> initial_potential;
+        QGauss<dim> quadrature(magnetic_degree+2);
+
+        hp::QCollection<dim> q_collection;
+        q_collection.push_back(quadrature);
+        q_collection.push_back(quadrature);
+
+        VectorTools::project(magnetic_dof_handler,
+                             magnetic_constraints,
+                             q_collection,
+                             initial_potential,
+                             old_magnetic_solution);
+
+        magnetic_constraints.distribute(old_magnetic_solution);
+    }
+
 
     std::cout << "   vector potential linfty_norm: "
                      << old_magnetic_solution.block(0).linfty_norm()

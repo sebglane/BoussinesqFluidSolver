@@ -142,6 +142,8 @@ private:
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_magnetic_matrices = true;
     bool    rebuild_magnetic_preconditioner = true;
+
+    bool    interpolate_initial_values;
 };
 }  // namespace ConductingFluid
 
