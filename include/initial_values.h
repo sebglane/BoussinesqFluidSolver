@@ -48,10 +48,10 @@ private:
 };
 
 template<int dim>
-class MagneticInitialValues : public Function<dim>
+class InitialField : public Function<dim>
 {
 public:
-    MagneticInitialValues(const double outer_radius = 1.0);
+    InitialField(const double outer_radius = 1.0);
 
     virtual void vector_value(const Point<dim>   &point,
                               Vector<double>     &values) const;

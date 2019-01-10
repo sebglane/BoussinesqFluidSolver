@@ -68,20 +68,23 @@ void ConductingFluidSolver<dim>::output_results() const
 {
     std::cout << "   Output results..." << std::endl;
 
-    std::vector<std::string> solution_names(dim,"vector_potential");
-    solution_names.push_back("scalar_potential");
+    PostProcessor<dim>  postprocessor;
 
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-    data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+//    std::vector<std::string> solution_names(dim,"vector_potential");
+//    solution_names.push_back("scalar_potential");
 
+//    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+//    data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+//    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+//
     // prepare data out object
     DataOut<dim, hp::DoFHandler<dim>>    data_out;
     data_out.attach_dof_handler(magnetic_dof_handler);
-    data_out.add_data_vector(magnetic_solution,
-                             solution_names,
-                             DataOut<dim,hp::DoFHandler<dim> >::type_dof_data,
-                             data_component_interpretation);
+    data_out.add_data_vector(magnetic_solution, postprocessor);
+//    data_out.add_data_vector(magnetic_solution,
+//                             solution_names,
+//                             DataOut<dim,hp::DoFHandler<dim> >::type_dof_data,
+//                             data_component_interpretation);
 
     Vector<float>   material_ids(triangulation.n_active_cells());
     for (auto cell: triangulation.active_cell_iterators())
@@ -280,7 +283,7 @@ void ConductingFluidSolver<dim>::run()
 
     if (interpolate_initial_values)
     {
-        const EquationData::MagneticInitialValues<dim> initial_potential;
+        const EquationData::InitialField<dim> initial_potential;
         const Functions::ZeroFunction<dim>             zero_function(dim+1);
 
         const std::map<types::material_id, const Function<dim>*>
@@ -296,7 +299,7 @@ void ConductingFluidSolver<dim>::run()
     }
     else
     {
-        const EquationData::MagneticInitialValues<dim> initial_potential;
+        const EquationData::InitialField<dim> initial_potential;
         QGauss<dim> quadrature(magnetic_degree+2);
 
         hp::QCollection<dim> q_collection;
@@ -324,67 +327,67 @@ void ConductingFluidSolver<dim>::run()
 
     output_results();
 
-    double time = 0;
-
-    do
-    {
-        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
-                  << "time: " << time << ", "
-                  << "time step: " << timestep
-                  << std::endl;
-
-        assemble_magnetic_system();
-
-        solve();
-        {
-            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
-
-            const std::pair<double,double> rms_values = compute_rms_values();
-
-            std::cout << "   vector potential rms value: "
-                      << rms_values.first
-                      << std::endl
-                      << "   scalar potential rms value: "
-                      << rms_values.second
-                      << std::endl;
-        }
-
-        std::cout << "   vector potential linfty_norm: "
-                         << magnetic_solution.block(0).linfty_norm()
-                         << std::endl
-                         << "   scalar potential linfty_norm: "
-                         << magnetic_solution.block(1).linfty_norm()
-                         << std::endl;
-
-        if (timestep_number % output_frequency == 0 && timestep_number != 0)
-        {
-            TimerOutput::Scope  timer_section(computing_timer, "output results");
-            output_results();
-        }
-        /*
-         *
-        // mesh refinement
-        if ((timestep_number > 0) && (timestep_number % refinement_frequency == 0))
-            refine_mesh();
-         *
-         */
-
-        // advance magnetic solution
-        old_old_magnetic_solution = old_magnetic_solution;
-        old_magnetic_solution = magnetic_solution;
-
-        // extrapolate magnetic solution
-        magnetic_solution.sadd(1. + timestep / old_timestep,
-                               timestep / old_timestep,
-                               old_old_magnetic_solution);
-        // advance in time
-        time += timestep;
-        ++timestep_number;
-
-    } while (timestep_number <= n_steps);
-
-    if (n_steps % output_frequency != 0)
-        output_results();
+//    double time = 0;
+//
+//    do
+//    {
+//        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
+//                  << "time: " << time << ", "
+//                  << "time step: " << timestep
+//                  << std::endl;
+//
+//        assemble_magnetic_system();
+//
+//        solve();
+//        {
+//            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
+//
+//            const std::pair<double,double> rms_values = compute_rms_values();
+//
+//            std::cout << "   vector potential rms value: "
+//                      << rms_values.first
+//                      << std::endl
+//                      << "   scalar potential rms value: "
+//                      << rms_values.second
+//                      << std::endl;
+//        }
+//
+//        std::cout << "   vector potential linfty_norm: "
+//                         << magnetic_solution.block(0).linfty_norm()
+//                         << std::endl
+//                         << "   scalar potential linfty_norm: "
+//                         << magnetic_solution.block(1).linfty_norm()
+//                         << std::endl;
+//
+//        if (timestep_number % output_frequency == 0 && timestep_number != 0)
+//        {
+//            TimerOutput::Scope  timer_section(computing_timer, "output results");
+//            output_results();
+//        }
+//        /*
+//         *
+//        // mesh refinement
+//        if ((timestep_number > 0) && (timestep_number % refinement_frequency == 0))
+//            refine_mesh();
+//         *
+//         */
+//
+//        // advance magnetic solution
+//        old_old_magnetic_solution = old_magnetic_solution;
+//        old_magnetic_solution = magnetic_solution;
+//
+//        // extrapolate magnetic solution
+//        magnetic_solution.sadd(1. + timestep / old_timestep,
+//                               timestep / old_timestep,
+//                               old_old_magnetic_solution);
+//        // advance in time
+//        time += timestep;
+//        ++timestep_number;
+//
+//    } while (timestep_number <= n_steps);
+//
+//    if (n_steps % output_frequency != 0)
+//        output_results();
 
     std::cout << std::fixed;
 

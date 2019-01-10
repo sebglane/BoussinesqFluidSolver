@@ -11,7 +11,7 @@ namespace EquationData
 {
 
 template <int dim>
-MagneticInitialValues<dim>::MagneticInitialValues(const double outer_radius)
+InitialField<dim>::InitialField(const double outer_radius)
 :
 Function<dim>(dim+1),
 ro(outer_radius)
@@ -20,7 +20,7 @@ ro(outer_radius)
 }
 
 template<>
-void MagneticInitialValues<3>::vector_value(
+void InitialField<3>::vector_value(
         const Point<3>    &point,
         Vector<double>    &value) const
 {
@@ -45,4 +45,4 @@ void MagneticInitialValues<3>::vector_value(
 }  // namespace EquationData
 
 // explicit instantiation
-template class EquationData::MagneticInitialValues<3>;
+template class EquationData::InitialField<3>;

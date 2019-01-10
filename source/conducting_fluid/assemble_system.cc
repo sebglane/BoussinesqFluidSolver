@@ -179,7 +179,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_system()
                 // symmetric local matrix assembly
                 for (unsigned int i=0; i<dofs_per_cell; ++i)
                     for (unsigned int j=0; j<=i; ++j)
-                        local_matrix(i,j) += vacuum_grad_values[i] * vacuum_grad_values[j] * fe_values.JxW(q);
+                        local_matrix(i,j) += equation_coefficients[0] * vacuum_grad_values[i] * vacuum_grad_values[j] * fe_values.JxW(q);
             }
         }
         else if (rebuild_magnetic_matrices)
