@@ -9,7 +9,9 @@
 #include "initial_values.h"
 
 namespace BuoyantFluid {
-
+/*
+ *
+ *
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
 (const typename DoFHandler<dim>::active_cell_iterator   &cell,
@@ -83,12 +85,13 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
             data.local_dof_indices,
             navier_stokes_matrix);
 
-//    navier_stokes_constraints.distribute_local_to_global(
-//            data.local_laplace_matrix,
-//            data.local_velocity_dof_indices,
-//            velocity_laplace_matrix);
+    navier_stokes_constraints.distribute_local_to_global(
+            data.local_laplace_matrix,
+            data.local_velocity_dof_indices,
+            velocity_laplace_matrix);
 }
-
+ *
+ */
 
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
@@ -210,7 +213,8 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
 
 }  // namespace BuoyantFluid
 
-
+/*
+ *
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix(
         const typename DoFHandler<2>::active_cell_iterator &cell,
         NavierStokesAssembly::Scratch::Matrix<2> &scratch,
@@ -224,6 +228,8 @@ template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_m
         const NavierStokesAssembly::CopyData::Matrix<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_matrix(
         const NavierStokesAssembly::CopyData::Matrix<3> &data);
+ *
+ */
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_rhs(
         const typename DoFHandler<2>::active_cell_iterator &cell,

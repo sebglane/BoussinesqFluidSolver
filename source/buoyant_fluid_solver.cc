@@ -36,7 +36,7 @@ mapping(4),
 temperature_fe(parameters.temperature_degree),
 temperature_dof_handler(triangulation),
 // stokes part
-navier_stokes_fe(FE_Q<dim>(parameters.velocity_degree), dim,
+navier_stokes_fe(FESystem<dim>(FE_Q<dim>(parameters.velocity_degree), dim), 1,
                  FE_Q<dim>(parameters.velocity_degree - 1), 1),
 navier_stokes_dof_handler(triangulation),
 // coefficients

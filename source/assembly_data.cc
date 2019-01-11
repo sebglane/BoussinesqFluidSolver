@@ -237,7 +237,7 @@ Matrix<dim>::Matrix(const Matrix<dim> &data)
 :
 local_matrix(data.local_matrix),
 local_laplace_matrix(data.local_laplace_matrix),
-local_dof_indices(data.local_dof_indices)
+local_dof_indices(data.local_dof_indices),
 local_velocity_dof_indices(data.local_velocity_dof_indices)
 {}
 

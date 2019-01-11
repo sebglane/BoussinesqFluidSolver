@@ -22,7 +22,7 @@ void BuoyantFluidSolver<dim>::navier_stokes_step()
     assemble_navier_stokes_system();
 
     // rebuild preconditioner for diffusion step
-    build_projection_preconditioner();
+    build_diffusion_preconditioner();
 
     // solve projection step
     solve_diffusion_system();
@@ -74,11 +74,11 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
 template<int dim>
 void BuoyantFluidSolver<dim>::solve_diffusion_system()
 {
-    std::cout << "   Solving temperature system..." << std::endl;
+    std::cout << "      Solving diffusion system..." << std::endl;
     TimerOutput::Scope  timer_section(computing_timer, "diffusion solve");
 
     // substract pressure gradient from right-hand side
-    Vector<double>  system_rhs(navier_stokes_rhs.block(1));
+    Vector<double>  system_rhs(navier_stokes_rhs.block(0));
     {
         Vector<double>  extrapolated_pressure(old_navier_stokes_solution.block(1));
         const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
@@ -95,7 +95,7 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
     // solve linear system
     SolverControl   solver_control(30, 1e-6 * system_rhs.l2_norm());
 
-    SolverCG<>  cg(solver_control);
+    SolverCG<Vector<double>>  cg(solver_control);
 
     navier_stokes_constraints.set_zero(navier_stokes_solution);
 
@@ -117,6 +117,7 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
 template<int dim>
 void BuoyantFluidSolver<dim>::solve_projection_system()
 {
+    std::cout << "      Solving projection system..." << std::endl;
     // construct right-hand from velocity solution
     Vector<double>  system_rhs(navier_stokes_rhs.block(1));
     {
@@ -138,7 +139,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
     cg.solve(navier_stokes_matrix.block(1,1),
              navier_stokes_solution.block(1),
              system_rhs,
-             *preconditioner_diffusion);
+             *preconditioner_projection);
 
     navier_stokes_constraints.distribute(navier_stokes_solution);
 

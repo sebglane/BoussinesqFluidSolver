@@ -64,11 +64,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
 
     DoFRenumbering::boost::king_ordering(navier_stokes_dof_handler);
-
-    std::vector<unsigned int> stokes_block_component(dim+1,0);
-    stokes_block_component[dim] = 1;
-    DoFRenumbering::component_wise(navier_stokes_dof_handler,
-                                   stokes_block_component);
+    DoFRenumbering::block_wise(navier_stokes_dof_handler);
     // stokes constraints
     {
         navier_stokes_constraints.clear();
@@ -126,6 +122,8 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     }
 
     // count dofs
+    std::vector<unsigned int> stokes_block_component(2,0);
+    stokes_block_component[1] = 1;
     std::vector<types::global_dof_index> dofs_per_block(2);
     DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
                                    dofs_per_block,

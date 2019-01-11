@@ -5,6 +5,7 @@
  *      Author: sg
  */
 
+#include <deal.II/fe/fe_values.h>
 #include <deal.II/base/work_stream.h>
 
 #include "buoyant_fluid_solver.h"
@@ -113,7 +114,94 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
         navier_stokes_matrix = 0;
         velocity_laplace_matrix = 0;
 
+        FEValues<dim>   fe_values(mapping,
+                                  navier_stokes_fe,
+                                  quadrature_formula,
+                                  update_values|
+                                  update_gradients|
+                                  update_JxW_values);
+
+        const unsigned int velocity_dofs_per_cell = navier_stokes_fe.base_element(0).dofs_per_cell;
+        Assert(velocity_dofs_per_cell > 0, ExcLowerRange(velocity_dofs_per_cell, 0));
+
+        const unsigned int dofs_per_cell = navier_stokes_fe.dofs_per_cell;
+        const unsigned int n_q_points    = fe_values.n_quadrature_points;
+        Assert(velocity_dofs_per_cell < dofs_per_cell, ExcInternalError());
+
+        const FEValuesExtractors::Vector    velocity(0);
+        const FEValuesExtractors::Scalar    pressure(dim);
+
+
+        FullMatrix<double>  local_matrix(dofs_per_cell,
+                                         dofs_per_cell),
+                            local_laplace_matrix(velocity_dofs_per_cell,
+                                                 velocity_dofs_per_cell);
+
+        std::vector<double>         div_phi_velocity(dofs_per_cell);
+        std::vector<Tensor<1,dim>>  phi_velocity(dofs_per_cell);
+        std::vector<Tensor<2,dim>>  grad_phi_velocity(velocity_dofs_per_cell);
+
+        std::vector<double>         phi_pressure(dofs_per_cell);
+        std::vector<Tensor<1,dim>>  grad_phi_pressure(dofs_per_cell);
+
+        std::vector<types::global_dof_index>   local_dof_indices(dofs_per_cell);
+        std::vector<types::global_dof_index>   local_velocity_dof_indices(velocity_dofs_per_cell);
+
+        for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
+        {
+            fe_values.reinit(cell);
+
+            cell->get_dof_indices(local_dof_indices);
+
+            local_matrix = 0;
+            local_laplace_matrix = 0;
+
+            for (unsigned int q=0; q<n_q_points; ++q)
+            {
+                for (unsigned int k=0, k_velocity=0; k<dofs_per_cell; ++k)
+                {
+                    phi_velocity[k]     = fe_values[velocity].value(k, q);
+                    div_phi_velocity[k] = fe_values[velocity].divergence(k, q);
+                    phi_pressure[k]     = fe_values[pressure].value(k, q);
+                    grad_phi_pressure[k]= fe_values[pressure].gradient(k, q);
+                    if (navier_stokes_fe.system_to_component_index(k).first < dim)
+                    {
+                        grad_phi_velocity[k_velocity] = fe_values[velocity].gradient(k, q);
+                        local_velocity_dof_indices[k_velocity] = local_dof_indices[k];
+                        ++k_velocity;
+                    }
+                }
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                    for (unsigned int j=0; j<=i; ++j)
+                        local_matrix(i,j)
+                            += (
+                                  phi_velocity[i] * phi_velocity[j]
+                                - phi_pressure[i] * div_phi_velocity[j]
+                                - div_phi_velocity[i] * phi_pressure[j]
+                                + grad_phi_pressure[i] *grad_phi_pressure[j]
+                                ) * fe_values.JxW(q);
+                for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
+                    for (unsigned int j=0; j<=i; ++j)
+                        local_laplace_matrix(i,j)
+                            +=   scalar_product(grad_phi_velocity[i], grad_phi_velocity[j])
+                               * fe_values.JxW(q);
+            }
+            for (unsigned int i=0; i<dofs_per_cell; ++i)
+                for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+                    local_matrix(i,j) = local_matrix(j,i);
+
+            for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
+                for (unsigned int j=i+1; j<velocity_dofs_per_cell; ++j)
+                    local_laplace_matrix(i,j) = local_laplace_matrix(j,i);
+
+            navier_stokes_constraints.distribute_local_to_global(local_matrix,
+                                                                 local_dof_indices,
+                                                                 navier_stokes_matrix);
+        }
+
         // assemble matrix
+        /*
+         *
         WorkStream::run(
                 navier_stokes_dof_handler.begin_active(),
                 navier_stokes_dof_handler.end(),
@@ -133,6 +221,8 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
                         update_gradients|
                         update_JxW_values),
                 NavierStokesAssembly::CopyData::Matrix<dim>(navier_stokes_fe));
+         *
+         */
 
         // copy velocity mass matrix
         velocity_mass_matrix.copy_from(navier_stokes_matrix.block(0,0));

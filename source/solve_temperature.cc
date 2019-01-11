@@ -50,7 +50,7 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 template <int dim>
 void BuoyantFluidSolver<dim>::solve_temperature_system()
 {
-    std::cout << "   Solving temperature system..." << std::endl;
+    std::cout << "      Solving temperature system..." << std::endl;
     TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
 
     // solve linear system
