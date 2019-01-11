@@ -132,8 +132,12 @@ private:
     // preconditioner types
     typedef PreconditionJacobi<SparseMatrix<double>>
     PreconditionerTypeTemperature;
+
     typedef SparseILU<double>
     PreconditionerTypeDiffusion;
+
+    typedef PreconditionSSOR<SparseMatrix<double>>
+    PreconditionerTypeProjection;
 
     // pointers to preconditioners
     std::shared_ptr<PreconditionerTypeTemperature>
@@ -141,6 +145,9 @@ private:
 
     std::shared_ptr<PreconditionerTypeDiffusion>
     preconditioner_diffusion;
+
+    std::shared_ptr<PreconditionerTypeProjection>
+    preconditioner_projection;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -156,9 +163,11 @@ private:
     bool                            timestep_modified = false;
 
     // flags for rebuilding matrices and preconditioners
-    bool    rebuild_navier_stokes_matrices = true;
-    bool    rebuild_temperature_matrices = true;
-    bool    rebuild_temperature_preconditioner = true;
+    bool    rebuild_navier_stokes_matrices = true,
+            rebuild_temperature_matrices = true,
+            rebuild_temperature_preconditioner = true,
+            rebuild_diffusion_preconditioner = true,
+            rebuild_projection_preconditioner = true;
 
     // working stream methods for temperature assembly
     void local_assemble_temperature_matrix(

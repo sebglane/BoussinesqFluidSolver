@@ -149,7 +149,9 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
         navier_stokes_matrix.block(0,0).add(timestep * equation_coefficients[1] * gamma[0],
                                             velocity_laplace_matrix);
 
-        // rebuild the preconditioner of the velocity block
+        // rebuild the preconditioner of both preconditioners
+        rebuild_diffusion_preconditioner = true;
+        rebuild_projection_preconditioner = true;
 
         // do not rebuild stokes matrices again
         rebuild_navier_stokes_matrices = false;
@@ -169,6 +171,7 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
                                             velocity_laplace_matrix);
 
         // rebuild the preconditioner of the velocity block
+        rebuild_diffusion_preconditioner = true;
     }
     // reset all entries
     navier_stokes_rhs = 0;

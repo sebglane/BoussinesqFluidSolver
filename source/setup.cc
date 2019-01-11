@@ -201,11 +201,13 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
     for (unsigned int c=0; c<dim+1; ++c)
         for (unsigned int d=0; d<dim+1; ++d)
-            if ((c<dim || d<dim))
+            if (c<dim || d<dim)
+            {
                 if (parameters.rotation)
                     stokes_coupling[c][d] = DoFTools::always;
                 else if (c==d)
                     stokes_coupling[c][d] = DoFTools::always;
+            }
             else
                 stokes_coupling[c][d] = DoFTools::none;
 

@@ -35,6 +35,43 @@ void BuoyantFluidSolver<dim>::navier_stokes_step()
 }
 
 template<int dim>
+void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
+{
+    if (!rebuild_diffusion_preconditioner)
+        return;
+
+    TimerOutput::Scope timer_section(computing_timer, "build diffusion preconditioner");
+
+    preconditioner_diffusion.reset(new PreconditionerTypeDiffusion());
+
+    PreconditionerTypeDiffusion::AdditionalData     data;
+    preconditioner_diffusion->initialize(navier_stokes_matrix.block(0,0),
+                                         data);
+
+    rebuild_diffusion_preconditioner = false;
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::build_projection_preconditioner()
+{
+    if (!rebuild_projection_preconditioner)
+        return;
+
+    TimerOutput::Scope timer_section(computing_timer, "build projection preconditioner");
+
+    preconditioner_projection.reset(new PreconditionerTypeProjection());
+
+    PreconditionerTypeProjection::AdditionalData     data;
+    data.relaxation = 0.6;
+
+    preconditioner_projection->initialize(navier_stokes_matrix.block(1,1),
+                                          data);
+
+    rebuild_projection_preconditioner = false;
+}
+
+
+template<int dim>
 void BuoyantFluidSolver<dim>::solve_diffusion_system()
 {
     std::cout << "   Solving temperature system..." << std::endl;
