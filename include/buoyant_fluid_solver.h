@@ -54,7 +54,7 @@ private:
 
     void setup_dofs();
 
-    void setup_temperature_matrices(const types::global_dof_index n_temperature_dofs);
+    void setup_temperature_matrix(const types::global_dof_index n_temperature_dofs);
     void assemble_temperature_system();
     void build_temperature_preconditioner();
     void solve_temperature_system();

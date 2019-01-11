@@ -52,7 +52,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     // temperature matrix and vector setup
     const unsigned int n_dofs_temperature
     = temperature_dof_handler.n_dofs();
-    setup_temperature_matrices(n_dofs_temperature);
+    setup_temperature_matrix(n_dofs_temperature);
 
     temperature_solution.reinit(n_dofs_temperature);
     old_temperature_solution.reinit(n_dofs_temperature);
@@ -164,7 +164,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::setup_temperature_matrices(const types::global_dof_index n_temperature_dofs)
+void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_index n_temperature_dofs)
 {
     preconditioner_temperature.reset();
 
@@ -200,7 +200,7 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
     for (unsigned int c=0; c<dim+1; ++c)
         for (unsigned int d=0; d<dim+1; ++d)
-            if (c<dim || d<dim)
+            if ((c<dim || d<dim))
                 if (parameters.rotation)
                     stokes_coupling[c][d] = DoFTools::always;
                 else if (c==d)
@@ -232,8 +232,8 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
 template void BuoyantFluid::BuoyantFluidSolver<2>::setup_dofs();
 template void BuoyantFluid::BuoyantFluidSolver<3>::setup_dofs();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrices(const unsigned int n_temperature_dofs);
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrices(const unsigned int n_temperature_dofs);
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrix(const unsigned int );
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrix(const unsigned int );
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_stokes_matrix(const std::vector<types::global_dof_index> dofs_per_block);
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_stokes_matrix(const std::vector<types::global_dof_index> dofs_per_block);
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );

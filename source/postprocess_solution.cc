@@ -5,7 +5,14 @@
  *      Author: sg
  */
 
+#include <deal.II/base/quadrature_lib.h>
+
+#include <deal.II/fe/fe_values.h>
+
+#include <deal.II/numerics/data_out.h>
+
 #include "buoyant_fluid_solver.h"
+#include "postprocessor.h"
 
 namespace BuoyantFluid {
 
@@ -177,4 +184,12 @@ void BuoyantFluidSolver<dim>::output_results() const
 }
 }  // namespace BuoyantFluid
 
+// explicit instantiation
+template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<2>::compute_rms_values() const;
+template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<3>::compute_rms_values() const;
 
+template double BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;
+template double BuoyantFluid::BuoyantFluidSolver<3>::compute_cfl_number() const;
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::output_results() const;
+template void BuoyantFluid::BuoyantFluidSolver<3>::output_results() const;

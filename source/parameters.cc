@@ -233,7 +233,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 {
     prm.enter_subsection("Runtime parameters");
     {
-        assemble_schur_complement = prm.get_bool("assemble_schur_complement");
     }
     prm.leave_subsection();
 
