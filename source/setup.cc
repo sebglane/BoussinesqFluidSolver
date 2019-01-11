@@ -52,6 +52,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     // temperature matrix and vector setup
     const unsigned int n_dofs_temperature
     = temperature_dof_handler.n_dofs();
+
     setup_temperature_matrix(n_dofs_temperature);
 
     temperature_solution.reinit(n_dofs_temperature);
@@ -66,7 +67,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
     std::vector<unsigned int> stokes_block_component(dim+1,0);
     stokes_block_component[dim] = 1;
-
     DoFRenumbering::component_wise(navier_stokes_dof_handler,
                                    stokes_block_component);
     // stokes constraints
@@ -191,7 +191,8 @@ template<int dim>
 void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
         const std::vector<types::global_dof_index> dofs_per_block)
 {
-    TimerOutput::Scope timer_section(computing_timer, "setup stokes matrix");
+
+    preconditioner_diffusion.reset();
 
     navier_stokes_matrix.clear();
     velocity_mass_matrix.clear();
@@ -223,6 +224,8 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
 
     velocity_mass_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
     velocity_laplace_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
+
+    rebuild_navier_stokes_matrices = true;
 }
 
 }  // namespace BuoyantFluid

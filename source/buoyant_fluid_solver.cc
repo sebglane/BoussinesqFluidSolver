@@ -191,17 +191,41 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     x_temperature[2] = old_old_temperature_solution;
     SolutionTransfer<dim,Vector<double>> temperature_transfer(temperature_dof_handler);
 
-    // preparing temperature stokes transfer
+    // preparing stokes solution transfer
     std::vector<BlockVector<double>> x_stokes(3);
     x_stokes[0] = navier_stokes_solution;
     x_stokes[1] = old_navier_stokes_solution;
     x_stokes[2] = old_old_navier_stokes_solution;
     SolutionTransfer<dim,BlockVector<double>> stokes_transfer(navier_stokes_dof_handler);
 
+    // create pressure finite element
+    const FiniteElement<dim> &phi_fe = navier_stokes_fe.base_element(1);
+
+    // create dof handler of pressure
+    DoFHandler<dim>     phi_dof_handler(triangulation);
+    phi_dof_handler.distribute_dofs(phi_fe);
+
+    std::vector<unsigned int> stokes_block_component(dim+1,0);
+        stokes_block_component[dim] = 1;
+    std::vector<types::global_dof_index> dofs_per_block(2);
+    DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
+                                   dofs_per_block,
+                                   stokes_block_component);
+    Assert(phi_dof_handler.n_dofs() == dofs_per_block[1],
+           ExcInternalError());
+
+    // preparing phi solution transfer
+    std::vector<Vector<double>> x_phi(3);
+    x_phi[0] = phi_pressure;
+    x_phi[1] = old_phi_pressure;
+    x_phi[2] = old_old_phi_pressure;
+    SolutionTransfer<dim,Vector<double>> phi_transfer(phi_dof_handler);
+
     // preparing triangulation refinement
     triangulation.prepare_coarsening_and_refinement();
     temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
     stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
+    phi_transfer.prepare_for_coarsening_and_refinement(x_phi);
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -217,9 +241,9 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         tmp_temperature[2].reinit(temperature_solution);
         temperature_transfer.interpolate(x_temperature, tmp_temperature);
 
-        temperature_solution = tmp_temperature[0];
-        old_temperature_solution = tmp_temperature[1];
-        old_old_temperature_solution = tmp_temperature[2];
+        temperature_solution            = tmp_temperature[0];
+        old_temperature_solution        = tmp_temperature[1];
+        old_old_temperature_solution    = tmp_temperature[2];
 
         temperature_constraints.distribute(temperature_solution);
         temperature_constraints.distribute(old_temperature_solution);
@@ -233,17 +257,26 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         tmp_stokes[2].reinit(navier_stokes_solution);
         stokes_transfer.interpolate(x_stokes, tmp_stokes);
 
-        navier_stokes_solution = tmp_stokes[0];
-        old_navier_stokes_solution = tmp_stokes[1];
-        old_old_navier_stokes_solution = tmp_stokes[2];
+        navier_stokes_solution          = tmp_stokes[0];
+        old_navier_stokes_solution      = tmp_stokes[1];
+        old_old_navier_stokes_solution  = tmp_stokes[2];
 
         navier_stokes_constraints.distribute(navier_stokes_solution);
         navier_stokes_constraints.distribute(old_navier_stokes_solution);
         navier_stokes_constraints.distribute(old_old_navier_stokes_solution);
     }
-    // set rebuild flags
-    rebuild_navier_stokes_matrices = true;
-    rebuild_temperature_matrices = true;
+    // transfer of phi
+    {
+        std::vector<Vector<double>>    tmp_phi(3);
+        tmp_phi[0].reinit(phi_pressure);
+        tmp_phi[1].reinit(phi_pressure);
+        tmp_phi[2].reinit(phi_pressure);
+        phi_transfer.interpolate(x_phi, tmp_phi);
+
+        phi_pressure = tmp_phi[0];
+        old_phi_pressure = tmp_phi[1];
+        old_old_phi_pressure= tmp_phi[2];
+    }
 }
 
 template<int dim>
