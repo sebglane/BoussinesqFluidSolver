@@ -8,8 +8,6 @@ int main(int argc, char *argv[])
     using namespace dealii;
     using namespace BuoyantFluid;
 
-    Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv,
-                                                        numbers::invalid_unsigned_int);
     try
     {
         std::string parameter_filename;

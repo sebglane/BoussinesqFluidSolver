@@ -117,7 +117,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                                                          boundary_dofs.end(),
                                                          true);
         Assert(first_boundary_dof >= it - boundary_dofs.begin(),
-                ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
+               ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
 
         // set first pressure boundary dof to zero
         navier_stokes_constraints.add_line(first_boundary_dof);
@@ -125,6 +125,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         navier_stokes_constraints.close();
     }
 
+    // count dofs
     std::vector<types::global_dof_index> dofs_per_block(2);
     DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
                                    dofs_per_block,
@@ -201,13 +202,8 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
     for (unsigned int c=0; c<dim+1; ++c)
         for (unsigned int d=0; d<dim+1; ++d)
-            if (c<dim || d<dim)
-            {
-                if (parameters.rotation)
-                    stokes_coupling[c][d] = DoFTools::always;
-                else if (c==d)
-                    stokes_coupling[c][d] = DoFTools::always;
-            }
+            if (c==d || (c<dim && d==dim) || (c==dim && d<dim))
+                stokes_coupling[c][d] = DoFTools::always;
             else
                 stokes_coupling[c][d] = DoFTools::none;
 
