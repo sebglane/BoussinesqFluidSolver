@@ -95,7 +95,7 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
     stokes_cell(&triangulation,
                 cell->level(),
                 cell->index(),
-                &stokes_dof_handler);
+                &navier_stokes_dof_handler);
     scratch.stokes_fe_values.reinit(stokes_cell);
 
     scratch.temperature_fe_values.get_function_values(old_temperature_solution,
@@ -107,9 +107,9 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
     scratch.temperature_fe_values.get_function_gradients(old_old_temperature_solution,
                                                          scratch.old_old_temperature_gradients);
 
-    scratch.stokes_fe_values[velocity].get_function_values(old_stokes_solution,
+    scratch.stokes_fe_values[velocity].get_function_values(old_navier_stokes_solution,
                                                            scratch.old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
+    scratch.stokes_fe_values[velocity].get_function_values(old_old_navier_stokes_solution,
                                                            scratch.old_old_velocity_values);
 
 
