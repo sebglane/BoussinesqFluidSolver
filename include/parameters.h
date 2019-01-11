@@ -16,6 +16,29 @@ namespace BuoyantFluid {
 
 using namespace dealii;
 
+/*
+ *
+ * enumeration for the type of the discretization of the convective term
+ *
+ */
+enum ConvectiveDiscretizationType
+{
+    Standard,
+    SkewSymmetric,
+    RotationalForm
+};
+
+/*
+ *
+ * enumeration for the type of the pressure projection scheme
+ *
+ */
+enum PressureUpdateType
+{
+    StandardForm,
+    IrrotationalForm
+};
+
 struct Parameters
 {
     Parameters(const std::string &parameter_filename);
@@ -23,8 +46,8 @@ struct Parameters
     void parse_parameters(ParameterHandler &prm);
 
     // runtime parameters
-    bool    workstream_assembly;
-    bool    assemble_schur_complement;
+    PressureUpdateType  projection_scheme;
+    ConvectiveDiscretizationType  convective_discretization;
 
     // physics parameters
     double aspect_ratio;

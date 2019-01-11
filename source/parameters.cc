@@ -12,7 +12,8 @@ namespace BuoyantFluid {
 Parameters::Parameters(const std::string &parameter_filename)
 :
 // runtime parameters
-assemble_schur_complement(true),
+projection_scheme(PressureUpdateType::StandardForm),
+convective_discretization(ConvectiveDiscretizationType::SkewSymmetric),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
