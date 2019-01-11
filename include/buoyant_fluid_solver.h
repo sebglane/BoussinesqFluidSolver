@@ -12,6 +12,7 @@
 
 #include <deal.II/dofs/dof_handler.h>
 
+#include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/mapping_q.h>
 
@@ -21,6 +22,7 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/precondition.h>
+#include <deal.II/lac/sparse_ilu.h>
 #include <deal.II/lac/sparse_matrix.h>
 
 #include <memory>
@@ -118,19 +120,28 @@ private:
     SparseMatrix<double>            velocity_mass_matrix;
     SparseMatrix<double>            pressure_laplace_matrix;
 
-    // vectors of stokes part
+    // vectors of navier stokes part
     BlockVector<double>             navier_stokes_solution;
     BlockVector<double>             old_navier_stokes_solution;
     BlockVector<double>             old_old_navier_stokes_solution;
     BlockVector<double>             navier_stokes_rhs;
 
+    Vector<double>                  phi_pressure;
+    Vector<double>                  old_phi_pressure;
+    Vector<double>                  old_old_phi_pressure;
+
     // preconditioner types
     typedef PreconditionJacobi<SparseMatrix<double>>
-    PreconditionerTypeT;
+    PreconditionerTypeTemperature;
+    typedef SparseILU<double>
+    PreconditionerTypeDiffusion;
 
     // pointers to preconditioners
-    std::shared_ptr<PreconditionerTypeT>
-    preconditioner_T;
+    std::shared_ptr<PreconditionerTypeTemperature>
+    preconditioner_temperature;
+
+    std::shared_ptr<PreconditionerTypeDiffusion>
+    preconditioner_diffusion;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
