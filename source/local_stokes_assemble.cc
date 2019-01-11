@@ -16,14 +16,17 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
  NavierStokesAssembly::Scratch::Matrix<dim>             &scratch,
  NavierStokesAssembly::CopyData::Matrix<dim>            &data)
 {
-    const FiniteElement<dim> &stokes_element = navier_stokes_fe;
-
     const unsigned int velocity_dofs_per_cell = data.local_velocity_dof_indices.size();
+    Assert(velocity_dofs_per_cell > 0, ExcLowerRange(velocity_dofs_per_cell, 0));
+
     const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
+    Assert(velocity_dofs_per_cell < dofs_per_cell, ExcInternalError());
 
     const FEValuesExtractors::Vector    velocity(0);
     const FEValuesExtractors::Scalar    pressure(dim);
+
+    const FiniteElement<dim> &stokes_fe = scratch.stokes_fe_values.get_fe();
 
     scratch.stokes_fe_values.reinit(cell);
 
@@ -40,7 +43,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
             scratch.div_phi_velocity[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
             scratch.phi_pressure[k]     = scratch.stokes_fe_values[pressure].value(k, q);
             scratch.grad_phi_pressure[k]= scratch.stokes_fe_values[pressure].gradient(k, q);
-            if (stokes_element.system_to_component_index(k).first == 0)
+            if (stokes_fe.system_to_component_index(k).first < dim)
             {
                 scratch.grad_phi_velocity[k_velocity] = scratch.stokes_fe_values[velocity].gradient(k, q);
                 data.local_velocity_dof_indices[k_velocity] = data.local_dof_indices[k];
@@ -65,8 +68,9 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
     for (unsigned int i=0; i<dofs_per_cell; ++i)
         for (unsigned int j=i+1; j<dofs_per_cell; ++j)
             data.local_matrix(i,j) = data.local_matrix(j,i);
+
     for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
-        for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+        for (unsigned int j=i+1; j<velocity_dofs_per_cell; ++j)
             data.local_laplace_matrix(i,j) = data.local_laplace_matrix(j,i);
 }
 
@@ -79,10 +83,10 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
             data.local_dof_indices,
             navier_stokes_matrix);
 
-    navier_stokes_constraints.distribute_local_to_global(
-            data.local_laplace_matrix,
-            data.local_velocity_dof_indices,
-            velocity_laplace_matrix);
+//    navier_stokes_constraints.distribute_local_to_global(
+//            data.local_laplace_matrix,
+//            data.local_velocity_dof_indices,
+//            velocity_laplace_matrix);
 }
 
 
