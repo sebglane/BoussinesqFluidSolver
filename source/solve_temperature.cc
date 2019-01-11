@@ -13,6 +13,21 @@
 namespace BuoyantFluid {
 
 template<int dim>
+void BuoyantFluidSolver<dim>::temperature_step()
+{
+    std::cout << "   Temperature step..." << std::endl;
+
+    // assemble right-hand side (and system if necessary)
+    assemble_temperature_system();
+
+    // rebuild preconditioner for diffusion step
+    build_temperature_preconditioner();
+
+    // solve projection step
+    solve_temperature_system();
+}
+
+template<int dim>
 void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 {
     if (!rebuild_temperature_preconditioner)
@@ -62,6 +77,9 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
 }  // namespace BouyantFluid
 
 // explicit instantiation
+template void BuoyantFluid::BuoyantFluidSolver<2>::temperature_step();
+template void BuoyantFluid::BuoyantFluidSolver<3>::temperature_step();
+
 template void BuoyantFluid::BuoyantFluidSolver<2>::build_temperature_preconditioner();
 template void BuoyantFluid::BuoyantFluidSolver<3>::build_temperature_preconditioner();
 

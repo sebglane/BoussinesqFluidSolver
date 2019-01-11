@@ -22,7 +22,6 @@
 #include "buoyant_fluid_solver.h"
 #include "initial_values.h"
 #include "postprocessor.h"
-#include "preconditioning.h"
 
 namespace BuoyantFluid {
 
@@ -281,13 +280,12 @@ void BuoyantFluidSolver<dim>::run()
                   << "time step: " << timestep
                   << std::endl;
 
-        assemble_navier_stokes_system();
-        build_stokes_preconditioner();
+        // evolve temperature
+        temperature_step();
 
-        assemble_temperature_system();
-        build_temperature_preconditioner();
+        // evolve velocity and pressure
+        navier_stokes_step();
 
-        solve();
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
 
@@ -338,8 +336,13 @@ void BuoyantFluidSolver<dim>::run()
 
         // extrapolate stokes solution
         navier_stokes_solution.sadd(1. + timestep / old_timestep,
-                             timestep / old_timestep,
-                             old_old_navier_stokes_solution);
+                                    timestep / old_timestep,
+                                    old_old_navier_stokes_solution);
+
+        // copy auxiliary pressure solution
+        old_old_phi_pressure = old_phi_pressure;
+        old_phi_pressure = phi_pressure;
+
         // advance in time
         time += timestep;
         ++timestep_number;

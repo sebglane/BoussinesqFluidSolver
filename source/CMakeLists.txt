@@ -13,8 +13,10 @@ SET(TARGET_SRC
   make_grid.cc
   parameters.cc
   postprocessor.cc
-  preconditioning.cc
+  postprocess_solution.cc
   setup.cc
+  solve_navier_stokes.cc
+  solve_temperature.cc
   timestepping.cc
   # You can specify additional files here!
 )

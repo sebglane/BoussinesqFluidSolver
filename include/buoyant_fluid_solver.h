@@ -58,6 +58,7 @@ private:
     void assemble_temperature_system();
     void build_temperature_preconditioner();
     void solve_temperature_system();
+    void temperature_step();
 
     void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
     void assemble_navier_stokes_system();
@@ -65,9 +66,7 @@ private:
     void build_projection_preconditioner();
     void solve_diffusion_system();
     void solve_projection_system();
-    void solve_navier_stokes_system();
-
-    void solve();
+    void navier_stokes_step();
 
     std::pair<double,double>    compute_rms_values() const;
     double                      compute_cfl_number() const;

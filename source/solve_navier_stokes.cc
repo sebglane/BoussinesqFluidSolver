@@ -14,7 +14,7 @@ namespace BuoyantFluid {
 
 
 template<int dim>
-void BuoyantFluidSolver<dim>::solve_navier_stokes_system()
+void BuoyantFluidSolver<dim>::navier_stokes_step()
 {
     std::cout << "   Navier-Stokes step..." << std::endl;
 
@@ -46,11 +46,13 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
         Vector<double>  extrapolated_pressure(old_navier_stokes_solution.block(1));
         const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
 
-        extrapolated_pressure += (alpha[1] / alpha[0]) * old_phi_pressure;
-        extrapolated_pressure += (alpha[2] / alpha[0]) * old_old_phi_pressure;
+        extrapolated_pressure.add(alpha[1] / alpha[0], old_phi_pressure,
+                                  alpha[2] / alpha[0], old_old_phi_pressure);
+
+        extrapolated_pressure *= -1.0;
 
         navier_stokes_matrix.block(0,1).vmult_add(system_rhs,
-                                                  -extrapolated_pressure);
+                                                  extrapolated_pressure);
     }
 
     // solve linear system
@@ -111,8 +113,8 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
     {
         const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
 
-        extrapolated_pressure += (alpha[1] / alpha[0]) * old_phi_pressure;
-        extrapolated_pressure += (alpha[2] / alpha[0]) * old_old_phi_pressure;
+        extrapolated_pressure.add(alpha[1] / alpha[0], old_phi_pressure,
+                                  alpha[2] / alpha[0], old_old_phi_pressure);
     }
 
     // update pressure
@@ -125,7 +127,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         navier_stokes_matrix.block(1,0).vmult_add(velocity_divergence,
                                                   navier_stokes_solution.block(0));
 
-        navier_stokes_solution.block(1) += -velocity_divergence;
+        navier_stokes_solution.block(1) -= velocity_divergence;
     }
 
     // write info message
@@ -137,8 +139,8 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
 }  // namespace BuoyantFluid
 
 // explicit instantiation
-template void BuoyantFluid::BuoyantFluidSolver<2>::solve_navier_stokes_system();
-template void BuoyantFluid::BuoyantFluidSolver<3>::solve_navier_stokes_system();
+template void BuoyantFluid::BuoyantFluidSolver<2>::navier_stokes_step();
+template void BuoyantFluid::BuoyantFluidSolver<3>::navier_stokes_step();
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::solve_diffusion_system();
 template void BuoyantFluid::BuoyantFluidSolver<3>::solve_diffusion_system();
