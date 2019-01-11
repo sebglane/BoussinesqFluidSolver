@@ -21,9 +21,7 @@
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/precondition.h>
-#include <deal.II/lac/sparse_ilu.h>
 #include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/trilinos_precondition.h>
 
 #include <memory>
 
@@ -57,10 +55,15 @@ private:
     void setup_temperature_matrices(const types::global_dof_index n_temperature_dofs);
     void assemble_temperature_system();
     void build_temperature_preconditioner();
+    void solve_temperature_system();
 
-    void setup_stokes_matrix(const std::vector<types::global_dof_index> dofs_per_block);
-    void assemble_stokes_system();
-    void build_stokes_preconditioner();
+    void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
+    void assemble_navier_stokes_system();
+    void build_diffusion_preconditioner();
+    void build_projection_preconditioner();
+    void solve_diffusion_system();
+    void solve_projection_system();
+    void solve_navier_stokes_system();
 
     void solve();
 
@@ -73,7 +76,7 @@ private:
 
     void refine_mesh();
 
-    Parameters                      &parameters;
+    Parameters                     &parameters;
 
     TimeStepping::IMEXCoefficients  imex_coefficients;
 
@@ -88,8 +91,8 @@ private:
     DoFHandler<dim>                 temperature_dof_handler;
 
     // stokes FiniteElement and DoFHandler
-    const FESystem<dim>             stokes_fe;
-    DoFHandler<dim>                 stokes_dof_handler;
+    const FESystem<dim>             navier_stokes_fe;
+    DoFHandler<dim>                 navier_stokes_dof_handler;
 
     // temperature part
     ConstraintMatrix                temperature_constraints;
@@ -106,34 +109,28 @@ private:
     Vector<double>                  temperature_rhs;
 
     // stokes part
-    ConstraintMatrix                stokes_constraints;
-    ConstraintMatrix                stokes_laplace_constraints;
+    ConstraintMatrix                navier_stokes_constraints;
 
-    BlockSparsityPattern            stokes_sparsity_pattern;
-    BlockSparsityPattern            auxiliary_stokes_sparsity_pattern;
-    BlockSparseMatrix<double>       stokes_matrix;
-    BlockSparseMatrix<double>       stokes_laplace_matrix;
+    BlockSparsityPattern            navier_stokes_sparsity_pattern;
 
+    BlockSparseMatrix<double>       navier_stokes_matrix;
+    SparseMatrix<double>            velocity_laplace_matrix;
     SparseMatrix<double>            velocity_mass_matrix;
-    SparseMatrix<double>            pressure_mass_matrix;
+    SparseMatrix<double>            pressure_laplace_matrix;
 
     // vectors of stokes part
-    BlockVector<double>             stokes_solution;
-    BlockVector<double>             old_stokes_solution;
-    BlockVector<double>             old_old_stokes_solution;
-    BlockVector<double>             stokes_rhs;
+    BlockVector<double>             navier_stokes_solution;
+    BlockVector<double>             old_navier_stokes_solution;
+    BlockVector<double>             old_old_navier_stokes_solution;
+    BlockVector<double>             navier_stokes_rhs;
 
     // preconditioner types
-    typedef TrilinosWrappers::PreconditionAMG           PreconditionerTypeA;
-    typedef SparseILU<double>                           PreconditionerTypeKp;
-    typedef PreconditionSSOR<SparseMatrix<double>>      PreconditionerTypeMp;
-    typedef PreconditionJacobi<SparseMatrix<double>>    PreconditionerTypeT;
+    typedef PreconditionJacobi<SparseMatrix<double>>
+    PreconditionerTypeT;
 
     // pointers to preconditioners
-    std::shared_ptr<PreconditionerTypeA>        preconditioner_A;
-    std::shared_ptr<PreconditionerTypeKp>       preconditioner_Kp;
-    std::shared_ptr<PreconditionerTypeMp>       preconditioner_Mp;
-    std::shared_ptr<PreconditionerTypeT>        preconditioner_T;
+    std::shared_ptr<PreconditionerTypeT>
+    preconditioner_T;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -148,14 +145,9 @@ private:
     unsigned int                    timestep_number = 0;
     bool                            timestep_modified = false;
 
-    // variables for Schur complement approximation
-    double                          factor_Mp = 0;
-    double                          factor_Kp = 0;
-
     // flags for rebuilding matrices and preconditioners
-    bool    rebuild_stokes_matrices = true;
+    bool    rebuild_navier_stokes_matrices = true;
     bool    rebuild_temperature_matrices = true;
-    bool    rebuild_stokes_preconditioner = true;
     bool    rebuild_temperature_preconditioner = true;
 
     // working stream methods for temperature assembly
@@ -176,17 +168,17 @@ private:
     // working stream methods for stokes assembly
     void local_assemble_stokes_matrix(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
-            StokesAssembly::Scratch::Matrix<dim> &scratch,
-            StokesAssembly::CopyData::Matrix<dim> &data);
+            NavierStokesAssembly::Scratch::Matrix<dim> &scratch,
+            NavierStokesAssembly::CopyData::Matrix<dim> &data);
     void copy_local_to_global_stokes_matrix(
-            const StokesAssembly::CopyData::Matrix<dim> &data);
+            const NavierStokesAssembly::CopyData::Matrix<dim> &data);
 
     void local_assemble_stokes_rhs(
                 const typename DoFHandler<dim>::active_cell_iterator &cell,
-                StokesAssembly::Scratch::RightHandSide<dim> &scratch,
-                StokesAssembly::CopyData::RightHandSide<dim> &data);
+                NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
+                NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
     void copy_local_to_global_stokes_rhs(
-                const StokesAssembly::CopyData::RightHandSide<dim> &data);
+                const NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
 };
 
 }  // namespace BouyantFluid
