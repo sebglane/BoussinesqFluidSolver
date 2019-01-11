@@ -11,11 +11,14 @@
 namespace BuoyantFluid {
 
 template <int dim>
-void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
-        const typename DoFHandler<dim>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::Matrix<dim> &scratch,
-        StokesAssembly::CopyData::Matrix<dim> &data)
+void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
+(const typename DoFHandler<dim>::active_cell_iterator   &cell,
+ NavierStokesAssembly::Scratch::Matrix<dim>             &scratch,
+ NavierStokesAssembly::CopyData::Matrix<dim>            &data)
 {
+    const FiniteElement<dim> &stokes_element = navier_stokes_fe;
+
+    const unsigned int velocity_dofs_per_cell = data.local_velocity_dof_indices.size();
     const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
 
@@ -27,70 +30,67 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix(
     cell->get_dof_indices(data.local_dof_indices);
 
     data.local_matrix = 0;
-    data.local_stiffness_matrix = 0;
+    data.local_laplace_matrix = 0;
 
     for (unsigned int q=0; q<n_q_points; ++q)
     {
-        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        for (unsigned int k=0, k_velocity=0; k<dofs_per_cell; ++k)
         {
-            scratch.phi_v[k] = scratch.stokes_fe_values[velocity].value(k, q);
-            scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
-            scratch.div_phi_v[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
-            scratch.phi_p[k] = scratch.stokes_fe_values[pressure].value(k, q);
-            if (parameters.assemble_schur_complement)
-            scratch.grad_phi_p[k] = scratch.stokes_fe_values[pressure].gradient(k, q);
+            scratch.phi_velocity[k]     = scratch.stokes_fe_values[velocity].value(k, q);
+            scratch.div_phi_velocity[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
+            scratch.phi_pressure[k]     = scratch.stokes_fe_values[pressure].value(k, q);
+            scratch.grad_phi_pressure[k]= scratch.stokes_fe_values[pressure].gradient(k, q);
+            if (stokes_element.system_to_component_index(k).first == 0)
+            {
+                scratch.grad_phi_velocity[k_velocity] = scratch.stokes_fe_values[velocity].gradient(k, q);
+                data.local_velocity_dof_indices[k_velocity] = data.local_dof_indices[k];
+                ++k_velocity;
+            }
         }
         for (unsigned int i=0; i<dofs_per_cell; ++i)
             for (unsigned int j=0; j<=i; ++j)
-            {
                 data.local_matrix(i,j)
                     += (
-                          scratch.phi_v[i] * scratch.phi_v[j]
-                        - scratch.phi_p[i] * scratch.div_phi_v[j]
-                        - scratch.div_phi_v[i] * scratch.phi_p[j]
-                        + scratch.phi_p[i] * scratch.phi_p[j]
+                          scratch.phi_velocity[i] * scratch.phi_velocity[j]
+                        - scratch.phi_pressure[i] * scratch.div_phi_velocity[j]
+                        - scratch.div_phi_velocity[i] * scratch.phi_pressure[j]
+                        + scratch.grad_phi_pressure[i] * scratch.grad_phi_pressure[j]
                         ) * scratch.stokes_fe_values.JxW(q);
-                data.local_stiffness_matrix(i,j)
-                    += (
-                          scalar_product(scratch.grad_phi_v[i], scratch.grad_phi_v[j])
-                        + (parameters.assemble_schur_complement?
-                                scratch.grad_phi_p[i] * scratch.grad_phi_p[j] : 0)
-                        ) * scratch.stokes_fe_values.JxW(q);
-            }
+        for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
+            for (unsigned int j=0; j<=i; ++j)
+                data.local_laplace_matrix(i,j)
+                    +=   scalar_product(scratch.grad_phi_velocity[i], scratch.grad_phi_velocity[j])
+                       * scratch.stokes_fe_values.JxW(q);
     }
     for (unsigned int i=0; i<dofs_per_cell; ++i)
         for (unsigned int j=i+1; j<dofs_per_cell; ++j)
-        {
             data.local_matrix(i,j) = data.local_matrix(j,i);
-            data.local_stiffness_matrix(i,j) = data.local_stiffness_matrix(j,i);
-        }
+    for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
+        for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+            data.local_laplace_matrix(i,j) = data.local_laplace_matrix(j,i);
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
-        const StokesAssembly::CopyData::Matrix<dim> &data)
+        const NavierStokesAssembly::CopyData::Matrix<dim> &data)
 {
-    stokes_constraints.distribute_local_to_global(
+    navier_stokes_constraints.distribute_local_to_global(
             data.local_matrix,
             data.local_dof_indices,
-            stokes_matrix);
+            navier_stokes_matrix);
 
-    const ConstraintMatrix &constraints_used
-    = (parameters.assemble_schur_complement?
-            stokes_laplace_constraints: stokes_constraints);
-
-    constraints_used.distribute_local_to_global(
-            data.local_stiffness_matrix,
-            data.local_dof_indices,
-            stokes_laplace_matrix);
+    navier_stokes_constraints.distribute_local_to_global(
+            data.local_laplace_matrix,
+            data.local_velocity_dof_indices,
+            velocity_laplace_matrix);
 }
 
 
 template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::RightHandSide<dim> &scratch,
-        StokesAssembly::CopyData::RightHandSide<dim> &data)
+        NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
+        NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
     const std::vector<double> alpha = (timestep_number != 0?
                                         imex_coefficients.alpha(timestep/old_timestep):
@@ -120,14 +120,14 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
 
     data.local_rhs = 0;
 
-    scratch.stokes_fe_values[velocity].get_function_values(old_stokes_solution,
+    scratch.stokes_fe_values[velocity].get_function_values(old_navier_stokes_solution,
                                                            scratch.old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_values(old_old_stokes_solution,
+    scratch.stokes_fe_values[velocity].get_function_values(old_old_navier_stokes_solution,
                                                            scratch.old_old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_gradients(old_stokes_solution,
-                                                             scratch.old_velocity_gradients);
-    scratch.stokes_fe_values[velocity].get_function_gradients(old_old_stokes_solution,
-                                                             scratch.old_old_velocity_gradients);
+    scratch.stokes_fe_values[velocity].get_function_gradients(old_navier_stokes_solution,
+                                                              scratch.old_velocity_gradients);
+    scratch.stokes_fe_values[velocity].get_function_gradients(old_old_navier_stokes_solution,
+                                                              scratch.old_old_velocity_gradients);
 
     scratch.temperature_fe_values.get_function_values(old_temperature_solution,
                                                       scratch.old_temperature_values);
@@ -138,8 +138,8 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
     {
         for (unsigned int k=0; k<dofs_per_cell; ++k)
         {
-            scratch.phi_v[k] = scratch.stokes_fe_values[velocity].value(k, q);
-            scratch.grad_phi_v[k] = scratch.stokes_fe_values[velocity].gradient(k, q);
+            scratch.phi_velocity[k]     = scratch.stokes_fe_values[velocity].value(k, q);
+            scratch.grad_phi_velocity[k]= scratch.stokes_fe_values[velocity].gradient(k, q);
         }
 
         const Tensor<1,dim> time_derivative_velocity
@@ -154,11 +154,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
             = gamma[1] * scratch.old_velocity_gradients[q]
                 + gamma[2] * scratch.old_old_velocity_gradients[q];
 
-        const Tensor<1,dim> extrapolated_velocity
-            = (timestep != 0 ?
-                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
-                        : scratch.old_velocity_values[q]);
         const double extrapolated_temperature
             = (timestep != 0 ?
                 (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
@@ -170,6 +165,12 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         Tensor<1,dim>   coriolis_term;
         if (parameters.rotation)
         {
+            const Tensor<1,dim> extrapolated_velocity
+                = (timestep != 0 ?
+                    (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                            : scratch.old_velocity_values[q]);
+
             if (dim == 2)
                 coriolis_term = cross_product_2d(extrapolated_velocity);
             else if (dim == 3)
@@ -184,23 +185,23 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         for (unsigned int i=0; i<dofs_per_cell; ++i)
             data.local_rhs(i)
                 += (
-                    - time_derivative_velocity * scratch.phi_v[i]
-                    - timestep * nonlinear_term_velocity * scratch.phi_v[i]
-                    - timestep * equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_v[i])
-                    - timestep * (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_v[i]: 0)
-                    - timestep * equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_v[i]
+                    - time_derivative_velocity * scratch.phi_velocity[i]
+                    - timestep * nonlinear_term_velocity * scratch.phi_velocity[i]
+                    - timestep * equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
+                    - timestep * (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)
+                    - timestep * equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_velocity[i]
                     ) * scratch.stokes_fe_values.JxW(q);
     }
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
-        const StokesAssembly::CopyData::RightHandSide<dim> &data)
+        const NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
-    stokes_constraints.distribute_local_to_global(
+    navier_stokes_constraints.distribute_local_to_global(
             data.local_rhs,
             data.local_dof_indices,
-            stokes_rhs);
+            navier_stokes_rhs);
 }
 
 }  // namespace BuoyantFluid
@@ -208,28 +209,28 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix(
         const typename DoFHandler<2>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::Matrix<2> &scratch,
-        StokesAssembly::CopyData::Matrix<2> &data);
+        NavierStokesAssembly::Scratch::Matrix<2> &scratch,
+        NavierStokesAssembly::CopyData::Matrix<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_matrix(
         const typename DoFHandler<3>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::Matrix<3> &scratch,
-        StokesAssembly::CopyData::Matrix<3> &data);
+        NavierStokesAssembly::Scratch::Matrix<3> &scratch,
+        NavierStokesAssembly::CopyData::Matrix<3> &data);
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_matrix(
-        const StokesAssembly::CopyData::Matrix<2> &data);
+        const NavierStokesAssembly::CopyData::Matrix<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_matrix(
-        const StokesAssembly::CopyData::Matrix<3> &data);
+        const NavierStokesAssembly::CopyData::Matrix<3> &data);
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_rhs(
         const typename DoFHandler<2>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::RightHandSide<2> &scratch,
-        StokesAssembly::CopyData::RightHandSide<2> &data);
+        NavierStokesAssembly::Scratch::RightHandSide<2> &scratch,
+        NavierStokesAssembly::CopyData::RightHandSide<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_rhs(
         const typename DoFHandler<3>::active_cell_iterator &cell,
-        StokesAssembly::Scratch::RightHandSide<3> &scratch,
-        StokesAssembly::CopyData::RightHandSide<3> &data);
+        NavierStokesAssembly::Scratch::RightHandSide<3> &scratch,
+        NavierStokesAssembly::CopyData::RightHandSide<3> &data);
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_rhs(
-        const StokesAssembly::CopyData::RightHandSide<2> &data);
+        const NavierStokesAssembly::CopyData::RightHandSide<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_rhs(
-        const StokesAssembly::CopyData::RightHandSide<3> &data);
+        const NavierStokesAssembly::CopyData::RightHandSide<3> &data);

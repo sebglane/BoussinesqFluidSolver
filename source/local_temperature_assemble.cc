@@ -28,16 +28,18 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_matrix(
     {
         for (unsigned int k=0; k<dofs_per_cell; ++k)
         {
-            scratch.grad_phi_T[k] = scratch.temperature_fe_values.shape_grad(k,q);
-            scratch.phi_T[k]      = scratch.temperature_fe_values.shape_value(k, q);
+            scratch.grad_phi_temperature[k] = scratch.temperature_fe_values.shape_grad(k,q);
+            scratch.phi_temperature[k]      = scratch.temperature_fe_values.shape_value(k, q);
         }
         for (unsigned int i=0; i<dofs_per_cell; ++i)
             for (unsigned int j=0; j<=i; ++j)
             {
                 data.local_mass_matrix(i,j)
-                    += scratch.phi_T[i] * scratch.phi_T[j] * scratch.temperature_fe_values.JxW(q);
+                    += scratch.phi_temperature[i] * scratch.phi_temperature[j]
+                       * scratch.temperature_fe_values.JxW(q);
                 data.local_stiffness_matrix(i,j)
-                    += scratch.grad_phi_T[i] * scratch.grad_phi_T[j] * scratch.temperature_fe_values.JxW(q);
+                    += scratch.grad_phi_temperature[i] * scratch.grad_phi_temperature[j]
+                       * scratch.temperature_fe_values.JxW(q);
             }
     }
     for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -117,8 +119,8 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
     {
         for (unsigned int i=0; i<dofs_per_cell; ++i)
         {
-            scratch.phi_T[i]      = scratch.temperature_fe_values.shape_value(i, q);
-            scratch.grad_phi_T[i] = scratch.temperature_fe_values.shape_grad(i, q);
+            scratch.phi_temperature[i]      = scratch.temperature_fe_values.shape_value(i, q);
+            scratch.grad_phi_temperature[i] = scratch.temperature_fe_values.shape_grad(i, q);
         }
 
         const double time_derivative_temperature =
@@ -136,16 +138,20 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         for (unsigned int i=0; i<dofs_per_cell; ++i)
         {
             data.local_rhs(i) += (
-                    - time_derivative_temperature * scratch.phi_T[i]
-                    - timestep * nonlinear_term_temperature * scratch.phi_T[i]
-                    - timestep * equation_coefficients[3] * linear_term_temperature * scratch.grad_phi_T[i]
+                    - time_derivative_temperature * scratch.phi_temperature[i]
+                    - timestep * nonlinear_term_temperature * scratch.phi_temperature[i]
+                    - timestep * equation_coefficients[3] * linear_term_temperature
+                      * scratch.grad_phi_temperature[i]
                     ) * scratch.temperature_fe_values.JxW(q);
 
             if (temperature_constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
                 for (unsigned int j=0; j<dofs_per_cell; ++j)
                     data.matrix_for_bc(j,i) += (
-                                  alpha[0] * scratch.phi_T[i] * scratch.phi_T[j]
-                                + gamma[0] * timestep * equation_coefficients[3] * scratch.grad_phi_T[i] * scratch.grad_phi_T[j]
+                                  alpha[0] * scratch.phi_temperature[i]
+                                  * scratch.phi_temperature[j]
+                                + gamma[0] * timestep * equation_coefficients[3]
+                                  * scratch.grad_phi_temperature[i]
+                                  * scratch.grad_phi_temperature[j]
                                 ) * scratch.temperature_fe_values.JxW(q);
 
         }

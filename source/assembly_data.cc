@@ -34,8 +34,8 @@ temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
                       scratch.temperature_fe_values.get_fe(),
                       scratch.temperature_fe_values.get_quadrature(),
                       scratch.temperature_fe_values.get_update_flags()),
-phi_T(scratch.phi_T),
-grad_phi_T(scratch.grad_phi_T)
+phi_temperature(scratch.phi_temperature),
+grad_phi_temperature(scratch.grad_phi_temperature)
 {}
 
 

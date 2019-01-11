@@ -37,8 +37,8 @@ struct Matrix
 
     FEValues<dim>               temperature_fe_values;
 
-    std::vector<double>         phi_T;
-    std::vector<Tensor<1,dim>>  grad_phi_T;
+    std::vector<double>         phi_temperature;
+    std::vector<Tensor<1,dim>>  grad_phi_temperature;
 };
 
 template<int dim>
@@ -166,8 +166,8 @@ struct Matrix
     FullMatrix<double>      local_matrix;
     FullMatrix<double>      local_laplace_matrix;
 
-    std::vector<types::global_dof_index>   local_velocity_dof_indices;
     std::vector<types::global_dof_index>   local_dof_indices;
+    std::vector<types::global_dof_index>   local_velocity_dof_indices;
 };
 
 template <int dim>
