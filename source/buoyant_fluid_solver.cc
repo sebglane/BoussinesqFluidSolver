@@ -205,8 +205,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     DoFHandler<dim>     phi_dof_handler(triangulation);
     phi_dof_handler.distribute_dofs(phi_fe);
 
-    std::vector<unsigned int> stokes_block_component(dim+1,0);
-        stokes_block_component[dim] = 1;
+    std::vector<unsigned int>   stokes_block_component(2,0);
+    stokes_block_component[1] = 1;
     std::vector<types::global_dof_index> dofs_per_block(2);
     DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
                                    dofs_per_block,
