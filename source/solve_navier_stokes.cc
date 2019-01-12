@@ -81,7 +81,10 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
     Vector<double>  system_rhs(navier_stokes_rhs.block(0));
     {
         Vector<double>  extrapolated_pressure(old_navier_stokes_solution.block(1));
-        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+
+        const std::vector<double> alpha = (timestep_number != 0?
+                                           imex_coefficients.alpha(timestep/old_timestep):
+                                           std::vector<double>({1.0,-1.0,0.0}));
 
         extrapolated_pressure.add(alpha[1] / alpha[0], old_phi_pressure,
                                   alpha[2] / alpha[0], old_old_phi_pressure);
@@ -118,13 +121,16 @@ template<int dim>
 void BuoyantFluidSolver<dim>::solve_projection_system()
 {
     std::cout << "      Solving projection system..." << std::endl;
+    TimerOutput::Scope  timer_section(computing_timer, "projection solve");
     // construct right-hand from velocity solution
     Vector<double>  system_rhs(navier_stokes_rhs.block(1));
     {
         navier_stokes_matrix.block(1,0).vmult_add(system_rhs,
                                                   navier_stokes_solution.block(0));
 
-        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+        const std::vector<double> alpha = (timestep_number != 0?
+                                           imex_coefficients.alpha(timestep/old_timestep):
+                                           std::vector<double>({1.0,-1.0,0.0}));
 
         system_rhs *= alpha[0] / timestep;
     }
