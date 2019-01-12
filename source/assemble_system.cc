@@ -197,6 +197,9 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
             navier_stokes_constraints.distribute_local_to_global(local_matrix,
                                                                  local_dof_indices,
                                                                  navier_stokes_matrix);
+            navier_stokes_constraints.distribute_local_to_global(local_laplace_matrix,
+                                                                 local_velocity_dof_indices,
+                                                                 velocity_laplace_matrix);
         }
 
         // assemble matrix

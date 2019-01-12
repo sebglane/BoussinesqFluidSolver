@@ -107,9 +107,8 @@ old_timestep(parameters.initial_timestep)
 
     ss << "\n+----------+----------+----------+----------+----------+----------+----------+\n";
 
-    std::cout << std::endl << ss.str() << std::endl;
-
-    std::cout << std::endl << std::fixed << std::flush;
+    std::cout << std::endl << ss.str()
+              << std::endl << std::fixed << std::flush;
 }
 
 
@@ -267,6 +266,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     }
     // transfer of phi
     {
+        phi_dof_handler.distribute_dofs(phi_fe);
+
         std::vector<Vector<double>>    tmp_phi(3);
         tmp_phi[0].reinit(phi_pressure);
         tmp_phi[1].reinit(phi_pressure);

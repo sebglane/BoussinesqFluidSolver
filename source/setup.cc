@@ -190,10 +190,11 @@ template<int dim>
 void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
         const std::vector<types::global_dof_index> dofs_per_block)
 {
-
     preconditioner_diffusion.reset();
+    preconditioner_projection.reset();
 
     navier_stokes_matrix.clear();
+
     velocity_mass_matrix.clear();
     velocity_laplace_matrix.clear();
 
