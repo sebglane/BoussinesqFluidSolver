@@ -17,17 +17,6 @@ namespace EquationData {
 
 using namespace dealii;
 
-/*
- *
- * enumeration for boundary identifiers
- *
- */
-enum BoundaryIds
-{
-    ICB,
-    CMB,
-};
-
 template<int dim>
 class TemperatureInitialValues : public Function<dim>
 {

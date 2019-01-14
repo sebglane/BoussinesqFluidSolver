@@ -12,6 +12,7 @@
 
 #include "buoyant_fluid_solver.h"
 #include "initial_values.h"
+#include "grid_factory.h"
 
 namespace BuoyantFluid {
 
@@ -39,13 +40,12 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         const Functions::ConstantFunction<dim> cmb_temperature(-0.5);
 
         const std::map<typename types::boundary_id, const Function<dim>*>
-        temperature_boundary_values = {{EquationData::BoundaryIds::ICB, &icb_temperature},
-                                       {EquationData::BoundaryIds::CMB, &cmb_temperature}};
+        temperature_boundary_values = {{GridFactory::BoundaryIds::ICB, &icb_temperature},
+                                       {GridFactory::BoundaryIds::CMB, &cmb_temperature}};
 
-        VectorTools::interpolate_boundary_values(
-                temperature_dof_handler,
-                temperature_boundary_values,
-                temperature_constraints);
+        VectorTools::interpolate_boundary_values(temperature_dof_handler,
+                                                 temperature_boundary_values,
+                                                 temperature_constraints);
 
         temperature_constraints.close();
     }
@@ -75,8 +75,8 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         const Functions::ZeroFunction<dim> zero_function(dim+1);
 
         const std::map<typename types::boundary_id, const Function<dim>*>
-        velocity_boundary_values = {{EquationData::BoundaryIds::ICB, &zero_function},
-                                    {EquationData::BoundaryIds::CMB, &zero_function}};
+        velocity_boundary_values = {{GridFactory::BoundaryIds::ICB, &zero_function},
+                                    {GridFactory::BoundaryIds::CMB, &zero_function}};
 
         const FEValuesExtractors::Vector velocities(0);
         VectorTools::interpolate_boundary_values(
