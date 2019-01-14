@@ -178,7 +178,7 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
                                   phi_velocity[i] * phi_velocity[j]
                                 - phi_pressure[i] * div_phi_velocity[j]
                                 - div_phi_velocity[i] * phi_pressure[j]
-                                + grad_phi_pressure[i] *grad_phi_pressure[j]
+                                - grad_phi_pressure[i] * grad_phi_pressure[j]
                                 ) * fe_values.JxW(q);
                 for (unsigned int i=0; i<velocity_dofs_per_cell; ++i)
                     for (unsigned int j=0; j<=i; ++j)

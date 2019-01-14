@@ -341,8 +341,7 @@ void BuoyantFluidSolver<dim>::run()
                       << cfl_number
                       << std::endl;
         }
-        if (timestep_number % parameters.output_frequency == 0
-                && timestep_number != 0)
+        if (timestep_number % parameters.output_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "output results");
             output_results();
@@ -381,7 +380,7 @@ void BuoyantFluidSolver<dim>::run()
         time += timestep;
         ++timestep_number;
 
-    } while (timestep_number <= parameters.n_steps);
+    } while (timestep_number < parameters.n_steps);
 
     if (parameters.n_steps % parameters.output_frequency != 0)
         output_results();
