@@ -14,7 +14,7 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::make_grid()
 {
-    std::cout << "sMaking grid..." << std::endl;
+    std::cout << "Making grid..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "make grid");
 

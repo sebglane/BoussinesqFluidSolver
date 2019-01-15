@@ -273,6 +273,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                         << " CG iterations for pressure mass solve"
                         << std::endl;
         }
+        phi_irrotational *= -1.0;
 
         pressure_solution.add(equation_coefficients[1], phi_irrotational);
     }
