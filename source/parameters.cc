@@ -223,7 +223,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
         prm.declare_entry("time_stepping_scheme",
                         "CNAB",
-                        Patterns::Selection("CNAB|MCNAB|CNLF|SBDF"),
+                        Patterns::Selection("Euler|CNAB|MCNAB|CNLF|SBDF"),
                         "Time stepping scheme applied.");
     }
     prm.leave_subsection();
@@ -318,7 +318,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             imex_scheme = TimeStepping::IMEXType::CNLF;
         else if (imex_type_str == "SBDF")
             imex_scheme = TimeStepping::IMEXType::SBDF;
-
+        else if (imex_type_str == "Euler")
+            imex_scheme = TimeStepping::IMEXType::Euler;
 
         // TODO: move to logging
         output_frequency = prm.get_integer("output_freq");

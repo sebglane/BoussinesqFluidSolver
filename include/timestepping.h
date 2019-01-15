@@ -21,6 +21,7 @@ namespace TimeStepping {
  */
 enum IMEXType
 {
+    Euler,
     CNAB,
     MCNAB,
     CNLF,
