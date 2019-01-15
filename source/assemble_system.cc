@@ -18,9 +18,10 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_temperature_system()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
+    if (parameters.verbose)
+        std::cout << "   Assembling temperature system..." << std::endl;
 
-    std::cout << "   Assembling temperature system..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
 
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 1);
 
@@ -66,7 +67,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
 
         temperature_matrix.copy_from(temperature_mass_matrix);
-        temperature_matrix *= alpha[0] / timestep;
+        temperature_matrix *= (alpha[0] / timestep);
         temperature_matrix.add(gamma[0] * equation_coefficients[3],
                                temperature_stiffness_matrix);
 
@@ -101,9 +102,10 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_velocity_system()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble velocity system");
+    if (parameters.verbose)
+        std::cout << "      Assembling velocity system..." << std::endl;
 
-    std::cout << "      Assembling velocity system..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "assemble velocity system");
 
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 
@@ -195,9 +197,10 @@ void BuoyantFluidSolver<dim>::assemble_velocity_system()
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_pressure_system()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble pressure system");
+    if (parameters.verbose)
+        std::cout << "      Assembling pressure system..." << std::endl;
 
-    std::cout << "      Assembling pressure system..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "assemble pressure system");
 
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 
