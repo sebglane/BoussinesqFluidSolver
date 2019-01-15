@@ -95,6 +95,12 @@ void IMEXCoefficients::compute_alpha()
         alpha_[1] = omega - 1.;
         alpha_[2] = -(omega * omega) / (1. + omega);
     }
+    else if (type == IMEXType::Euler)
+    {
+        alpha_[0] = 1.;
+        alpha_[1] = -1.;
+        alpha_[2] = 0.;
+    }
     else
     {
         assert(false);
@@ -118,6 +124,11 @@ void IMEXCoefficients::compute_beta()
         beta_[1] = -0.5 * omega;
     }
     else if (type == IMEXType::CNLF)
+    {
+        beta_[0] = 1.;
+        beta_[1] = 0.;
+    }
+    else if (type == IMEXType::Euler)
     {
         beta_[0] = 1.;
         beta_[1] = 0.;
@@ -156,6 +167,12 @@ void IMEXCoefficients::compute_gamma()
         gamma_[0] = 0.5 / omega;
         gamma_[1] = 0.5 * (1. - 1./omega);
         gamma_[2] = 0.5;
+    }
+    else if (type == IMEXType::Euler)
+    {
+        gamma_[0] = 1.0;
+        gamma_[1] = 0.0;
+        gamma_[2] = 0.0;
     }
     else
     {
@@ -207,5 +224,3 @@ void IMEXCoefficients::write(std::ostream &stream) const
 }
 
 }  // namespace TimeStepping
-
-

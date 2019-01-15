@@ -60,11 +60,15 @@ private:
     void temperature_step();
 
     void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
+
     void assemble_navier_stokes_system();
+
     void build_diffusion_preconditioner();
     void build_projection_preconditioner();
+
     void solve_diffusion_system();
     void solve_projection_system();
+
     void navier_stokes_step();
 
     std::pair<double,double>    compute_rms_values() const;
@@ -114,9 +118,8 @@ private:
     BlockSparsityPattern            navier_stokes_sparsity_pattern;
 
     BlockSparseMatrix<double>       navier_stokes_matrix;
-    SparseMatrix<double>            velocity_laplace_matrix;
-    SparseMatrix<double>            velocity_mass_matrix;
-    SparseMatrix<double>            pressure_laplace_matrix;
+    BlockSparseMatrix<double>       navier_stokes_laplace_matrix;
+    BlockSparseMatrix<double>       navier_stokes_mass_matrix;
 
     // vectors of navier stokes part
     BlockVector<double>             navier_stokes_solution;
