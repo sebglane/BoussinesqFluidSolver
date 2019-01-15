@@ -27,13 +27,26 @@ To(outer_temperature)
     Assert(ri < ro, ExcLowerRangeType<double>(ri, ro));
 }
 
-template<int dim>
-double TemperatureInitialValues<dim>::value(
-        const Point<dim>    &point,
+template<>
+double TemperatureInitialValues<2>::value(
+        const Point<2>    &point,
         const unsigned int  /* component */) const
 {
-    const double radius = point.distance(Point<dim>());
-    const double value = Ti + (To - Ti) / (ro - ri) * (radius - ri);
+    const double log_radius = std::log(point.distance(Point<2>()));
+    const double log_ro = std::log(ro), log_ri = std::log(ro);
+    const double value = (Ti - To) * log_radius / (log_ri - log_ro)
+            + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
+    return value;
+}
+
+template<>
+double TemperatureInitialValues<3>::value(
+        const Point<3>    &point,
+        const unsigned int  /* component */) const
+{
+    const double radius = point.distance(Point<3>());
+    const double value = (ri * Ti - ro * To)/(ri - ro)
+            + ri * ro * (To - Ti)/(radius * (ri - ro));
     return value;
 }
 
@@ -64,10 +77,8 @@ void GravityVector<dim>::value_list(const std::vector<Point<dim>>    &points,
 }  // namespace EquationData
 
 // explicit instantiation
-template class EquationData::TemperatureInitialValues<1>;
 template class EquationData::TemperatureInitialValues<2>;
 template class EquationData::TemperatureInitialValues<3>;
 
-template class EquationData::GravityVector<1>;
 template class EquationData::GravityVector<2>;
 template class EquationData::GravityVector<3>;
