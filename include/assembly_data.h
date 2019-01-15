@@ -27,21 +27,6 @@ using namespace dealii;
 namespace Scratch {
 
 template<int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &temperature_fe,
-           const Mapping<dim>       &mapping,
-           const Quadrature<dim>    &temperature_quadrature);
-
-    Matrix(const Matrix<dim>  &scratch);
-
-    FEValues<dim>               temperature_fe_values;
-
-    std::vector<double>         phi_temperature;
-    std::vector<Tensor<1,dim>>  grad_phi_temperature;
-};
-
-template<int dim>
 struct RightHandSide
 {
     RightHandSide(const FiniteElement<dim> &temperature_fe,
@@ -71,18 +56,6 @@ struct RightHandSide
 namespace CopyData {
 
 template <int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &temperature_fe);
-    Matrix(const Matrix<dim> &data);
-
-    FullMatrix<double>                      local_mass_matrix;
-    FullMatrix<double>                      local_stiffness_matrix;
-
-    std::vector<types::global_dof_index>    local_dof_indices;
-};
-
-template <int dim>
 struct RightHandSide
 {
     RightHandSide(const FiniteElement<dim>    &temperature_fe);
@@ -105,26 +78,6 @@ using namespace dealii;
 
 namespace Scratch {
 
-template<int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &stokes_fe,
-           const Mapping<dim>       &mapping,
-           const Quadrature<dim>    &stokes_quadrature,
-           const UpdateFlags        stokes_update_flags);
-
-    Matrix(const Matrix<dim>  &scratch);
-
-    FEValues<dim>               stokes_fe_values;
-
-    std::vector<double>         div_phi_velocity;
-    std::vector<Tensor<1,dim>>  phi_velocity;
-    std::vector<Tensor<2,dim>>  grad_phi_velocity;
-
-    std::vector<double>         phi_pressure;
-    std::vector<Tensor<1,dim>>  grad_phi_pressure;
-};
-
 
 template<int dim>
 struct RightHandSide
@@ -133,6 +86,8 @@ struct RightHandSide
                   const Mapping<dim>        &mapping,
                   const Quadrature<dim>     &stokes_quadrature,
                   const UpdateFlags          stokes_update_flags,
+                  const FiniteElement<dim>  &pressure_fe,
+                  const UpdateFlags          pressure_update_flags,
                   const FiniteElement<dim>  &temperature_fe,
                   const UpdateFlags          temperature_update_flags);
 
@@ -147,6 +102,11 @@ struct RightHandSide
     std::vector<Tensor<2,dim>>  old_velocity_gradients;
     std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
 
+    FEValues<dim>               pressure_fe_values;
+    std::vector<double>         old_pressure_values;
+    std::vector<double>         old_phi_values;
+    std::vector<double>         old_old_phi_values;
+
     FEValues<dim>               temperature_fe_values;
     std::vector<double>         old_temperature_values;
     std::vector<double>         old_old_temperature_values;
@@ -156,19 +116,6 @@ struct RightHandSide
 }  // namespace Scratch
 
 namespace CopyData {
-
-template <int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &navier_stokes_fe);
-    Matrix(const Matrix<dim> &data);
-
-    FullMatrix<double>      local_matrix;
-    FullMatrix<double>      local_laplace_matrix;
-
-    std::vector<types::global_dof_index>   local_dof_indices;
-    std::vector<types::global_dof_index>   local_velocity_dof_indices;
-};
 
 template <int dim>
 struct RightHandSide
@@ -181,8 +128,51 @@ struct RightHandSide
     std::vector<types::global_dof_index>   local_dof_indices;
 };
 
-}  // namespace Copy
+}  // namespace CopyData
 
 }  // namespace NavierStokesAssembly
+
+namespace PressureAssembly {
+
+using namespace dealii;
+
+namespace Scratch {
+
+template<int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim> &pressure_fe,
+                  const Mapping<dim>       &mapping,
+                  const Quadrature<dim>    &pressure_quadrature,
+                  const UpdateFlags         pressure_update_flags,
+                  const FiniteElement<dim> &velocity_fe,
+                  const UpdateFlags         velocity_update_flags);
+
+    RightHandSide(const RightHandSide<dim> &scratch);
+
+    FEValues<dim>       pressure_fe_values;
+
+    FEValues<dim>       velocity_fe_values;
+    std::vector<double> velocity_divergences;
+};
+}  // namespace Scratch
+
+namespace CopyData {
+
+template <int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim>    &pressure_fe);
+    RightHandSide(const RightHandSide<dim>    &data);
+
+    Vector<double>                          local_rhs;
+    std::vector<types::global_dof_index>    local_dof_indices;
+};
+
+
+}  // namespace CopyData
+
+}  // namespace PressureAssembly
+
 
 #endif /* INCLUDE_ASSEMBLY_DATA_H_ */
