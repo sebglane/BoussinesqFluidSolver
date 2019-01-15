@@ -32,8 +32,13 @@ double TemperatureInitialValues<2>::value(
         const Point<2>    &point,
         const unsigned int  /* component */) const
 {
-    const double log_radius = std::log(point.distance(Point<2>()));
-    const double log_ro = std::log(ro), log_ri = std::log(ro);
+    const double radius = point.distance(Point<2>());
+    Assert(radius > 0.0, ExcLowerRangeType<double>(0, radius));
+    const double log_radius = std::log(radius);
+    AssertIsFinite(log_radius);
+    const double log_ro = std::log(ro), log_ri = std::log(ri);
+    AssertIsFinite(log_ro);
+    AssertIsFinite(log_ri);
     const double value = (Ti - To) * log_radius / (log_ri - log_ro)
             + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
     return value;
