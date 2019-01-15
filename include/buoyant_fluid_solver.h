@@ -169,13 +169,6 @@ private:
             rebuild_projection_preconditioner = true;
 
     // working stream methods for temperature assembly
-    void local_assemble_temperature_matrix(
-            const typename DoFHandler<dim>::active_cell_iterator &cell,
-            TemperatureAssembly::Scratch::Matrix<dim> &scratch,
-            TemperatureAssembly::CopyData::Matrix<dim> &data);
-    void copy_local_to_global_temperature_matrix(
-            const TemperatureAssembly::CopyData::Matrix<dim> &data);
-
     void local_assemble_temperature_rhs(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
             TemperatureAssembly::Scratch::RightHandSide<dim> &scratch,

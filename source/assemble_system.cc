@@ -4,9 +4,9 @@
  *  Created on: Nov 23, 2018
  *      Author: sg
  */
-
-#include <deal.II/fe/fe_values.h>
 #include <deal.II/base/work_stream.h>
+
+#include <deal.II/numerics/matrix_tools.h>
 
 #include "buoyant_fluid_solver.h"
 
@@ -28,21 +28,18 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         temperature_mass_matrix = 0;
         temperature_stiffness_matrix = 0;
 
-        WorkStream::run(
-                temperature_dof_handler.begin_active(),
-                temperature_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
-                          this,
-                          std::placeholders::_1,
-                          std::placeholders::_2,
-                          std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
-                          this,
-                          std::placeholders::_1),
-                TemperatureAssembly::Scratch::Matrix<dim>(temperature_fe,
-                                                          mapping,
-                                                          quadrature_formula),
-                TemperatureAssembly::CopyData::Matrix<dim>(temperature_fe));
+        MatrixCreator::create_mass_matrix(mapping,
+                                          temperature_dof_handler,
+                                          quadrature_formula,
+                                          temperature_mass_matrix,
+                                          (const Function<dim> *const)nullptr,
+                                          temperature_constraints);
+        MatrixCreator::create_laplace_matrix(mapping,
+                                             temperature_dof_handler,
+                                             quadrature_formula,
+                                             temperature_stiffness_matrix,
+                                             (const Function<dim> *const)nullptr,
+                                             temperature_constraints);
 
         const std::vector<double> alpha = (timestep_number != 0?
                                                 imex_coefficients.alpha(timestep/old_timestep):
@@ -52,8 +49,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                 std::vector<double>({1.0,0.0,0.0}));
 
         temperature_matrix.copy_from(temperature_mass_matrix);
-        temperature_matrix *= alpha[0];
-        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+        temperature_matrix *= alpha[0] / timestep;
+        temperature_matrix.add(gamma[0] * equation_coefficients[3],
                                temperature_stiffness_matrix);
 
         rebuild_temperature_matrices = false;
@@ -67,8 +64,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
 
         temperature_matrix.copy_from(temperature_mass_matrix);
-        temperature_matrix *= alpha[0];
-        temperature_matrix.add(timestep * gamma[0] * equation_coefficients[3],
+        temperature_matrix *= alpha[0] / timestep;
+        temperature_matrix.add(gamma[0] * equation_coefficients[3],
                                temperature_stiffness_matrix);
 
         rebuild_temperature_preconditioner = true;

@@ -27,21 +27,6 @@ using namespace dealii;
 namespace Scratch {
 
 template<int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &temperature_fe,
-           const Mapping<dim>       &mapping,
-           const Quadrature<dim>    &temperature_quadrature);
-
-    Matrix(const Matrix<dim>  &scratch);
-
-    FEValues<dim>               temperature_fe_values;
-
-    std::vector<double>         phi_temperature;
-    std::vector<Tensor<1,dim>>  grad_phi_temperature;
-};
-
-template<int dim>
 struct RightHandSide
 {
     RightHandSide(const FiniteElement<dim> &temperature_fe,
@@ -71,18 +56,6 @@ struct RightHandSide
 namespace CopyData {
 
 template <int dim>
-struct Matrix
-{
-    Matrix(const FiniteElement<dim> &temperature_fe);
-    Matrix(const Matrix<dim> &data);
-
-    FullMatrix<double>                      local_mass_matrix;
-    FullMatrix<double>                      local_stiffness_matrix;
-
-    std::vector<types::global_dof_index>    local_dof_indices;
-};
-
-template <int dim>
 struct RightHandSide
 {
     RightHandSide(const FiniteElement<dim>    &temperature_fe);
@@ -92,7 +65,6 @@ struct RightHandSide
     FullMatrix<double>                      matrix_for_bc;
     std::vector<types::global_dof_index>    local_dof_indices;
 };
-
 
 }  // namespace CopyData
 
