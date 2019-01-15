@@ -8,6 +8,8 @@
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
 
+#include <deal.II/lac/dynamic_sparsity_pattern.h>
+
 #include <deal.II/numerics/vector_tools.h>
 
 #include "buoyant_fluid_solver.h"
@@ -60,53 +62,74 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     old_old_temperature_solution.reinit(n_dofs_temperature);
     temperature_rhs.reinit(n_dofs_temperature);
 
-    // stokes part
-    navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
+    // velocity part
+    velocity_dof_handler.distribute_dofs(velocity_fe);
 
-    DoFRenumbering::boost::king_ordering(navier_stokes_dof_handler);
-    DoFRenumbering::block_wise(navier_stokes_dof_handler);
-    // stokes constraints
+    DoFRenumbering::boost::king_ordering(velocity_dof_handler);
+    DoFRenumbering::component_wise(velocity_dof_handler);
+    // velocity constraints
     {
-        navier_stokes_constraints.clear();
+        velocity_constraints.clear();
 
-        DoFTools::make_hanging_node_constraints(navier_stokes_dof_handler,
-                                                navier_stokes_constraints);
+        DoFTools::make_hanging_node_constraints(velocity_dof_handler,
+                                                velocity_constraints);
 
-        const Functions::ZeroFunction<dim> zero_function(dim+1);
+        const Functions::ZeroFunction<dim> zero_function(dim);
 
         const std::map<typename types::boundary_id, const Function<dim>*>
         velocity_boundary_values = {{GridFactory::BoundaryIds::ICB, &zero_function},
                                     {GridFactory::BoundaryIds::CMB, &zero_function}};
 
         const FEValuesExtractors::Vector velocities(0);
-        VectorTools::interpolate_boundary_values(
-                navier_stokes_dof_handler,
-                velocity_boundary_values,
-                navier_stokes_constraints,
-                navier_stokes_fe.component_mask(velocities));
+        VectorTools::interpolate_boundary_values(velocity_dof_handler,
+                                                 velocity_boundary_values,
+                                                 velocity_constraints);
+
+        velocity_constraints.close();
+    }
+
+    // velocity matrix setup
+    const types::global_dof_index   n_dofs_velocity
+    = velocity_dof_handler.n_dofs();
+    setup_velocity_system(n_dofs_velocity);
+
+    // reinit velocity vectors
+    velocity_solution.reinit(n_dofs_velocity);
+    old_velocity_solution.reinit(n_dofs_velocity);
+    old_old_velocity_solution.reinit(n_dofs_velocity);
+    velocity_rhs.reinit(n_dofs_velocity);
+
+    // pressure part
+    pressure_dof_handler.distribute_dofs(pressure_fe);
+
+    DoFRenumbering::boost::king_ordering(pressure_dof_handler);
+    // pressure constraints
+    {
+        pressure_constraints.clear();
+
+        DoFTools::make_hanging_node_constraints(pressure_dof_handler,
+                                                pressure_constraints);
 
         // find pressure boundary dofs
-        const FEValuesExtractors::Scalar pressure(dim);
-
-        std::vector<bool> boundary_dofs(navier_stokes_dof_handler.n_dofs(),
+        std::vector<bool> boundary_dofs(pressure_dof_handler.n_dofs(),
                                         false);
-        DoFTools::extract_boundary_dofs(navier_stokes_dof_handler,
-                                        navier_stokes_fe.component_mask(pressure),
+        DoFTools::extract_boundary_dofs(pressure_dof_handler,
+                                        ComponentMask(),
                                         boundary_dofs);
 
         // find first unconstrained pressure boundary dof
-        unsigned int first_boundary_dof = navier_stokes_dof_handler.n_dofs();
+        unsigned int first_boundary_dof = pressure_dof_handler.n_dofs();
         std::vector<bool>::const_iterator
         dof = boundary_dofs.begin(),
         end_dof = boundary_dofs.end();
         for (; dof != end_dof; ++dof)
             if (*dof)
-                if (!navier_stokes_constraints.is_constrained(dof - boundary_dofs.begin()))
+                if (!pressure_constraints.is_constrained(dof - boundary_dofs.begin()))
                 {
                     first_boundary_dof = dof - boundary_dofs.begin();
                     break;
                 }
-        Assert(first_boundary_dof < navier_stokes_dof_handler.n_dofs(),
+        Assert(first_boundary_dof < pressure_dof_handler.n_dofs(),
                ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
 
         std::vector<bool>::const_iterator it = std::find(boundary_dofs.begin(),
@@ -116,45 +139,35 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
 
         // set first pressure boundary dof to zero
-        navier_stokes_constraints.add_line(first_boundary_dof);
+        pressure_constraints.add_line(first_boundary_dof);
 
-        navier_stokes_constraints.close();
+        pressure_constraints.close();
     }
-
-    // count dofs
-    std::vector<unsigned int> stokes_block_component(2,0);
-    stokes_block_component[1] = 1;
-    std::vector<types::global_dof_index> dofs_per_block(2);
-    DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
-                                   dofs_per_block,
-                                   stokes_block_component);
-
-    // stokes matrix and vector setup
-    setup_navier_stokes_system(dofs_per_block);
-
-    // reinit block vectors
-    navier_stokes_solution.reinit(dofs_per_block);
-    old_navier_stokes_solution.reinit(dofs_per_block);
-    old_old_navier_stokes_solution.reinit(dofs_per_block);
-    navier_stokes_rhs.reinit(dofs_per_block);
+    // velocity matrix setup
+    const types::global_dof_index   n_dofs_pressure
+    = pressure_dof_handler.n_dofs();
+    setup_pressure_system(n_dofs_pressure);
 
     // reinit pressure vectors
-    phi_pressure.reinit(dofs_per_block[1]);
-    old_phi_pressure.reinit(dofs_per_block[1]);
-    old_old_phi_pressure.reinit(dofs_per_block[1]);
+    pressure_solution.reinit(n_dofs_pressure);
+    old_pressure_solution.reinit(n_dofs_pressure);
+    pressure_rhs.reinit(n_dofs_pressure);
+    phi_solution.reinit(n_dofs_pressure);
+    old_phi_solution.reinit(n_dofs_pressure);
+    old_old_phi_solution.reinit(n_dofs_pressure);
 
     // print info message
     std::cout << "      Number of active cells: "
               << triangulation.n_active_cells()
               << std::endl
               << "      Number of degrees of freedom: "
-              << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature
+              << n_dofs_temperature + n_dofs_velocity + n_dofs_pressure
               << std::endl
               << "      Number of velocity degrees of freedom: "
-              << dofs_per_block[0]
+              << n_dofs_velocity
               << std::endl
               << "      Number of pressure degrees of freedom: "
-              << dofs_per_block[1]
+              << n_dofs_pressure
               << std::endl
               << "      Number of temperature degrees of freedom: "
               << n_dofs_temperature
@@ -163,7 +176,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_index n_temperature_dofs)
+void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_index n_dofs)
 {
     preconditioner_temperature.reset();
 
@@ -171,7 +184,7 @@ void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_i
     temperature_mass_matrix.clear();
     temperature_stiffness_matrix.clear();
 
-    DynamicSparsityPattern dsp(n_temperature_dofs, n_temperature_dofs);
+    DynamicSparsityPattern dsp(n_dofs);
 
     DoFTools::make_sparsity_pattern(temperature_dof_handler,
                                     dsp,
@@ -187,42 +200,60 @@ void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_i
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
-        const std::vector<types::global_dof_index> dofs_per_block)
+void BuoyantFluidSolver<dim>::setup_velocity_system(
+        const types::global_dof_index n_dofs)
 {
     preconditioner_diffusion.reset();
-    preconditioner_projection.reset();
 
-    navier_stokes_matrix.clear();
-
+    velocity_matrix.clear();
     velocity_mass_matrix.clear();
     velocity_laplace_matrix.clear();
 
-    Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
-    for (unsigned int c=0; c<dim+1; ++c)
-        for (unsigned int d=0; d<dim+1; ++d)
-            if (c==d || (c<dim && d==dim) || (c==dim && d<dim))
-                stokes_coupling[c][d] = DoFTools::always;
+    Table<2,DoFTools::Coupling> velocity_coupling(dim, dim);
+    for (unsigned int c=0; c<dim; ++c)
+        for (unsigned int d=0; d<dim; ++d)
+            if (c==d)
+                velocity_coupling[c][d] = DoFTools::always;
             else
-                stokes_coupling[c][d] = DoFTools::none;
+                velocity_coupling[c][d] = DoFTools::none;
 
-    BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                    dofs_per_block);
+    DynamicSparsityPattern  dsp(n_dofs);
 
-    DoFTools::make_sparsity_pattern(
-            navier_stokes_dof_handler,
-            stokes_coupling,
-            dsp,
-            navier_stokes_constraints);
+    DoFTools::make_sparsity_pattern(velocity_dof_handler,
+                                    velocity_coupling,
+                                    dsp,
+                                    velocity_constraints);
 
-    navier_stokes_sparsity_pattern.copy_from(dsp);
+    velocity_sparsity_pattern.copy_from(dsp);
 
-    navier_stokes_matrix.reinit(navier_stokes_sparsity_pattern);
+    velocity_matrix.reinit(velocity_sparsity_pattern);
+    velocity_mass_matrix.reinit(velocity_sparsity_pattern);
+    velocity_laplace_matrix.reinit(velocity_sparsity_pattern);
 
-    velocity_mass_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
-    velocity_laplace_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
+    rebuild_velocity_matrices = true;
+}
 
-    rebuild_navier_stokes_matrices = true;
+template<int dim>
+void BuoyantFluidSolver<dim>::setup_pressure_system(const types::global_dof_index n_dofs)
+{
+    preconditioner_projection.reset();
+    preconditioner_pressure_mass.reset();
+
+    pressure_laplace_matrix.clear();
+    pressure_mass_matrix.clear();
+
+    DynamicSparsityPattern  dsp(n_dofs);
+
+    DoFTools::make_sparsity_pattern(pressure_dof_handler,
+                                    dsp,
+                                    pressure_constraints);
+
+    pressure_sparsity_pattern.copy_from(dsp);
+
+    pressure_laplace_matrix.reinit(pressure_sparsity_pattern);
+    pressure_mass_matrix.reinit(pressure_sparsity_pattern);
+
+    rebuild_pressure_matrices = true;
 }
 
 }  // namespace BuoyantFluid
@@ -232,8 +263,11 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
 template void BuoyantFluid::BuoyantFluidSolver<2>::setup_dofs();
 template void BuoyantFluid::BuoyantFluidSolver<3>::setup_dofs();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrix(const unsigned int );
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrix(const unsigned int );
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrix(const types::global_dof_index );
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrix(const types::global_dof_index );
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_velocity_system(const types::global_dof_index );
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_velocity_system(const types::global_dof_index );
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_pressure_system(const types::global_dof_index );
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_pressure_system(const types::global_dof_index );
