@@ -142,7 +142,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
         prm.declare_entry("convective_discretization_type",
                         "Standard",
-                        Patterns::Selection("Standard|SkewSymmetric|RotationalForm"),
+                        Patterns::Selection("Standard|DivergenceForm|SkewSymmetric|RotationalForm"),
                         "Type of discretization of convective term.");
 
         prm.enter_subsection("Refinement parameters");
@@ -316,6 +316,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         if (convective_type_str == "Standard")
             convective_discretization = ConvectiveDiscretizationType::Standard;
+        else if (convective_type_str == "DivergenceForm")
+            convective_discretization = ConvectiveDiscretizationType::DivergenceForm;
         else if (convective_type_str == "SkewSymmetric")
             convective_discretization = ConvectiveDiscretizationType::SkewSymmetric;
         else if (convective_type_str == "RotationalForm")

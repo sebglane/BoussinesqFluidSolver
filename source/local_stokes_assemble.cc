@@ -82,9 +82,17 @@ void BuoyantFluidSolver<dim>::local_assemble_velocity_rhs(
             = alpha[1] / timestep * scratch.old_velocity_values[q]
                 + alpha[2] / timestep * scratch.old_old_velocity_values[q];
 
-        const Tensor<1,dim> nonlinear_term_velocity
-            = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+        Tensor<1,dim> nonlinear_term_velocity;
+        if (parameters.convective_discretization == ConvectiveDiscretizationType::Standard)
+            nonlinear_term_velocity = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                                    + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+        else if (parameters.convective_discretization == ConvectiveDiscretizationType::DivergenceForm)
+            nonlinear_term_velocity = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                                    + 0.5 * beta[0] * trace(scratch.old_velocity_gradients[q]) * scratch.old_velocity_values[q]
+                                    + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q]
+                                    + 0.5 * beta[1] * trace(scratch.old_old_velocity_gradients[q]) * scratch.old_old_velocity_values[q];
+        else
+            AssertThrow(false, ExcNotImplemented());
 
         const Tensor<2,dim> linear_term_velocity
             = gamma[1] * scratch.old_velocity_gradients[q]

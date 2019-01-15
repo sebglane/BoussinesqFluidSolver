@@ -24,6 +24,7 @@ using namespace dealii;
 enum ConvectiveDiscretizationType
 {
     Standard,
+    DivergenceForm,
     SkewSymmetric,
     RotationalForm
 };
