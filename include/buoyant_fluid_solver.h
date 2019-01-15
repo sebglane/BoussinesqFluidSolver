@@ -18,11 +18,11 @@
 
 #include <deal.II/grid/tria.h>
 
-#include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/sparse_ilu.h>
+#include <deal.II/lac/vector.h>
 
 #include <memory>
 
@@ -53,18 +53,25 @@ private:
 
     void setup_dofs();
 
-    void setup_temperature_matrix(const types::global_dof_index n_temperature_dofs);
+    void setup_temperature_matrix(const types::global_dof_index n_dofs);
     void assemble_temperature_system();
     void build_temperature_preconditioner();
     void solve_temperature_system();
     void temperature_step();
 
-    void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
-    void assemble_navier_stokes_system();
+    void setup_velocity_system(const types::global_dof_index n_dofs);
+    void setup_pressure_system(const types::global_dof_index n_dofs);
+
+    void assemble_velocity_system();
+    void assemble_pressure_system();
+
     void build_diffusion_preconditioner();
     void build_projection_preconditioner();
+    void build_pressure_mass_preconditioner();
+
     void solve_diffusion_system();
     void solve_projection_system();
+
     void navier_stokes_step();
 
     std::pair<double,double>    compute_rms_values() const;
@@ -90,9 +97,13 @@ private:
     const FE_Q<dim>                 temperature_fe;
     DoFHandler<dim>                 temperature_dof_handler;
 
-    // stokes FiniteElement and DoFHandler
-    const FESystem<dim>             navier_stokes_fe;
-    DoFHandler<dim>                 navier_stokes_dof_handler;
+    // velocity FiniteElement and DoFHandler
+    const FESystem<dim>             velocity_fe;
+    DoFHandler<dim>                 velocity_dof_handler;
+
+    // pressure FiniteElement and DoFHandler
+    const FE_Q<dim>                 pressure_fe;
+    DoFHandler<dim>                 pressure_dof_handler;
 
     // temperature part
     ConstraintMatrix                temperature_constraints;
@@ -108,25 +119,37 @@ private:
     Vector<double>                  old_old_temperature_solution;
     Vector<double>                  temperature_rhs;
 
-    // stokes part
-    ConstraintMatrix                navier_stokes_constraints;
+    // velocity part
+    ConstraintMatrix                velocity_constraints;
 
-    BlockSparsityPattern            navier_stokes_sparsity_pattern;
+    SparsityPattern                 velocity_sparsity_pattern;
 
-    BlockSparseMatrix<double>       navier_stokes_matrix;
+    SparseMatrix<double>            velocity_matrix;
     SparseMatrix<double>            velocity_laplace_matrix;
     SparseMatrix<double>            velocity_mass_matrix;
+
+    // vectors of velocity part
+    Vector<double>                  velocity_solution;
+    Vector<double>                  old_velocity_solution;
+    Vector<double>                  old_old_velocity_solution;
+    Vector<double>                  velocity_rhs;
+
+    // pressure part
+    ConstraintMatrix                pressure_constraints;
+
+    SparsityPattern                 pressure_sparsity_pattern;
+
     SparseMatrix<double>            pressure_laplace_matrix;
+    SparseMatrix<double>            pressure_mass_matrix;
 
-    // vectors of navier stokes part
-    BlockVector<double>             navier_stokes_solution;
-    BlockVector<double>             old_navier_stokes_solution;
-    BlockVector<double>             old_old_navier_stokes_solution;
-    BlockVector<double>             navier_stokes_rhs;
+    // vectors of pressure part
+    Vector<double>                  pressure_solution;
+    Vector<double>                  old_pressure_solution;
+    Vector<double>                  pressure_rhs;
 
-    Vector<double>                  phi_pressure;
-    Vector<double>                  old_phi_pressure;
-    Vector<double>                  old_old_phi_pressure;
+    Vector<double>                  phi_solution;
+    Vector<double>                  old_phi_solution;
+    Vector<double>                  old_old_phi_solution;
 
     // preconditioner types
     typedef PreconditionJacobi<SparseMatrix<double>>
@@ -135,8 +158,11 @@ private:
     typedef PreconditionSSOR<SparseMatrix<double>>
     PreconditionerTypeDiffusion;
 
-    typedef PreconditionSSOR<SparseMatrix<double>>
+    typedef SparseILU<double>
     PreconditionerTypeProjection;
+
+    typedef PreconditionJacobi<SparseMatrix<double>>
+    PreconditionerTypePressureMass;
 
     // pointers to preconditioners
     std::shared_ptr<PreconditionerTypeTemperature>
@@ -147,6 +173,9 @@ private:
 
     std::shared_ptr<PreconditionerTypeProjection>
     preconditioner_projection;
+
+    std::shared_ptr<PreconditionerTypeProjection>
+    preconditioner_pressure_mass;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -162,20 +191,15 @@ private:
     bool                            timestep_modified = false;
 
     // flags for rebuilding matrices and preconditioners
-    bool    rebuild_navier_stokes_matrices = true,
+    bool    rebuild_velocity_matrices = true,
             rebuild_temperature_matrices = true,
+            rebuild_pressure_matrices = true,
             rebuild_temperature_preconditioner = true,
             rebuild_diffusion_preconditioner = true,
-            rebuild_projection_preconditioner = true;
+            rebuild_projection_preconditioner = true,
+            rebuild_pressure_mass_preconditioner = true;
 
     // working stream methods for temperature assembly
-    void local_assemble_temperature_matrix(
-            const typename DoFHandler<dim>::active_cell_iterator &cell,
-            TemperatureAssembly::Scratch::Matrix<dim> &scratch,
-            TemperatureAssembly::CopyData::Matrix<dim> &data);
-    void copy_local_to_global_temperature_matrix(
-            const TemperatureAssembly::CopyData::Matrix<dim> &data);
-
     void local_assemble_temperature_rhs(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
             TemperatureAssembly::Scratch::RightHandSide<dim> &scratch,
@@ -183,26 +207,22 @@ private:
     void copy_local_to_global_temperature_rhs(
             const TemperatureAssembly::CopyData::RightHandSide<dim> &data);
 
-    // working stream methods for stokes assembly
-    /*
-     *
-    void local_assemble_stokes_matrix(
-            const typename DoFHandler<dim>::active_cell_iterator &cell,
-            NavierStokesAssembly::Scratch::Matrix<dim> &scratch,
-            NavierStokesAssembly::CopyData::Matrix<dim> &data);
-    void copy_local_to_global_stokes_matrix(
-            const NavierStokesAssembly::CopyData::Matrix<dim> &data);
-     *
-     */
-
-    void local_assemble_stokes_rhs(
+    // working stream methods for velocity assembly
+    void local_assemble_velocity_rhs(
                 const typename DoFHandler<dim>::active_cell_iterator &cell,
                 NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
                 NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
-    void copy_local_to_global_stokes_rhs(
+    void copy_local_to_global_velocity_rhs(
                 const NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
-};
 
+    // working stream methods for pressure assembly
+    void local_assemble_pressure_rhs(
+                const typename DoFHandler<dim>::active_cell_iterator &cell,
+                PressureAssembly::Scratch::RightHandSide<dim> &scratch,
+                PressureAssembly::CopyData::RightHandSide<dim> &data);
+    void copy_local_to_global_pressure_rhs(
+                const PressureAssembly::CopyData::RightHandSide<dim> &data);
+};
 }  // namespace BouyantFluid
 
 #endif /* INCLUDE_BUOYANT_FLUID_SOLVER_H_ */

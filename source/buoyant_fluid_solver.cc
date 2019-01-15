@@ -35,10 +35,12 @@ mapping(4),
 // temperature part
 temperature_fe(parameters.temperature_degree),
 temperature_dof_handler(triangulation),
-// stokes part
-navier_stokes_fe(FESystem<dim>(FE_Q<dim>(parameters.velocity_degree), dim), 1,
-                 FE_Q<dim>(parameters.velocity_degree - 1), 1),
-navier_stokes_dof_handler(triangulation),
+// velocity part
+velocity_fe(FE_Q<dim>(parameters.velocity_degree), dim),
+velocity_dof_handler(triangulation),
+// velocity part
+pressure_fe(parameters.velocity_degree -1),
+pressure_dof_handler(triangulation),
 // coefficients
 equation_coefficients{(parameters.rotation ? 2.0/parameters.Ek: 0.0),
                       (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
@@ -130,25 +132,30 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
         if (timestep == old_timestep)
             return;
         else if (timestep > parameters.max_timestep
-                && old_timestep == parameters.max_timestep)
+                 && old_timestep == parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
             return;
         }
         else if (timestep > parameters.max_timestep
-                && old_timestep != parameters.max_timestep)
+                 && old_timestep != parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
             timestep_modified = true;
+            return;
+        }
+        else if (timestep < parameters.max_timestep
+                 && timestep > parameters.min_timestep)
+        {
+            timestep_modified = true;
+            return;
         }
         else if (timestep < parameters.min_timestep)
         {
-            ExcLowerRangeType<double>(timestep, parameters.min_timestep);
+            Assert(false,
+                   ExcLowerRangeType<double>(timestep, parameters.min_timestep));
         }
-        else if (timestep < parameters.max_timestep)
-        {
-            timestep_modified = true;
-        }
+
     }
     if (timestep_modified)
         std::cout << "      time step changed from "
@@ -167,10 +174,10 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 
     // error estimation based on temperature
     Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
-    KellyErrorEstimator<dim>::estimate(temperature_dof_handler,
-                                       QGauss<dim-1>(parameters.temperature_degree + 1),
+    KellyErrorEstimator<dim>::estimate(velocity_dof_handler,
+                                       QGauss<dim-1>(parameters.velocity_degree + 1),
                                        typename FunctionMap<dim>::type(),
-                                       temperature_solution,
+                                       velocity_solution,
                                        estimated_error_per_cell);
     // set refinement flags
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
@@ -191,40 +198,26 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     SolutionTransfer<dim,Vector<double>> temperature_transfer(temperature_dof_handler);
 
     // preparing stokes solution transfer
-    std::vector<BlockVector<double>> x_stokes(3);
-    x_stokes[0] = navier_stokes_solution;
-    x_stokes[1] = old_navier_stokes_solution;
-    x_stokes[2] = old_old_navier_stokes_solution;
-    SolutionTransfer<dim,BlockVector<double>> stokes_transfer(navier_stokes_dof_handler);
+    std::vector<Vector<double>> x_velocity(3);
+    x_velocity[0] = velocity_solution;
+    x_velocity[1] = old_velocity_solution;
+    x_velocity[2] = old_old_velocity_solution;
+    SolutionTransfer<dim, Vector<double>> stokes_transfer(velocity_dof_handler);
 
-    // create pressure finite element
-    const FiniteElement<dim> &phi_fe = navier_stokes_fe.base_element(1);
-
-    // create dof handler of pressure
-    DoFHandler<dim>     phi_dof_handler(triangulation);
-    phi_dof_handler.distribute_dofs(phi_fe);
-
-    std::vector<unsigned int>   stokes_block_component(2,0);
-    stokes_block_component[1] = 1;
-    std::vector<types::global_dof_index> dofs_per_block(2);
-    DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
-                                   dofs_per_block,
-                                   stokes_block_component);
-    Assert(phi_dof_handler.n_dofs() == dofs_per_block[1],
-           ExcInternalError());
-
-    // preparing phi solution transfer
-    std::vector<Vector<double>> x_phi(3);
-    x_phi[0] = phi_pressure;
-    x_phi[1] = old_phi_pressure;
-    x_phi[2] = old_old_phi_pressure;
-    SolutionTransfer<dim,Vector<double>> phi_transfer(phi_dof_handler);
+    // preparing pressure solution transfer
+    std::vector<Vector<double>> x_pressure(5);
+    x_pressure[0] = pressure_solution;
+    x_pressure[1] = old_pressure_solution;
+    x_pressure[2] = phi_solution;
+    x_pressure[3] = old_phi_solution;
+    x_pressure[4] = old_old_phi_solution;
+    SolutionTransfer<dim, Vector<double>> phi_transfer(pressure_dof_handler);
 
     // preparing triangulation refinement
     triangulation.prepare_coarsening_and_refinement();
     temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
-    stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
-    phi_transfer.prepare_for_coarsening_and_refinement(x_phi);
+    stokes_transfer.prepare_for_coarsening_and_refinement(x_velocity);
+    phi_transfer.prepare_for_coarsening_and_refinement(x_pressure);
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -250,33 +243,35 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     }
     // transfer of stokes solution
     {
-        std::vector<BlockVector<double>>    tmp_stokes(3);
-        tmp_stokes[0].reinit(navier_stokes_solution);
-        tmp_stokes[1].reinit(navier_stokes_solution);
-        tmp_stokes[2].reinit(navier_stokes_solution);
-        stokes_transfer.interpolate(x_stokes, tmp_stokes);
+        std::vector<Vector<double>>    tmp_velocity(3);
+        tmp_velocity[0].reinit(velocity_solution);
+        tmp_velocity[1].reinit(velocity_solution);
+        tmp_velocity[2].reinit(velocity_solution);
+        stokes_transfer.interpolate(x_velocity, tmp_velocity);
 
-        navier_stokes_solution          = tmp_stokes[0];
-        old_navier_stokes_solution      = tmp_stokes[1];
-        old_old_navier_stokes_solution  = tmp_stokes[2];
+        velocity_solution           = tmp_velocity[0];
+        old_velocity_solution       = tmp_velocity[1];
+        old_old_velocity_solution   = tmp_velocity[2];
 
-        navier_stokes_constraints.distribute(navier_stokes_solution);
-        navier_stokes_constraints.distribute(old_navier_stokes_solution);
-        navier_stokes_constraints.distribute(old_old_navier_stokes_solution);
+        velocity_constraints.distribute(velocity_solution);
+        velocity_constraints.distribute(old_velocity_solution);
+        velocity_constraints.distribute(old_old_velocity_solution);
     }
-    // transfer of phi
+    // transfer of pressure
     {
-        phi_dof_handler.distribute_dofs(phi_fe);
+        std::vector<Vector<double>>    tmp_pressure(5);
+        tmp_pressure[0].reinit(pressure_solution);
+        tmp_pressure[1].reinit(pressure_solution);
+        tmp_pressure[2].reinit(pressure_solution);
+        tmp_pressure[3].reinit(pressure_solution);
+        tmp_pressure[4].reinit(pressure_solution);
+        phi_transfer.interpolate(x_pressure, tmp_pressure);
 
-        std::vector<Vector<double>>    tmp_phi(3);
-        tmp_phi[0].reinit(phi_pressure);
-        tmp_phi[1].reinit(phi_pressure);
-        tmp_phi[2].reinit(phi_pressure);
-        phi_transfer.interpolate(x_phi, tmp_phi);
-
-        phi_pressure = tmp_phi[0];
-        old_phi_pressure = tmp_phi[1];
-        old_old_phi_pressure= tmp_phi[2];
+        pressure_solution       = tmp_pressure[0];
+        old_pressure_solution   = tmp_pressure[1];
+        phi_solution                     = tmp_pressure[2];
+        old_phi_solution                 = tmp_pressure[3];
+        old_old_phi_solution             = tmp_pressure[4];
     }
 }
 
@@ -363,18 +358,19 @@ void BuoyantFluidSolver<dim>::run()
                                   timestep / old_timestep,
                                   old_old_temperature_solution);
 
-        // extrapolate stokes solution
-        old_old_navier_stokes_solution = old_navier_stokes_solution;
-        old_navier_stokes_solution = navier_stokes_solution;
+        // copy velocity solution
+        old_old_velocity_solution = old_velocity_solution;
+        old_velocity_solution = velocity_solution;
 
-        // extrapolate stokes solution
-        navier_stokes_solution.sadd(1. + timestep / old_timestep,
-                                    timestep / old_timestep,
-                                    old_old_navier_stokes_solution);
+        // extrapolate velocity solution
+        velocity_solution.sadd(1. + timestep / old_timestep,
+                               timestep / old_timestep,
+                               old_old_velocity_solution);
 
-        // copy auxiliary pressure solution
-        old_old_phi_pressure = old_phi_pressure;
-        old_phi_pressure = phi_pressure;
+        // copy pressure solution
+        old_pressure_solution = pressure_solution;
+        old_old_phi_solution = old_phi_solution;
+        old_phi_solution = phi_solution;
 
         // advance in time
         time += timestep;

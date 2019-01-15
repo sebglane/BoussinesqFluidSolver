@@ -23,10 +23,10 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
     const unsigned int n_q_points = quadrature_formula.size();
 
-    FEValues<dim> stokes_fe_values(mapping,
-                                   navier_stokes_fe,
-                                   quadrature_formula,
-                                   update_values|update_JxW_values);
+    FEValues<dim> velocity_fe_values(mapping,
+                                     velocity_fe,
+                                     quadrature_formula,
+                                     update_values|update_JxW_values);
 
     FEValues<dim> temperature_fe_values(mapping,
                                         temperature_fe,
@@ -43,25 +43,25 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
     double volume = 0;
 
     typename DoFHandler<dim>::active_cell_iterator
-    cell = navier_stokes_dof_handler.begin_active(),
+    cell = velocity_dof_handler.begin_active(),
     temperature_cell = temperature_dof_handler.begin_active(),
-    endc = navier_stokes_dof_handler.end();
+    endc = velocity_dof_handler.end();
 
     for (; cell != endc; ++cell, ++temperature_cell)
     {
-        stokes_fe_values.reinit(cell);
+        velocity_fe_values.reinit(cell);
         temperature_fe_values.reinit(temperature_cell);
 
         temperature_fe_values.get_function_values(temperature_solution,
                                                   temperature_values);
-        stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
-                                                         velocity_values);
+        velocity_fe_values[velocities].get_function_values(velocity_solution,
+                                                           velocity_values);
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
-            rms_velocity += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
-            rms_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
-            volume += stokes_fe_values.JxW(q);
+            rms_velocity += velocity_values[q] * velocity_values[q] * velocity_fe_values.JxW(q);
+            rms_temperature += temperature_values[q] * temperature_values[q] * velocity_fe_values.JxW(q);
+            volume += velocity_fe_values.JxW(q);
         }
     }
 
@@ -84,7 +84,7 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     const unsigned int n_q_points = quadrature_formula.size();
 
     FEValues<dim> fe_values(mapping,
-                            navier_stokes_fe,
+                            velocity_fe,
                             quadrature_formula,
                             update_values);
 
@@ -94,10 +94,10 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
 
     double max_cfl = 0;
 
-    for (auto cell : navier_stokes_dof_handler.active_cell_iterators())
+    for (auto cell : velocity_dof_handler.active_cell_iterators())
     {
         fe_values.reinit (cell);
-        fe_values[velocities].get_function_values(navier_stokes_solution,
+        fe_values[velocities].get_function_values(velocity_solution,
                                                   velocity_values);
         double max_cell_velocity = 0;
         for (unsigned int q=0; q<n_q_points; ++q)
@@ -115,7 +115,8 @@ void BuoyantFluidSolver<dim>::output_results() const
     std::cout << "   Output results..." << std::endl;
 
     // create joint finite element
-    const FESystem<dim> joint_fe(navier_stokes_fe, 1,
+    const FESystem<dim> joint_fe(velocity_fe, 1,
+                                 pressure_fe, 1,
                                  temperature_fe, 1);
 
     // create joint dof handler
@@ -123,7 +124,9 @@ void BuoyantFluidSolver<dim>::output_results() const
     joint_dof_handler.distribute_dofs(joint_fe);
 
     Assert(joint_dof_handler.n_dofs() ==
-           navier_stokes_dof_handler.n_dofs() + temperature_dof_handler.n_dofs(),
+             velocity_dof_handler.n_dofs()
+           + pressure_dof_handler.n_dofs()
+           + temperature_dof_handler.n_dofs(),
            ExcInternalError());
 
     // create joint solution
@@ -132,31 +135,41 @@ void BuoyantFluidSolver<dim>::output_results() const
 
     {
         std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
-        std::vector<types::global_dof_index> local_stokes_dof_indices(navier_stokes_fe.dofs_per_cell);
+        std::vector<types::global_dof_index> local_velocity_dof_indices(velocity_fe.dofs_per_cell);
+        std::vector<types::global_dof_index> local_pressure_dof_indices(pressure_fe.dofs_per_cell);
         std::vector<types::global_dof_index> local_temperature_dof_indices(temperature_fe.dofs_per_cell);
 
         typename DoFHandler<dim>::active_cell_iterator
         joint_cell       = joint_dof_handler.begin_active(),
         joint_endc       = joint_dof_handler.end(),
-        stokes_cell      = navier_stokes_dof_handler.begin_active(),
+        velocity_cell      = velocity_dof_handler.begin_active(),
+        pressure_cell      = pressure_dof_handler.begin_active(),
         temperature_cell = temperature_dof_handler.begin_active();
-        for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell)
+        for (; joint_cell!=joint_endc; ++joint_cell, ++velocity_cell, ++pressure_cell, ++temperature_cell)
         {
             joint_cell->get_dof_indices(local_joint_dof_indices);
-            stokes_cell->get_dof_indices(local_stokes_dof_indices);
+            velocity_cell->get_dof_indices(local_velocity_dof_indices);
+            pressure_cell->get_dof_indices(local_pressure_dof_indices);
             temperature_cell->get_dof_indices(local_temperature_dof_indices);
 
             for (unsigned int i=0; i<joint_fe.dofs_per_cell; ++i)
                 if (joint_fe.system_to_base_index(i).first.first == 0)
                 {
-                    Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
-                            ExcInternalError());
+                    Assert(joint_fe.system_to_base_index(i).second < local_velocity_dof_indices.size(),
+                           ExcInternalError());
                     joint_solution(local_joint_dof_indices[i])
-                    = navier_stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    = velocity_solution(local_velocity_dof_indices[joint_fe.system_to_base_index(i).second]);
+                }
+                else if (joint_fe.system_to_base_index(i).first.first == 1)
+                {
+                    Assert(joint_fe.system_to_base_index(i).second < local_pressure_dof_indices.size(),
+                           ExcInternalError());
+                    joint_solution(local_joint_dof_indices[i])
+                    = pressure_solution(local_pressure_dof_indices[joint_fe.system_to_base_index(i).second]);
                 }
                 else
                 {
-                    Assert (joint_fe.system_to_base_index(i).first.first == 1,
+                    Assert (joint_fe.system_to_base_index(i).first.first == 2,
                             ExcInternalError());
                     Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
                             ExcInternalError());
