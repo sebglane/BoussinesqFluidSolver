@@ -118,9 +118,10 @@ old_timestep(parameters.initial_timestep)
 template<int dim>
 void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
 {
-    TimerOutput::Scope  timer_section(computing_timer, "update time step");
+    if (parameters.verbose)
+        std::cout << "   Updating time step..." << std::endl;
 
-    std::cout << "   Updating time step..." << std::endl;
+    TimerOutput::Scope  timer_section(computing_timer, "update time step");
 
     old_timestep = timestep;
     timestep_modified = false;
@@ -168,16 +169,17 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
 template<int dim>
 void BuoyantFluidSolver<dim>::refine_mesh()
 {
-    TimerOutput::Scope timer_section(computing_timer, "refine mesh");
+    if (parameters.verbose)
+        std::cout << "   Mesh refinement..." << std::endl;
 
-    std::cout << "   Mesh refinement..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "refine mesh");
 
     // error estimation based on temperature
     Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
-    KellyErrorEstimator<dim>::estimate(velocity_dof_handler,
-                                       QGauss<dim-1>(parameters.velocity_degree + 1),
+    KellyErrorEstimator<dim>::estimate(temperature_dof_handler,
+                                       QGauss<dim-1>(parameters.temperature_degree + 1),
                                        typename FunctionMap<dim>::type(),
-                                       velocity_solution,
+                                       temperature_solution,
                                        estimated_error_per_cell);
     // set refinement flags
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
@@ -189,6 +191,9 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_max_levels))
             cell->clear_refine_flag();
 
+    // clear coarsen flags if level decreases minimum
+    for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_initial_refinements))
+        cell->clear_coarsen_flag();
 
     // preparing temperature solution transfer
     std::vector<Vector<double>> x_temperature(3);
@@ -315,8 +320,9 @@ void BuoyantFluidSolver<dim>::run()
         // evolve velocity and pressure
         navier_stokes_step();
 
+        if (timestep_number % parameters.rms_frequency == 0)
         {
-            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
+            TimerOutput::Scope  timer_section(computing_timer, "postprocess solution");
 
             const std::pair<double,double> rms_values = compute_rms_values();
 
@@ -328,22 +334,23 @@ void BuoyantFluidSolver<dim>::run()
                       << std::endl;
         }
         {
-            TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
+            TimerOutput::Scope  timer_section(computing_timer, "postprocess solution");
 
             cfl_number = compute_cfl_number();
 
-            std::cout << "   current cfl number: "
-                      << cfl_number
-                      << std::endl;
+            if (timestep_number % parameters.cfl_frequency == 0)
+                std::cout << "   current cfl number: "
+                          << cfl_number
+                          << std::endl;
         }
-        if (timestep_number % parameters.output_frequency == 0)
+        if (timestep_number % parameters.vtk_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "output results");
             output_results();
         }
         // mesh refinement
         if ((timestep_number > 0)
-                && (timestep_number % parameters.refinement_frequency == 0))
+             && (timestep_number % parameters.refinement_frequency == 0))
             refine_mesh();
         // adjust time step
         if (parameters.adaptive_timestep && timestep_number > 1)
@@ -376,9 +383,9 @@ void BuoyantFluidSolver<dim>::run()
         time += timestep;
         ++timestep_number;
 
-    } while (timestep_number < parameters.n_steps);
+    } while (timestep_number < parameters.n_steps && time < parameters.t_final);
 
-    if (parameters.n_steps % parameters.output_frequency != 0)
+    if (parameters.n_steps % parameters.vtk_frequency != 0)
         output_results();
 
     std::cout << std::fixed;

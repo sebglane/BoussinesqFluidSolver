@@ -174,7 +174,7 @@ private:
     std::shared_ptr<PreconditionerTypeProjection>
     preconditioner_projection;
 
-    std::shared_ptr<PreconditionerTypeProjection>
+    std::shared_ptr<PreconditionerTypePressureMass>
     preconditioner_pressure_mass;
 
     // equation coefficients
