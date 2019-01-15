@@ -46,36 +46,47 @@ struct Parameters
     void parse_parameters(ParameterHandler &prm);
 
     // runtime parameters
-    PressureUpdateType  projection_scheme;
-    ConvectiveDiscretizationType  convective_discretization;
+    unsigned int    n_steps;
+    unsigned int    refinement_frequency;
+
+    double          t_final;
+
+    // logging parameters
+    unsigned int    vtk_frequency;
+    unsigned int    rms_frequency;
+    unsigned int    cfl_frequency;
+
+    bool            verbose;
 
     // physics parameters
-    double aspect_ratio;
-    double Pr;
-    double Ra;
-    double Ek;
+    double  aspect_ratio;
+    double  Pr;
+    double  Ra;
+    double  Ek;
 
-    bool         rotation;
+    bool    rotation;
 
     // linear solver parameters
-    double rel_tol;
-    double abs_tol;
-    unsigned int n_max_iter;
+    double          rel_tol;
+    double          abs_tol;
+
+    unsigned int    n_max_iter;
 
     // time stepping parameters
     TimeStepping::IMEXType  imex_scheme;
 
-    unsigned int    n_steps;
+    double          initial_timestep;
+    double          min_timestep;
+    double          max_timestep;
+    double          cfl_min;
+    double          cfl_max;
 
-    double  initial_timestep;
-    double  min_timestep;
-    double  max_timestep;
-    double  cfl_min;
-    double  cfl_max;
-
-    bool    adaptive_timestep;
+    bool            adaptive_timestep;
 
     // discretization parameters
+    PressureUpdateType              projection_scheme;
+    ConvectiveDiscretizationType    convective_discretization;
+
     unsigned int temperature_degree;
     unsigned int velocity_degree;
 
@@ -84,11 +95,6 @@ struct Parameters
     unsigned int n_initial_refinements;
     unsigned int n_boundary_refinements;
     unsigned int n_max_levels;
-
-    unsigned int refinement_frequency;
-
-    // logging parameters
-    unsigned int output_frequency;
 };
 
 
