@@ -376,11 +376,11 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
 
     SolverCG<>      cg(solver_control);
 
-    navier_stokes_constraints.set_zero(navier_stokes_solution);
+    navier_stokes_constraints.set_zero(old_navier_stokes_solution);
     try
     {
         cg.solve(navier_stokes_laplace_matrix.block(1,1),
-                 navier_stokes_solution.block(1),
+                 old_navier_stokes_solution.block(1),
                  navier_stokes_rhs.block(1),
                  *preconditioner_projection);
     }
@@ -407,7 +407,7 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
                 << std::endl;
         std::abort();
     }
-    navier_stokes_constraints.distribute(navier_stokes_solution);
+    navier_stokes_constraints.distribute(old_navier_stokes_solution);
 
     // write info message
     if (parameters.verbose)
@@ -419,9 +419,10 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
     const double mean_value = VectorTools::compute_mean_value(mapping,
                                                               navier_stokes_dof_handler,
                                                               QGauss<dim>(parameters.velocity_degree - 1),
-                                                              navier_stokes_solution,
+                                                              old_navier_stokes_solution,
                                                               dim);
-    navier_stokes_solution.block(1).add(-mean_value);
+    old_navier_stokes_solution.block(1).add(-mean_value);
+    navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
 }
 }  // namespace BuoyantFluid
 
