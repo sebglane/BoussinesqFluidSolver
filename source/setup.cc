@@ -21,7 +21,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 {
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
-    std::cout << "   Setup dofs..." << std::endl;
+    std::cout << "Setup dofs..." << std::endl;
 
     // temperature part
     temperature_dof_handler.distribute_dofs(temperature_fe);
@@ -144,19 +144,19 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     old_old_phi_pressure.reinit(dofs_per_block);
 
     // print info message
-    std::cout << "      Number of active cells: "
+    std::cout << "   Number of active cells: "
               << triangulation.n_active_cells()
               << std::endl
-              << "      Number of degrees of freedom: "
+              << "   Number of degrees of freedom: "
               << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature
               << std::endl
-              << "      Number of velocity degrees of freedom: "
+              << "   Number of velocity degrees of freedom: "
               << dofs_per_block[0]
               << std::endl
-              << "      Number of pressure degrees of freedom: "
+              << "   Number of pressure degrees of freedom: "
               << dofs_per_block[1]
               << std::endl
-              << "      Number of temperature degrees of freedom: "
+              << "   Number of temperature degrees of freedom: "
               << n_dofs_temperature
               << std::endl;
 

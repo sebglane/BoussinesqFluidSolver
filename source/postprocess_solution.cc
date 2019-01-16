@@ -112,7 +112,8 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
 template<int dim>
 void BuoyantFluidSolver<dim>::output_results() const
 {
-    std::cout << "   Output results..." << std::endl;
+    if (parameters.verbose)
+        std::cout << "   Output results..." << std::endl;
 
     // create joint finite element
     const FESystem<dim> joint_fe(navier_stokes_fe, 1,

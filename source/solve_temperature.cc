@@ -15,7 +15,8 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::temperature_step()
 {
-    std::cout << "   Temperature step..." << std::endl;
+    if (parameters.verbose)
+        std::cout << "   Temperature step..." << std::endl;
 
     // assemble right-hand side (and system if necessary)
     assemble_temperature_system();
@@ -33,7 +34,7 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
     if (!rebuild_temperature_preconditioner)
         return;
 
-    TimerOutput::Scope timer_section(computing_timer, "build temperature preconditioner");
+    TimerOutput::Scope timer_section(computing_timer, "build preconditioner temperature");
 
     preconditioner_temperature.reset(new PreconditionerTypeTemperature());
 
@@ -50,8 +51,10 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 template <int dim>
 void BuoyantFluidSolver<dim>::solve_temperature_system()
 {
-    std::cout << "      Solving temperature system..." << std::endl;
-    TimerOutput::Scope  timer_section(computing_timer, "temperature solve");
+    if (parameters.verbose)
+        std::cout << "      Solving temperature system..." << std::endl;
+
+    TimerOutput::Scope  timer_section(computing_timer, "solve temperature");
 
     // solve linear system
     SolverControl solver_control(30, 1e-6 * temperature_rhs.l2_norm());
@@ -68,11 +71,11 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
     temperature_constraints.distribute(temperature_solution);
 
     // write info message
-    std::cout << "      "
-            << solver_control.last_step()
-            << " CG iterations for temperature"
-            << std::endl;
-
+    if (parameters.verbose)
+        std::cout << "      "
+                << solver_control.last_step()
+                << " CG iterations for temperature"
+                << std::endl;
 }
 }  // namespace BouyantFluid
 

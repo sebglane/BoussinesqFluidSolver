@@ -18,7 +18,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 {
     TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
 
-    std::cout << "   Assembling temperature system..." << std::endl;
+    if (parameters.verbose)
+        std::cout << "      Assembling temperature system..." << std::endl;
 
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
@@ -138,9 +139,10 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble stokes system");
+    if (parameters.verbose)
+        std::cout << "      Assembling diffusion system..." << std::endl;
 
-    std::cout << "      Assembling Navier-Stokes system..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "assemble diffusion system");
 
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 
@@ -213,9 +215,10 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_projection_system()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble stokes system");
+    if (parameters.verbose)
+        std::cout << "      Assembling projection system..." << std::endl;
 
-    std::cout << "      Assembling Navier-Stokes system..." << std::endl;
+    TimerOutput::Scope timer_section(computing_timer, "assemble projection system");
 
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 

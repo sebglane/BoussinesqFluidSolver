@@ -18,7 +18,8 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::navier_stokes_step()
 {
-    std::cout << "   Navier-Stokes step..." << std::endl;
+    if (parameters.verbose)
+        std::cout << "   Navier-Stokes step..." << std::endl;
 
     // assemble right-hand side (and system if necessary)
     assemble_diffusion_system();
@@ -45,7 +46,7 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
     if (!rebuild_diffusion_preconditioner)
         return;
 
-    TimerOutput::Scope timer_section(computing_timer, "build diffusion preconditioner");
+    TimerOutput::Scope timer_section(computing_timer, "build preconditioner diffusion");
 
     preconditioner_diffusion.reset(new PreconditionerTypeDiffusion());
 
@@ -62,7 +63,7 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
     if (!rebuild_projection_preconditioner)
         return;
 
-    TimerOutput::Scope timer_section(computing_timer, "build projection preconditioner");
+    TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
     preconditioner_projection.reset(new PreconditionerTypeProjection());
 
@@ -79,8 +80,10 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
 template<int dim>
 void BuoyantFluidSolver<dim>::solve_diffusion_system()
 {
-    std::cout << "      Solving diffusion system..." << std::endl;
-    TimerOutput::Scope  timer_section(computing_timer, "diffusion solve");
+    if (parameters.verbose)
+        std::cout << "      Solving diffusion system..." << std::endl;
+
+    TimerOutput::Scope  timer_section(computing_timer, "solve diffusion");
 
     // solve linear system
     SolverControl   solver_control(parameters.n_max_iter,
@@ -125,17 +128,20 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
     navier_stokes_constraints.distribute(navier_stokes_solution);
 
     // write info message
-    std::cout << "      "
-            << solver_control.last_step()
-            << " CG iterations for diffusion step"
-            << std::endl;
+    if (parameters.verbose)
+        std::cout << "      "
+                << solver_control.last_step()
+                << " CG iterations for diffusion step"
+                << std::endl;
 }
 
 
 template<int dim>
 void BuoyantFluidSolver<dim>::solve_projection_system()
 {
-    std::cout << "      Solving projection system..." << std::endl;
+    if (parameters.verbose)
+        std::cout << "      Solving projection system..." << std::endl;
+
     TimerOutput::Scope  timer_section(computing_timer, "solve projection");
 
     // solve linear system for phi_pressure
@@ -178,12 +184,13 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         std::abort();
     }
     navier_stokes_constraints.distribute(navier_stokes_solution);
-    // write info message
-    std::cout << "      "
-            << solver_control.last_step()
-            << " CG iterations for projection step"
-            << std::endl;
 
+    // write info message
+    if (parameters.verbose)
+        std::cout << "      "
+                << solver_control.last_step()
+                << " CG iterations for projection step"
+                << std::endl;
 
     {
         const std::vector<double> alpha = (timestep_number != 0?
