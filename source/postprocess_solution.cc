@@ -194,5 +194,5 @@ template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<3>::compute_r
 template double BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;
 template double BuoyantFluid::BuoyantFluidSolver<3>::compute_cfl_number() const;
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::output_results() const;
-template void BuoyantFluid::BuoyantFluidSolver<3>::output_results() const;
+template void BuoyantFluid::BuoyantFluidSolver<2>::output_results(const bool) const;
+template void BuoyantFluid::BuoyantFluidSolver<3>::output_results(const bool) const;
