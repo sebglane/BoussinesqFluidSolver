@@ -131,24 +131,28 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
         if (timestep == old_timestep)
             return;
         else if (timestep > parameters.max_timestep
-                && old_timestep == parameters.max_timestep)
+                 && old_timestep == parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
             return;
         }
         else if (timestep > parameters.max_timestep
-                && old_timestep != parameters.max_timestep)
+                 && old_timestep != parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
             timestep_modified = true;
+            return;
+        }
+        else if (timestep < parameters.max_timestep
+                 && timestep > parameters.min_timestep)
+        {
+            timestep_modified = true;
+            return;
         }
         else if (timestep < parameters.min_timestep)
         {
-            ExcLowerRangeType<double>(timestep, parameters.min_timestep);
-        }
-        else if (timestep < parameters.max_timestep)
-        {
-            timestep_modified = true;
+            Assert(false,
+                   ExcLowerRangeType<double>(timestep, parameters.min_timestep));
         }
     }
     if (timestep_modified)
