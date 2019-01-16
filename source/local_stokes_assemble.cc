@@ -227,48 +227,6 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
             data.local_dof_indices,
             navier_stokes_rhs);
 }
-
-template <int dim>
-void BuoyantFluidSolver<dim>::local_assemble_pressure_rhs(
-        const typename DoFHandler<dim>::active_cell_iterator &cell,
-        PressureAssembly::Scratch::RightHandSide<dim> &scratch,
-        PressureAssembly::CopyData::RightHandSide<dim> &data)
-{
-    const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
-    const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
-
-    const FEValuesExtractors::Vector    velocity(0);
-    const FEValuesExtractors::Scalar    pressure(dim);
-
-    scratch.stokes_fe_values.reinit(cell);
-    cell->get_dof_indices(data.local_dof_indices);
-
-    data.local_rhs = 0;
-
-    scratch.stokes_fe_values[velocity].get_function_divergences(navier_stokes_solution,
-                                                                  scratch.velocity_divergences);
-
-    for (unsigned int q=0; q<n_q_points; ++q)
-    {
-        for (unsigned int k=0; k<dofs_per_cell; ++k)
-            scratch.phi_pressure[k] = scratch.stokes_fe_values[pressure].value(k, q);
-
-        for (unsigned int i=0; i<dofs_per_cell; ++i)
-            data.local_rhs(i)
-                += scratch.velocity_divergences[q] * scratch.phi_pressure[i]
-                   * scratch.stokes_fe_values.JxW(q);
-    }
-}
-
-template<int dim>
-void BuoyantFluidSolver<dim>::copy_local_to_global_pressure_rhs(
-        const PressureAssembly::CopyData::RightHandSide<dim>    &data)
-{
-    navier_stokes_constraints.distribute_local_to_global(data.local_rhs,
-                                                         data.local_dof_indices,
-                                                         navier_stokes_rhs);
-}
-
 }  // namespace BuoyantFluid
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix(

@@ -209,14 +209,6 @@ private:
     void copy_local_to_global_stokes_rhs
     (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
 
-    void local_assemble_pressure_rhs
-    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
-     PressureAssembly::Scratch::RightHandSide<dim>          &scratch,
-     PressureAssembly::CopyData::RightHandSide<dim>         &data);
-
-    void copy_local_to_global_pressure_rhs
-    (const PressureAssembly::CopyData::RightHandSide<dim>   &data);
-
 };
 
 }  // namespace BouyantFluid

@@ -217,7 +217,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                                            imex_coefficients.alpha(timestep/old_timestep):
                                            std::vector<double>({1.0,-1.0,0.0}));
 
-        navier_stokes_solution.block(1) *= -alpha[0] / timestep;
+        navier_stokes_solution.block(1) *= alpha[0] / timestep;
     }
     // copy solution to phi_pressure
     phi_pressure.block(1) = navier_stokes_solution.block(1);

@@ -241,29 +241,8 @@ void BuoyantFluidSolver<dim>::assemble_projection_system()
         assemble_navier_stokes_matrices();
     }
 
-    // reset all entries
-    navier_stokes_rhs.block(1) = 0;
-
-    // assemble right-hand side function
-    WorkStream::run(
-            navier_stokes_dof_handler.begin_active(),
-            navier_stokes_dof_handler.end(),
-            std::bind(&BuoyantFluidSolver<dim>::local_assemble_pressure_rhs,
-                      this,
-                      std::placeholders::_1,
-                      std::placeholders::_2,
-                      std::placeholders::_3),
-            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_pressure_rhs,
-                      this,
-                      std::placeholders::_1),
-            PressureAssembly::Scratch::RightHandSide<dim>(
-                    navier_stokes_fe,
-                    mapping,
-                    quadrature_formula,
-                    update_values|
-                    update_JxW_values|
-                    update_gradients),
-                    PressureAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+    navier_stokes_matrix.block(1,0).vmult(navier_stokes_rhs.block(1),
+                                          navier_stokes_solution.block(0));
 }
 
 

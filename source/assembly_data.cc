@@ -223,59 +223,6 @@ local_dof_indices(data.local_dof_indices)
 
 }  // namespace StokesAssembly
 
-namespace PressureAssembly {
-
-namespace Scratch {
-
-template <int dim>
-RightHandSide<dim>::RightHandSide
-(const FiniteElement<dim>  &navier_stokes_fe,
- const Mapping<dim>        &mapping,
- const Quadrature<dim>     &quadrature,
- const UpdateFlags          update_flags)
-:
-stokes_fe_values(mapping,
-                 navier_stokes_fe,
-                 quadrature,
-                 update_flags),
-velocity_divergences(quadrature.size()),
-phi_pressure(navier_stokes_fe.dofs_per_cell)
-{}
-
-template <int dim>
-RightHandSide<dim>::RightHandSide(const RightHandSide<dim> &scratch)
-:
-stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
-                 scratch.stokes_fe_values.get_fe(),
-                 scratch.stokes_fe_values.get_quadrature(),
-                 scratch.stokes_fe_values.get_update_flags()),
-velocity_divergences(scratch.velocity_divergences),
-phi_pressure(scratch.phi_pressure)
-{}
-
-}  // namespace Scratch
-
-namespace CopyData {
-
-
-template <int dim>
-RightHandSide<dim>::RightHandSide(const FiniteElement<dim>  &navier_stokes_fe)
-:
-local_rhs(navier_stokes_fe.dofs_per_cell),
-local_dof_indices(navier_stokes_fe.dofs_per_cell)
-{}
-
-template <int dim>
-RightHandSide<dim>::RightHandSide(const RightHandSide<dim>  &data)
-:
-local_rhs(data.local_rhs),
-local_dof_indices(data.local_dof_indices)
-{}
-
-}  // namespace Copy
-
-} // namespace PressureAssembly
-
 // explicit instantiation
 template class TemperatureAssembly::Scratch::RightHandSide<2>;
 template class TemperatureAssembly::Scratch::RightHandSide<3>;
@@ -292,9 +239,3 @@ template class NavierStokesAssembly::CopyData::Matrix<2>;
 template class NavierStokesAssembly::CopyData::Matrix<3>;
 template class NavierStokesAssembly::CopyData::RightHandSide<2>;
 template class NavierStokesAssembly::CopyData::RightHandSide<3>;
-
-template class PressureAssembly::Scratch::RightHandSide<2>;
-template class PressureAssembly::Scratch::RightHandSide<3>;
-
-template class PressureAssembly::CopyData::RightHandSide<2>;
-template class PressureAssembly::CopyData::RightHandSide<3>;
