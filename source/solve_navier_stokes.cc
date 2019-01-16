@@ -193,11 +193,11 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         navier_stokes_solution.block(1) *= -alpha[0] / timestep;
     }
     // copy solution to phi_pressure
-    phi_pressure = navier_stokes_solution.block(1);
+    phi_pressure.block(1) = navier_stokes_solution.block(1);
 
     // update pressure
     navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
-    navier_stokes_solution.block(1) += phi_pressure;
+    navier_stokes_solution.block(1) += phi_pressure.block(1);
 
     const double mean_value = VectorTools::compute_mean_value(mapping,
                                                               navier_stokes_dof_handler,

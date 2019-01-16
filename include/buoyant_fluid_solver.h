@@ -132,9 +132,9 @@ private:
     BlockVector<double>             old_old_navier_stokes_solution;
     BlockVector<double>             navier_stokes_rhs;
 
-    Vector<double>                  phi_pressure;
-    Vector<double>                  old_phi_pressure;
-    Vector<double>                  old_old_phi_pressure;
+    BlockVector<double>             phi_pressure;
+    BlockVector<double>             old_phi_pressure;
+    BlockVector<double>             old_old_phi_pressure;
 
     // preconditioner types
     typedef PreconditionJacobi<SparseMatrix<double>>

@@ -139,9 +139,9 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     navier_stokes_rhs.reinit(dofs_per_block);
 
     // reinit pressure vectors
-    phi_pressure.reinit(dofs_per_block[1]);
-    old_phi_pressure.reinit(dofs_per_block[1]);
-    old_old_phi_pressure.reinit(dofs_per_block[1]);
+    phi_pressure.reinit(dofs_per_block);
+    old_phi_pressure.reinit(dofs_per_block);
+    old_old_phi_pressure.reinit(dofs_per_block);
 
     // print info message
     std::cout << "      Number of active cells: "

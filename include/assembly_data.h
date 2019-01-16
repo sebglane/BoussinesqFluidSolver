@@ -118,6 +118,9 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
     std::vector<Tensor<2,dim>>  old_velocity_gradients;
     std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
+    std::vector<double>         old_pressure_values;
+    std::vector<double>         old_phi_values;
+    std::vector<double>         old_old_phi_values;
 
     FEValues<dim>               temperature_fe_values;
     std::vector<double>         old_temperature_values;
