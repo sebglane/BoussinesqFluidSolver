@@ -60,6 +60,8 @@ private:
     void solve_temperature_system();
     void temperature_step();
 
+    void compute_initial_pressure();
+
     void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
 
     void assemble_navier_stokes_matrices();

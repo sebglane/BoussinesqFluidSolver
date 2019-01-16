@@ -152,8 +152,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 
         // time stepping coefficients
         const std::vector<double> alpha = (timestep_number != 0?
-                                            imex_coefficients.alpha(timestep/old_timestep):
-                                            std::vector<double>({1.0,-1.0,0.0}));
+                                           imex_coefficients.alpha(timestep/old_timestep):
+                                           std::vector<double>({1.0,-1.0,0.0}));
         const std::vector<double> gamma = (timestep_number != 0?
                                             imex_coefficients.gamma(timestep/old_timestep):
                                             std::vector<double>({1.0,0.0,0.0}));
@@ -165,7 +165,21 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
+    }
+    else if (timestep_number == 0)
+    {
+        // time stepping coefficients
+        const std::vector<double> alpha = std::vector<double>({1.0,-1.0,0.0});
+        const std::vector<double> gamma = std::vector<double>({1.0,0.0,0.0});
 
+        // correct (0,0)-block of stokes system
+        navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
+        navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
+        navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
+                                            navier_stokes_laplace_matrix.block(0,0));
+
+        // rebuild the preconditioner of diffusion solve
+        rebuild_diffusion_preconditioner = true;
     }
     else if (timestep_number == 1 || timestep_modified)
     {

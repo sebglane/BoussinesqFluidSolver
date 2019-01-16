@@ -113,7 +113,7 @@ template<int dim>
 void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 {
     if (parameters.verbose)
-        std::cout << "   Output results..." << std::endl;
+        std::cout << "Output results..." << std::endl;
 
     // create joint finite element
     const FESystem<dim> joint_fe(navier_stokes_fe, 1,

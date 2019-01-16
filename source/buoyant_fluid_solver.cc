@@ -281,6 +281,8 @@ void BuoyantFluidSolver<dim>::run()
 
     temperature_solution = old_temperature_solution;
 
+    compute_initial_pressure();
+
     output_results(true);
 
     double time = 0;
