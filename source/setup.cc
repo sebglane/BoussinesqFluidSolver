@@ -194,14 +194,15 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     preconditioner_projection.reset();
 
     navier_stokes_matrix.clear();
-
-    velocity_mass_matrix.clear();
-    velocity_laplace_matrix.clear();
+    navier_stokes_mass_matrix.clear();
+    navier_stokes_laplace_matrix.clear();
 
     Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
     for (unsigned int c=0; c<dim+1; ++c)
         for (unsigned int d=0; d<dim+1; ++d)
-            if (c==d || (c<dim && d==dim) || (c==dim && d<dim))
+            if (c==d && c<dim)
+                stokes_coupling[c][d] = DoFTools::always;
+            else if ((c<dim && d==dim) || (c==dim && d<dim))
                 stokes_coupling[c][d] = DoFTools::always;
             else
                 stokes_coupling[c][d] = DoFTools::none;
@@ -219,8 +220,32 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
 
     navier_stokes_matrix.reinit(navier_stokes_sparsity_pattern);
 
-    velocity_mass_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
-    velocity_laplace_matrix.reinit(navier_stokes_sparsity_pattern.block(0,0));
+
+    // auxiliary coupling structure
+    Table<2,DoFTools::Coupling> aux_coupling(dim+1, dim+1);
+    for (unsigned int c=0; c<dim+1; ++c)
+        for (unsigned int d=0; d<dim+1; ++d)
+            if (c==d && c==dim)
+                stokes_coupling[c][d] = DoFTools::always;
+            else
+                stokes_coupling[c][d] = DoFTools::none;
+
+    BlockDynamicSparsityPattern aux_dsp(dofs_per_block,
+                                        dofs_per_block);
+
+    DoFTools::make_sparsity_pattern(
+            navier_stokes_dof_handler,
+            stokes_coupling,
+            dsp,
+            navier_stokes_constraints);
+
+    auxiliary_navier_stokes_sparsity_pattern.copy_from(aux_dsp);
+
+    navier_stokes_laplace_matrix.reinit(auxiliary_navier_stokes_sparsity_pattern);
+    navier_stokes_mass_matrix.reinit(auxiliary_navier_stokes_sparsity_pattern);
+
+    navier_stokes_laplace_matrix.block(0,0).reinit(navier_stokes_sparsity_pattern.block(0,0));
+    navier_stokes_mass_matrix.block(0,0).reinit(navier_stokes_sparsity_pattern.block(0,0));
 
     rebuild_navier_stokes_matrices = true;
 }
