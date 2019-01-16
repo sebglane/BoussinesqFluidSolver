@@ -129,8 +129,8 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
 
 
     // rebuild both preconditionerss
-    rebuild_diffusion_preconditioner = true;
     rebuild_projection_preconditioner = true;
+    rebuild_pressure_mass_preconditioner = true;
 
     // do not rebuild stokes matrices again
     rebuild_navier_stokes_matrices = false;
@@ -225,9 +225,6 @@ void BuoyantFluidSolver<dim>::assemble_projection_system()
     if (rebuild_navier_stokes_matrices)
     {
         assemble_navier_stokes_matrices();
-
-        // rebuild the preconditioner of both preconditioners
-        rebuild_projection_preconditioner = true;
     }
 
     // reset all entries

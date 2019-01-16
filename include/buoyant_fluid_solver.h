@@ -69,6 +69,7 @@ private:
 
     void build_diffusion_preconditioner();
     void build_projection_preconditioner();
+    void build_pressure_mass_preconditioner();
 
     void solve_diffusion_system();
     void solve_projection_system();
@@ -80,7 +81,7 @@ private:
 
     void update_timestep(const double current_cfl_number);
 
-    void output_results() const;
+    void output_results(const bool initial_condition=false) const;
 
     void refine_mesh();
 
@@ -146,6 +147,9 @@ private:
     typedef SparseILU<double>
     PreconditionerTypeProjection;
 
+    typedef PreconditionJacobi<SparseMatrix<double>>
+    PreconditionerTypePressureMass;
+
     // pointers to preconditioners
     std::shared_ptr<PreconditionerTypeTemperature>
     preconditioner_temperature;
@@ -155,6 +159,9 @@ private:
 
     std::shared_ptr<PreconditionerTypeProjection>
     preconditioner_projection;
+
+    std::shared_ptr<PreconditionerTypePressureMass>
+    preconditioner_pressure_mass;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -174,7 +181,8 @@ private:
             rebuild_temperature_matrices = true,
             rebuild_temperature_preconditioner = true,
             rebuild_diffusion_preconditioner = true,
-            rebuild_projection_preconditioner = true;
+            rebuild_projection_preconditioner = true,
+            rebuild_pressure_mass_preconditioner = true;
 
     // working stream methods for temperature assembly
     void local_assemble_temperature_rhs

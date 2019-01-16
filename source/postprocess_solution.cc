@@ -110,7 +110,7 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::output_results() const
+void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 {
     if (parameters.verbose)
         std::cout << "   Output results..." << std::endl;
@@ -178,7 +178,9 @@ void BuoyantFluidSolver<dim>::output_results() const
 
     // write output to disk
     const std::string filename = ("solution-" +
-                                  Utilities::int_to_string(timestep_number, 5) +
+                                  (initial_condition ?
+                                  "initial":
+                                  Utilities::int_to_string(timestep_number, 5)) +
                                   ".vtk");
     std::ofstream output(filename.c_str());
     data_out.write_vtk(output);

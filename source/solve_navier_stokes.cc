@@ -78,6 +78,24 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
 }
 
 template<int dim>
+void BuoyantFluidSolver<dim>::build_pressure_mass_preconditioner()
+{
+    if (!rebuild_pressure_mass_preconditioner)
+        return;
+
+    TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
+
+    preconditioner_pressure_mass.reset(new PreconditionerTypePressureMass());
+
+    PreconditionerTypePressureMass::AdditionalData     data;
+
+    preconditioner_pressure_mass->initialize(navier_stokes_mass_matrix.block(1,1),
+                                             data);
+
+    rebuild_pressure_mass_preconditioner = false;
+}
+
+template<int dim>
 void BuoyantFluidSolver<dim>::solve_diffusion_system()
 {
     if (parameters.verbose)
@@ -202,9 +220,68 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
     // copy solution to phi_pressure
     phi_pressure.block(1) = navier_stokes_solution.block(1);
 
-    // update pressure
-    navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
-    navier_stokes_solution.block(1) += phi_pressure.block(1);
+    if (parameters.projection_scheme == PressureUpdateType::StandardForm)
+    {
+        // update pressure
+        navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
+        navier_stokes_solution.block(1) += phi_pressure.block(1);
+    }
+    else if (parameters.projection_scheme == PressureUpdateType::IrrotationalForm)
+    {
+        // solve linear system for irrotational update
+        SolverControl   solver_control(parameters.n_max_iter,
+                                       std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
+                                                parameters.abs_tol));
+
+        SolverCG<>      cg(solver_control);
+
+        navier_stokes_constraints.set_zero(navier_stokes_solution);
+
+        try
+        {
+            cg.solve(navier_stokes_mass_matrix.block(1,1),
+                     navier_stokes_solution.block(1),
+                     navier_stokes_rhs.block(1),
+                     *preconditioner_pressure_mass);
+        }
+        catch (std::exception &exc)
+        {
+            std::cerr << std::endl << std::endl
+                    << "----------------------------------------------------"
+                    << std::endl;
+            std::cerr << "Exception in pressure mass matrix solve: " << std::endl
+                    << exc.what() << std::endl
+                    << "Aborting!" << std::endl
+                    << "----------------------------------------------------"
+                    << std::endl;
+            std::abort();
+        }
+        catch (...)
+        {
+            std::cerr << std::endl << std::endl
+                    << "----------------------------------------------------"
+                    << std::endl;
+            std::cerr << "Unknown exception pressure mass matrix solve!" << std::endl
+                    << "Aborting!" << std::endl
+                    << "----------------------------------------------------"
+                    << std::endl;
+            std::abort();
+        }
+
+        navier_stokes_constraints.distribute(navier_stokes_solution);
+
+        if (parameters.verbose)
+            std::cout << "      "
+                      << solver_control.last_step()
+                      << " CG iterations for pressure mass matrix solve"
+                      << std::endl;
+
+        navier_stokes_solution.block(1) *= -equation_coefficients[1];
+
+        // update pressure
+        navier_stokes_solution.block(1) += old_navier_stokes_solution.block(1);
+        navier_stokes_solution.block(1) += phi_pressure.block(1);
+    }
 
     const double mean_value = VectorTools::compute_mean_value(mapping,
                                                               navier_stokes_dof_handler,
