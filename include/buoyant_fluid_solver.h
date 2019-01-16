@@ -181,16 +181,12 @@ private:
             const TemperatureAssembly::CopyData::RightHandSide<dim> &data);
 
     // working stream methods for stokes assembly
-    /*
-     *
     void local_assemble_stokes_matrix(
             const typename DoFHandler<dim>::active_cell_iterator &cell,
             NavierStokesAssembly::Scratch::Matrix<dim> &scratch,
             NavierStokesAssembly::CopyData::Matrix<dim> &data);
     void copy_local_to_global_stokes_matrix(
             const NavierStokesAssembly::CopyData::Matrix<dim> &data);
-     *
-     */
 
     void local_assemble_stokes_rhs(
                 const typename DoFHandler<dim>::active_cell_iterator &cell,

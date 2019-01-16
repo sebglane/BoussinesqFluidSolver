@@ -111,7 +111,7 @@ grad_phi_pressure(dim * stokes_fe.base_element(0).dofs_per_cell)
 {}
 
 template <int dim>
-Matrix<dim>::Matrix(const Matrix<dim> &scratch)
+Matrix<dim>::Matrix(const Matrix<dim>   &scratch)
 :
 stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
                  scratch.stokes_fe_values.get_fe(),
@@ -152,7 +152,7 @@ old_old_temperature_values(stokes_quadrature.size())
 {}
 
 template <int dim>
-RightHandSide<dim>::RightHandSide(const RightHandSide<dim> &scratch)
+RightHandSide<dim>::RightHandSide(const RightHandSide<dim>  &scratch)
 :
 stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
                  scratch.stokes_fe_values.get_fe(),
@@ -178,23 +178,24 @@ namespace CopyData {
 
 
 template <int dim>
-Matrix<dim>::Matrix(const FiniteElement<dim> &navier_stokes_fe)
+Matrix<dim>::Matrix(const FiniteElement<dim>    &navier_stokes_fe)
 :
 local_matrix(navier_stokes_fe.dofs_per_cell,
              navier_stokes_fe.dofs_per_cell),
-local_laplace_matrix(dim * navier_stokes_fe.base_element(0).dofs_per_cell,
-                     dim * navier_stokes_fe.base_element(0).dofs_per_cell),
-local_dof_indices(navier_stokes_fe.dofs_per_cell),
-local_velocity_dof_indices(dim * navier_stokes_fe.base_element(0).dofs_per_cell)
+local_mass_matrix(navier_stokes_fe.dofs_per_cell,
+                  navier_stokes_fe.dofs_per_cell),
+local_laplace_matrix(navier_stokes_fe.dofs_per_cell,
+                     navier_stokes_fe.dofs_per_cell),
+local_dof_indices(navier_stokes_fe.dofs_per_cell)
 {}
 
 template <int dim>
-Matrix<dim>::Matrix(const Matrix<dim> &data)
+Matrix<dim>::Matrix(const Matrix<dim>   &data)
 :
 local_matrix(data.local_matrix),
+local_mass_matrix(data.local_mass_matrix),
 local_laplace_matrix(data.local_laplace_matrix),
-local_dof_indices(data.local_dof_indices),
-local_velocity_dof_indices(data.local_velocity_dof_indices)
+local_dof_indices(data.local_dof_indices)
 {}
 
 template <int dim>

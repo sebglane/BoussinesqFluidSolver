@@ -133,13 +133,13 @@ template <int dim>
 struct Matrix
 {
     Matrix(const FiniteElement<dim> &navier_stokes_fe);
-    Matrix(const Matrix<dim> &data);
+    Matrix(const Matrix<dim>        &data);
 
     FullMatrix<double>      local_matrix;
+    FullMatrix<double>      local_mass_matrix;
     FullMatrix<double>      local_laplace_matrix;
 
     std::vector<types::global_dof_index>   local_dof_indices;
-    std::vector<types::global_dof_index>   local_velocity_dof_indices;
 };
 
 template <int dim>
