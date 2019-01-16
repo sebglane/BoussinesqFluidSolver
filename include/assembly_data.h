@@ -157,4 +157,45 @@ struct RightHandSide
 
 }  // namespace NavierStokesAssembly
 
+namespace PressureAssembly {
+
+using namespace dealii;
+
+namespace Scratch {
+
+template<int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim> &navier_stokes_fe,
+                  const Mapping<dim>       &mapping,
+                  const Quadrature<dim>    &quadrature,
+                  const UpdateFlags         update_flags);
+
+    RightHandSide(const RightHandSide<dim> &scratch);
+
+    FEValues<dim>       stokes_fe_values;
+
+    std::vector<double> velocity_divergences;
+    std::vector<double> phi_pressure;
+};
+}  // namespace Scratch
+
+namespace CopyData {
+
+template <int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim>    &navier_stokes_fe);
+    RightHandSide(const RightHandSide<dim>    &data);
+
+    Vector<double>                          local_rhs;
+    std::vector<types::global_dof_index>    local_dof_indices;
+};
+
+
+}  // namespace CopyData
+
+} // namespace PressureAssembly
+
+
 #endif /* INCLUDE_ASSEMBLY_DATA_H_ */

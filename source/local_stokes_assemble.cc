@@ -35,7 +35,8 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
         for (unsigned int k=0; k<dofs_per_cell; ++k)
         {
             scratch.phi_velocity[k]     = scratch.stokes_fe_values[velocity].value(k, q);
-            scratch.div_phi_velocity[k] = scratch.stokes_fe_values[velocity].divergence(k, q);
+            scratch.grad_phi_velocity[k]= scratch.stokes_fe_values[velocity].gradient(k, q);
+            scratch.div_phi_velocity[k] = trace(scratch.grad_phi_velocity[k]);
             scratch.phi_pressure[k]     = scratch.stokes_fe_values[pressure].value(k, q);
             scratch.grad_phi_pressure[k]= scratch.stokes_fe_values[pressure].gradient(k, q);
         }
@@ -76,12 +77,10 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
             data.local_matrix,
             data.local_dof_indices,
             navier_stokes_matrix);
-
     navier_stokes_constraints.distribute_local_to_global(
             data.local_mass_matrix,
             data.local_dof_indices,
             navier_stokes_mass_matrix);
-
     navier_stokes_constraints.distribute_local_to_global(
             data.local_laplace_matrix,
             data.local_dof_indices,
@@ -206,6 +205,47 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
             navier_stokes_rhs);
 }
 
+template <int dim>
+void BuoyantFluidSolver<dim>::local_assemble_pressure_rhs(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
+        PressureAssembly::Scratch::RightHandSide<dim> &scratch,
+        PressureAssembly::CopyData::RightHandSide<dim> &data)
+{
+    const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
+
+    const FEValuesExtractors::Vector    velocity(0);
+    const FEValuesExtractors::Scalar    pressure(dim);
+
+    scratch.stokes_fe_values.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_rhs = 0;
+
+    scratch.stokes_fe_values[velocity].get_function_divergences(navier_stokes_solution,
+                                                                  scratch.velocity_divergences);
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+            scratch.phi_pressure[k] = scratch.stokes_fe_values[pressure].value(k, q);
+
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+            data.local_rhs(i)
+                += scratch.velocity_divergences[q] * scratch.phi_pressure[i]
+                   * scratch.stokes_fe_values.JxW(q);
+    }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::copy_local_to_global_pressure_rhs(
+        const PressureAssembly::CopyData::RightHandSide<dim>    &data)
+{
+    navier_stokes_constraints.distribute_local_to_global(data.local_rhs,
+                                                         data.local_dof_indices,
+                                                         navier_stokes_rhs);
+}
+
 }  // namespace BuoyantFluid
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix(
@@ -235,3 +275,17 @@ template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_r
         const NavierStokesAssembly::CopyData::RightHandSide<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_rhs(
         const NavierStokesAssembly::CopyData::RightHandSide<3> &data);
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_pressure_rhs(
+        const typename DoFHandler<2>::active_cell_iterator  &,
+        PressureAssembly::Scratch::RightHandSide<2>         &,
+        PressureAssembly::CopyData::RightHandSide<2>        &);
+template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_pressure_rhs(
+        const typename DoFHandler<3>::active_cell_iterator  &,
+        PressureAssembly::Scratch::RightHandSide<3>         &,
+        PressureAssembly::CopyData::RightHandSide<3>        &);
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_pressure_rhs(
+        const PressureAssembly::CopyData::RightHandSide<2>    &);
+template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_pressure_rhs(
+        const PressureAssembly::CopyData::RightHandSide<3>    &);

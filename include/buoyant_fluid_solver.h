@@ -23,6 +23,7 @@
 #include <deal.II/lac/constraint_matrix.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/sparse_ilu.h>
 
 #include <memory>
 
@@ -61,7 +62,10 @@ private:
 
     void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
 
-    void assemble_navier_stokes_system();
+    void assemble_navier_stokes_matrices();
+
+    void assemble_diffusion_system();
+    void assemble_projection_system();
 
     void build_diffusion_preconditioner();
     void build_projection_preconditioner();
@@ -139,7 +143,7 @@ private:
     typedef PreconditionSSOR<SparseMatrix<double>>
     PreconditionerTypeDiffusion;
 
-    typedef PreconditionSSOR<SparseMatrix<double>>
+    typedef SparseILU<double>
     PreconditionerTypeProjection;
 
     // pointers to preconditioners
@@ -173,27 +177,36 @@ private:
             rebuild_projection_preconditioner = true;
 
     // working stream methods for temperature assembly
-    void local_assemble_temperature_rhs(
-            const typename DoFHandler<dim>::active_cell_iterator &cell,
-            TemperatureAssembly::Scratch::RightHandSide<dim> &scratch,
-            TemperatureAssembly::CopyData::RightHandSide<dim> &data);
-    void copy_local_to_global_temperature_rhs(
-            const TemperatureAssembly::CopyData::RightHandSide<dim> &data);
+    void local_assemble_temperature_rhs
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     TemperatureAssembly::Scratch::RightHandSide<dim>       &scratch,
+     TemperatureAssembly::CopyData::RightHandSide<dim>      &data);
+    void copy_local_to_global_temperature_rhs
+    (const TemperatureAssembly::CopyData::RightHandSide<dim>    &data);
 
     // working stream methods for stokes assembly
-    void local_assemble_stokes_matrix(
-            const typename DoFHandler<dim>::active_cell_iterator &cell,
-            NavierStokesAssembly::Scratch::Matrix<dim> &scratch,
-            NavierStokesAssembly::CopyData::Matrix<dim> &data);
-    void copy_local_to_global_stokes_matrix(
-            const NavierStokesAssembly::CopyData::Matrix<dim> &data);
+    void local_assemble_stokes_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     NavierStokesAssembly::Scratch::Matrix<dim>             &scratch,
+     NavierStokesAssembly::CopyData::Matrix<dim>            &data);
+    void copy_local_to_global_stokes_matrix
+    (const NavierStokesAssembly::CopyData::Matrix<dim>      &data);
 
-    void local_assemble_stokes_rhs(
-                const typename DoFHandler<dim>::active_cell_iterator &cell,
-                NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
-                NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
-    void copy_local_to_global_stokes_rhs(
-                const NavierStokesAssembly::CopyData::RightHandSide<dim> &data);
+    void local_assemble_stokes_rhs
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     NavierStokesAssembly::Scratch::RightHandSide<dim>      &scratch,
+     NavierStokesAssembly::CopyData::RightHandSide<dim>     &data);
+    void copy_local_to_global_stokes_rhs
+    (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
+
+    void local_assemble_pressure_rhs
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     PressureAssembly::Scratch::RightHandSide<dim>          &scratch,
+     PressureAssembly::CopyData::RightHandSide<dim>         &data);
+
+    void copy_local_to_global_pressure_rhs
+    (const PressureAssembly::CopyData::RightHandSide<dim>   &data);
+
 };
 
 }  // namespace BouyantFluid

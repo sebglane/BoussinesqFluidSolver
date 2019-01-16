@@ -95,9 +95,48 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                              update_values),
             TemperatureAssembly::CopyData::RightHandSide<dim>(temperature_fe));
 }
+template<int dim>
+void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
+{
+    const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
+
+    // reset all entries
+    navier_stokes_matrix = 0;
+    navier_stokes_mass_matrix = 0;
+    navier_stokes_laplace_matrix = 0;
+
+    // assemble matrix
+    WorkStream::run(
+            navier_stokes_dof_handler.begin_active(),
+            navier_stokes_dof_handler.end(),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
+                      this,
+                      std::placeholders::_1),
+            NavierStokesAssembly::Scratch::Matrix<dim>(
+                    navier_stokes_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_gradients|
+                    update_JxW_values),
+            NavierStokesAssembly::CopyData::Matrix<dim>(navier_stokes_fe));
+
+
+    // rebuild both preconditionerss
+    rebuild_diffusion_preconditioner = true;
+    rebuild_projection_preconditioner = true;
+
+    // do not rebuild stokes matrices again
+    rebuild_navier_stokes_matrices = false;
+}
 
 template<int dim>
-void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
+void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 {
     TimerOutput::Scope timer_section(computing_timer, "assemble stokes system");
 
@@ -107,31 +146,7 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
 
     if (rebuild_navier_stokes_matrices)
     {
-        // reset all entries
-        navier_stokes_matrix = 0;
-        navier_stokes_mass_matrix = 0;
-        navier_stokes_laplace_matrix = 0;
-
-        // assemble matrix
-        WorkStream::run(
-                navier_stokes_dof_handler.begin_active(),
-                navier_stokes_dof_handler.end(),
-                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
-                          this,
-                          std::placeholders::_1,
-                          std::placeholders::_2,
-                          std::placeholders::_3),
-                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix,
-                          this,
-                          std::placeholders::_1),
-                NavierStokesAssembly::Scratch::Matrix<dim>(
-                        navier_stokes_fe,
-                        mapping,
-                        quadrature_formula,
-                        update_values|
-                        update_gradients|
-                        update_JxW_values),
-                NavierStokesAssembly::CopyData::Matrix<dim>(navier_stokes_fe));
+        assemble_navier_stokes_matrices();
 
         // time stepping coefficients
         const std::vector<double> alpha = (timestep_number != 0?
@@ -146,12 +161,9 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
         navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                             navier_stokes_laplace_matrix.block(0,0));
 
-        // rebuild the preconditioner of both preconditioners
+        // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
-        rebuild_projection_preconditioner = true;
 
-        // do not rebuild stokes matrices again
-        rebuild_navier_stokes_matrices = false;
     }
     else if (timestep_number == 1 || timestep_modified)
     {
@@ -167,7 +179,7 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
         navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                             navier_stokes_laplace_matrix.block(0,0));
 
-        // rebuild the preconditioner of the velocity block
+        // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
     // reset all entries
@@ -198,6 +210,49 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
             NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
 }
 
+template<int dim>
+void BuoyantFluidSolver<dim>::assemble_projection_system()
+{
+    TimerOutput::Scope timer_section(computing_timer, "assemble stokes system");
+
+    std::cout << "      Assembling Navier-Stokes system..." << std::endl;
+
+    const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
+
+    if (rebuild_navier_stokes_matrices)
+    {
+        assemble_navier_stokes_matrices();
+
+        // rebuild the preconditioner of both preconditioners
+        rebuild_projection_preconditioner = true;
+    }
+
+    // reset all entries
+    navier_stokes_rhs.block(1) = 0;
+
+    // assemble right-hand side function
+    WorkStream::run(
+            navier_stokes_dof_handler.begin_active(),
+            navier_stokes_dof_handler.end(),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_pressure_rhs,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_pressure_rhs,
+                      this,
+                      std::placeholders::_1),
+            PressureAssembly::Scratch::RightHandSide<dim>(
+                    navier_stokes_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_JxW_values|
+                    update_gradients),
+                    PressureAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+}
+
+
 }  // namespace BuoyantFluid
 
 // explicit instantiation
@@ -205,5 +260,11 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_system()
 template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_temperature_system();
 template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_temperature_system();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_navier_stokes_system();
-template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_navier_stokes_system();
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_navier_stokes_matrices();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_navier_stokes_matrices();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_diffusion_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_diffusion_system();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_projection_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_projection_system();
