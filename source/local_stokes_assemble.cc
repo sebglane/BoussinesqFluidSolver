@@ -130,13 +130,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
     scratch.stokes_fe_values[velocity].get_function_gradients(old_old_navier_stokes_solution,
                                                               scratch.old_old_velocity_gradients);
 
-    scratch.stokes_fe_values[pressure].get_function_values(old_navier_stokes_solution,
-                                                           scratch.old_pressure_values);
-    scratch.stokes_fe_values[pressure].get_function_values(old_phi_pressure,
-                                                           scratch.old_phi_values);
-    scratch.stokes_fe_values[pressure].get_function_values(old_old_phi_pressure,
-                                                           scratch.old_old_phi_values);
-
     scratch.temperature_fe_values.get_function_values(old_temperature_solution,
                                                       scratch.old_temperature_values);
     scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
@@ -176,13 +169,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
-        const double extrapolated_pressure
-            = ((timestep != 0 && timestep != 1)?
-                   scratch.old_pressure_values[q]
-                 - alpha[1]/alpha[0] * scratch.old_phi_values[q]
-                 - alpha[2]/alpha[0] * scratch.old_old_phi_values[q]
-                 : scratch.old_pressure_values[q]);
-
         const Tensor<1,dim> gravity_vector = EquationData::GravityVector<dim>().value(scratch.stokes_fe_values.quadrature_point(q));
 
         Tensor<1,dim>   coriolis_term;
@@ -210,7 +196,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                 += (
                     - time_derivative_velocity * scratch.phi_velocity[i]
                     - nonlinear_term_velocity * scratch.phi_velocity[i]
-                    + extrapolated_pressure * trace(scratch.grad_phi_velocity[i])
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
                     - (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)
                     - equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_velocity[i]
@@ -256,17 +241,3 @@ template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_r
         const NavierStokesAssembly::CopyData::RightHandSide<2> &data);
 template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_rhs(
         const NavierStokesAssembly::CopyData::RightHandSide<3> &data);
-
-template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_pressure_rhs(
-        const typename DoFHandler<2>::active_cell_iterator  &,
-        PressureAssembly::Scratch::RightHandSide<2>         &,
-        PressureAssembly::CopyData::RightHandSide<2>        &);
-template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_pressure_rhs(
-        const typename DoFHandler<3>::active_cell_iterator  &,
-        PressureAssembly::Scratch::RightHandSide<3>         &,
-        PressureAssembly::CopyData::RightHandSide<3>        &);
-
-template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_pressure_rhs(
-        const PressureAssembly::CopyData::RightHandSide<2>    &);
-template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_pressure_rhs(
-        const PressureAssembly::CopyData::RightHandSide<3>    &);
