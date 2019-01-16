@@ -236,7 +236,7 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     DoFTools::make_sparsity_pattern(
             navier_stokes_dof_handler,
             stokes_coupling,
-            dsp,
+            aux_dsp,
             navier_stokes_constraints);
 
     auxiliary_navier_stokes_sparsity_pattern.copy_from(aux_dsp);
