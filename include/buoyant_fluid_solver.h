@@ -121,9 +121,11 @@ private:
 
     // stokes part
     ConstraintMatrix                navier_stokes_constraints;
+    ConstraintMatrix                stokes_pressure_constraints;
 
-    BlockSparsityPattern            navier_stokes_sparsity_pattern;
-    BlockSparsityPattern            auxiliary_navier_stokes_sparsity_pattern;
+    BlockSparsityPattern            stokes_sparsity_pattern;
+    BlockSparsityPattern            stokes_laplace_sparsity_pattern;
+    BlockSparsityPattern            stokes_mass_sparsity_pattern;
 
     BlockSparseMatrix<double>       navier_stokes_matrix;
     BlockSparseMatrix<double>       navier_stokes_laplace_matrix;

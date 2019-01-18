@@ -81,7 +81,7 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_matrix(
             data.local_mass_matrix,
             data.local_dof_indices,
             navier_stokes_mass_matrix);
-    navier_stokes_constraints.distribute_local_to_global(
+    stokes_pressure_constraints.distribute_local_to_global(
             data.local_laplace_matrix,
             data.local_dof_indices,
             navier_stokes_laplace_matrix);
@@ -107,7 +107,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
     const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
 
     const FEValuesExtractors::Vector    velocity(0);
-    const FEValuesExtractors::Scalar    pressure(dim);
 
     scratch.stokes_fe_values.reinit(cell);
     cell->get_dof_indices(data.local_dof_indices);

@@ -213,8 +213,9 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     }
     extrapolated_pressure *= -1.0;
 
-    navier_stokes_matrix.block(0,1).vmult_add(navier_stokes_rhs.block(0),
-                                              extrapolated_pressure);
+    navier_stokes_matrix.block(0,1).vmult(navier_stokes_rhs.block(0),
+                                          extrapolated_pressure);
+
     // assemble right-hand side function
     WorkStream::run(
             navier_stokes_dof_handler.begin_active(),

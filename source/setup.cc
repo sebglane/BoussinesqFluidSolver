@@ -85,6 +85,14 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                 navier_stokes_constraints,
                 navier_stokes_fe.component_mask(velocities));
 
+        navier_stokes_constraints.close();
+    }
+    // add pressure constraints
+    {
+        stokes_pressure_constraints.clear();
+
+        stokes_pressure_constraints.merge(navier_stokes_constraints);
+
         // find pressure boundary dofs
         const FEValuesExtractors::Scalar pressure(dim);
 
@@ -101,7 +109,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         end_dof = boundary_dofs.end();
         for (; dof != end_dof; ++dof)
             if (*dof)
-                if (!navier_stokes_constraints.is_constrained(dof - boundary_dofs.begin()))
+                if (!stokes_pressure_constraints.is_constrained(dof - boundary_dofs.begin()))
                 {
                     first_boundary_dof = dof - boundary_dofs.begin();
                     break;
@@ -116,9 +124,9 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
 
         // set first pressure boundary dof to zero
-        navier_stokes_constraints.add_line(first_boundary_dof);
+        stokes_pressure_constraints.add_line(first_boundary_dof);
 
-        navier_stokes_constraints.close();
+        stokes_pressure_constraints.close();
     }
 
     // count dofs
@@ -159,7 +167,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
               << "   Number of temperature degrees of freedom: "
               << n_dofs_temperature
               << std::endl;
-
 }
 
 template<int dim>
@@ -197,59 +204,83 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     navier_stokes_mass_matrix.clear();
     navier_stokes_laplace_matrix.clear();
 
-    Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
-    for (unsigned int c=0; c<dim+1; ++c)
-        for (unsigned int d=0; d<dim+1; ++d)
-            if (c==d && c<dim)
-                stokes_coupling[c][d] = DoFTools::always;
-            else if ((c<dim && d==dim) || (c==dim && d<dim))
-                stokes_coupling[c][d] = DoFTools::always;
-            else
-                stokes_coupling[c][d] = DoFTools::none;
+    // sparsity pattern for stokes matrix
+    {
+        Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c<dim)
+                    stokes_coupling[c][d] = DoFTools::always;
+                else if ((c<dim && d==dim) || (c==dim && d<dim))
+                    stokes_coupling[c][d] = DoFTools::always;
+                else
+                    stokes_coupling[c][d] = DoFTools::none;
 
-    BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                    dofs_per_block);
-
-    DoFTools::make_sparsity_pattern(
-            navier_stokes_dof_handler,
-            stokes_coupling,
-            dsp,
-            navier_stokes_constraints);
-
-    navier_stokes_sparsity_pattern.copy_from(dsp);
-
-    navier_stokes_matrix.reinit(navier_stokes_sparsity_pattern);
-
-
-    // auxiliary coupling structure
-    Table<2,DoFTools::Coupling> aux_coupling(dim+1, dim+1);
-    for (unsigned int c=0; c<dim+1; ++c)
-        for (unsigned int d=0; d<dim+1; ++d)
-            if (c==d && c==dim)
-                stokes_coupling[c][d] = DoFTools::always;
-            else
-                stokes_coupling[c][d] = DoFTools::none;
-
-    BlockDynamicSparsityPattern aux_dsp(dofs_per_block,
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
                                         dofs_per_block);
 
-    DoFTools::make_sparsity_pattern(
-            navier_stokes_dof_handler,
-            stokes_coupling,
-            aux_dsp,
-            navier_stokes_constraints);
+        DoFTools::make_sparsity_pattern(
+                navier_stokes_dof_handler,
+                stokes_coupling,
+                dsp,
+                navier_stokes_constraints);
 
-    auxiliary_navier_stokes_sparsity_pattern.copy_from(aux_dsp);
+        stokes_sparsity_pattern.copy_from(dsp);
+    }
+    navier_stokes_matrix.reinit(stokes_sparsity_pattern);
 
-    navier_stokes_laplace_matrix.reinit(auxiliary_navier_stokes_sparsity_pattern);
-    navier_stokes_mass_matrix.reinit(auxiliary_navier_stokes_sparsity_pattern);
+    // sparsity pattern for laplace matrix
+    {
+        // auxiliary coupling structure
+        Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c==dim)
+                    pressure_coupling[c][d] = DoFTools::always;
+                else
+                    pressure_coupling[c][d] = DoFTools::none;
 
-    navier_stokes_laplace_matrix.block(0,0).reinit(navier_stokes_sparsity_pattern.block(0,0));
-    navier_stokes_mass_matrix.block(0,0).reinit(navier_stokes_sparsity_pattern.block(0,0));
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
+                                        dofs_per_block);
+
+        DoFTools::make_sparsity_pattern(
+                navier_stokes_dof_handler,
+                pressure_coupling,
+                dsp,
+                stokes_pressure_constraints);
+
+        stokes_laplace_sparsity_pattern.copy_from(dsp);
+    }
+    navier_stokes_laplace_matrix.reinit(stokes_laplace_sparsity_pattern);
+    navier_stokes_laplace_matrix.block(0,0).reinit(stokes_sparsity_pattern.block(0,0));
+
+    // sparsity pattern for mass matrix
+    {
+        // auxiliary coupling structure
+        Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c==dim)
+                    pressure_coupling[c][d] = DoFTools::always;
+                else
+                    pressure_coupling[c][d] = DoFTools::none;
+
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
+                                        dofs_per_block);
+
+        DoFTools::make_sparsity_pattern(
+                navier_stokes_dof_handler,
+                pressure_coupling,
+                dsp,
+                navier_stokes_constraints);
+
+        stokes_mass_sparsity_pattern.copy_from(dsp);
+    }
+    navier_stokes_mass_matrix.reinit(stokes_mass_sparsity_pattern);
+    navier_stokes_mass_matrix.block(0,0).reinit(stokes_sparsity_pattern.block(0,0));
 
     rebuild_navier_stokes_matrices = true;
 }
-
 }  // namespace BuoyantFluid
 
 
