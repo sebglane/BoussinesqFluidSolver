@@ -201,18 +201,24 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     // reset all entries
     navier_stokes_rhs = 0;
 
+    // compute extrapolated pressure
     Vector<double>  extrapolated_pressure(old_navier_stokes_solution.block(1));
-    if (timestep_number > 1)
+    const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
+    switch (timestep_number)
     {
-        // time stepping coefficients
-        const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-
-        // extrapolated
-        extrapolated_pressure.add(-alpha[1]/alpha[0], old_phi_pressure.block(1),
-                                  -alpha[2]/alpha[0], old_old_phi_pressure.block(1));
+        case 0:
+            break;
+        case 1:
+            extrapolated_pressure.add(-alpha[1], old_phi_pressure.block(1));
+            break;
+        default:
+            extrapolated_pressure.add(-alpha[1]/alpha[0], old_phi_pressure.block(1),
+                                      -alpha[2]/alpha[0], old_old_phi_pressure.block(1));
+            break;
     }
     extrapolated_pressure *= -1.0;
 
+    // add pressure gradient to right-hand side
     navier_stokes_matrix.block(0,1).vmult(navier_stokes_rhs.block(0),
                                           extrapolated_pressure);
 

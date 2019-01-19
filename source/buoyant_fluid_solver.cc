@@ -270,6 +270,7 @@ void BuoyantFluidSolver<dim>::run()
 
     setup_dofs();
 
+    // initial condition for temperature
     const EquationData::TemperatureInitialValues<dim>
     initial_temperature(parameters.aspect_ratio,
                         1.0,
@@ -283,10 +284,14 @@ void BuoyantFluidSolver<dim>::run()
 
     temperature_constraints.distribute(old_temperature_solution);
 
-    temperature_solution = old_temperature_solution;
-
+    // compute consistent initial pressure
     compute_initial_pressure();
 
+    // copy solution vectors for output
+    temperature_solution = old_temperature_solution;
+    navier_stokes_solution = old_navier_stokes_solution;
+
+    // output of the initial condition
     output_results(true);
 
     double time = 0;
