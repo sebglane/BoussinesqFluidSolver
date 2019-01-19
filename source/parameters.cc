@@ -96,6 +96,15 @@ void Parameters::declare_parameters(ParameterHandler &prm)
     }
     prm.leave_subsection();
 
+    prm.enter_subsection("Initial conditions");
+    {
+        prm.declare_entry("temperature_perturbation",
+                "None",
+                Patterns::Selection("None|Sinusoidal"),
+                "Type of perturbation.");
+    }
+    prm.leave_subsection();
+
     prm.enter_subsection("Logging parameters");
     {
         prm.declare_entry("vtk_freq",
@@ -268,6 +277,20 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         Assert(t_final > 0.0, ExcLowerRangeType<double>(t_final, 0.0));
     }
     prm.leave_subsection();
+
+    prm.enter_subsection("Initial conditions");
+    {
+        std::string perturbation_string = prm.get("temperature_perturbation");
+
+        if (perturbation_string == "None")
+            temperature_perturbation = EquationData::TemperaturePerturbation::None;
+        else if (perturbation_string == "Sinusoidal")
+            temperature_perturbation = EquationData::TemperaturePerturbation::Sinusoidal;
+        else
+            AssertThrow(false, ExcMessage("Unexpected string for temperature perturbation."));
+    }
+    prm.leave_subsection();
+
 
     prm.enter_subsection("Logging parameters");
     {

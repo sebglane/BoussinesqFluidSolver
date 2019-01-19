@@ -275,7 +275,8 @@ void BuoyantFluidSolver<dim>::run()
     initial_temperature(parameters.aspect_ratio,
                         1.0,
                         0.5,
-                        -0.5);
+                        -0.5,
+                        parameters.temperature_perturbation);
 
     VectorTools::interpolate(mapping,
                              temperature_dof_handler,

@@ -12,16 +12,18 @@ namespace EquationData
 
 template <int dim>
 TemperatureInitialValues<dim>::TemperatureInitialValues(
-        const double inner_radius,
-        const double outer_radius,
-        const double inner_temperature,
-        const double outer_temperature)
+        const double                    inner_radius,
+        const double                    outer_radius,
+        const double                    inner_temperature,
+        const double                    outer_temperature,
+        const TemperaturePerturbation   perturbation_type_)
 :
 Function<dim>(1),
 ri(inner_radius),
 ro(outer_radius),
 Ti(inner_temperature),
-To(outer_temperature)
+To(outer_temperature),
+perturbation_type(perturbation_type_)
 {
     Assert(To < Ti, ExcLowerRangeType<double>(To, Ti));
     Assert(ri < ro, ExcLowerRangeType<double>(ri, ro));
@@ -39,8 +41,28 @@ double TemperatureInitialValues<2>::value(
     const double log_ro = std::log(ro), log_ri = std::log(ri);
     AssertIsFinite(log_ro);
     AssertIsFinite(log_ri);
-    const double value = (Ti - To) * log_radius / (log_ri - log_ro)
-            + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
+
+    double value = 0.0;
+    switch (perturbation_type)
+    {
+        case TemperaturePerturbation::None:
+            value += (Ti - To) * log_radius / (log_ri - log_ro)
+                        + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
+            break;
+        case TemperaturePerturbation::Sinusoidal:
+        {
+            value += (Ti - To) * log_radius / (log_ri - log_ro)
+                        + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
+            const double phi = std::atan2(point[1], point[0]);
+            double perturbation = (radius - ri) * (ro - radius)  * (1. - 3. * (ro - radius))
+                                   * std::cos(4.*phi);
+            perturbation *= std::max(std::abs(Ti), std::abs(To)) * relative_amplitude;
+            value += perturbation;
+            break;
+        }
+        default:
+            break;
+    }
     return value;
 }
 

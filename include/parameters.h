@@ -10,6 +10,7 @@
 
 #include <deal.II/base/parameter_handler.h>
 
+#include "initial_values.h"
 #include "timestepping.h"
 
 namespace BuoyantFluid {
@@ -66,6 +67,9 @@ struct Parameters
     double  Ek;
 
     bool    rotation;
+
+    // initial conditions
+    EquationData::TemperaturePerturbation   temperature_perturbation;
 
     // linear solver parameters
     double          rel_tol;
