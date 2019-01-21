@@ -146,18 +146,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
             = alpha[1] / timestep * scratch.old_velocity_values[q]
                 + alpha[2] / timestep * scratch.old_old_velocity_values[q];
 
-        Tensor<1,dim> nonlinear_term_velocity;
-        if (parameters.convective_discretization == ConvectiveDiscretizationType::Standard)
-            nonlinear_term_velocity = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                                    + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
-        else if (parameters.convective_discretization == ConvectiveDiscretizationType::DivergenceForm)
-            nonlinear_term_velocity = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                                    + 0.5 * beta[0] * trace(scratch.old_velocity_gradients[q]) * scratch.old_velocity_values[q]
-                                    + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q]
-                                    + 0.5 * beta[1] * trace(scratch.old_old_velocity_gradients[q]) * scratch.old_old_velocity_values[q];
-        else
-            AssertThrow(false, ExcNotImplemented());
-
         const Tensor<2,dim> linear_term_velocity
             = gamma[1] * scratch.old_velocity_gradients[q]
                 + gamma[2] * scratch.old_old_velocity_gradients[q];
@@ -174,11 +162,10 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         if (parameters.rotation)
         {
             const Tensor<1,dim> extrapolated_velocity
-                = (timestep != 0 ?
+            = (timestep != 0 ?
                     (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
                             - scratch.old_old_velocity_values[q] * timestep/old_timestep)
                             : scratch.old_velocity_values[q]);
-
             if (dim == 2)
                 coriolis_term = cross_product_2d(extrapolated_velocity);
             else if (dim == 3)
@@ -190,11 +177,41 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
             }
         }
 
+        Tensor<1,dim> nonlinear_term_velocity;
+        bool skew = false;
+        switch (parameters.convective_weak_form)
+        {
+        case ConvectiveWeakForm::Standard:
+            nonlinear_term_velocity
+                = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+            break;
+        case ConvectiveWeakForm::DivergenceForm:
+            nonlinear_term_velocity
+                = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + 0.5 * beta[0] * trace(scratch.old_velocity_gradients[q]) * scratch.old_velocity_values[q]
+                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q]
+                + 0.5 * beta[1] * trace(scratch.old_old_velocity_gradients[q]) * scratch.old_old_velocity_values[q];
+            break;
+        case ConvectiveWeakForm::SkewSymmetric:
+            nonlinear_term_velocity
+                = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+            skew = true;
+            break;
+        default:
+            Assert(false, ExcNotImplemented());
+            break;
+        }
+
         for (unsigned int i=0; i<dofs_per_cell; ++i)
             data.local_rhs(i)
                 += (
                     - time_derivative_velocity * scratch.phi_velocity[i]
                     - nonlinear_term_velocity * scratch.phi_velocity[i]
+                    - (skew ? beta[0] * (scratch.grad_phi_velocity[i] * scratch.old_velocity_values[q]) * scratch.old_velocity_values[q]
+                            + beta[1] * (scratch.grad_phi_velocity[i] * scratch.old_old_velocity_values[q]) * scratch.old_old_velocity_values[q]
+                            : 0.0)
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
                     - (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)
                     - equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_velocity[i]

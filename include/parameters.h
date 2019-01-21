@@ -19,10 +19,10 @@ using namespace dealii;
 
 /*
  *
- * enumeration for the type of the discretization of the convective term
+ * enumeration for the type of the weak form of the convective term
  *
  */
-enum ConvectiveDiscretizationType
+enum ConvectiveWeakForm
 {
     Standard,
     DivergenceForm,
@@ -90,7 +90,7 @@ struct Parameters
 
     // discretization parameters
     PressureUpdateType              projection_scheme;
-    ConvectiveDiscretizationType    convective_discretization;
+    ConvectiveWeakForm              convective_weak_form;
 
     unsigned int temperature_degree;
     unsigned int velocity_degree;

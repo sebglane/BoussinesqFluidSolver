@@ -39,7 +39,7 @@ cfl_max(0.7),
 adaptive_timestep(true),
 // discretization parameters
 projection_scheme(PressureUpdateType::StandardForm),
-convective_discretization(ConvectiveDiscretizationType::SkewSymmetric),
+convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
 temperature_degree(1),
 velocity_degree(2),
 // refinement parameters
@@ -145,14 +145,14 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Ratio of inner to outer radius");
 
         prm.declare_entry("pressure_update_type",
-                        "Standard",
-                        Patterns::Selection("Standard|Irrotational"),
-                        "Type of pressure projection scheme applied.");
+                "Standard",
+                Patterns::Selection("Standard|Irrotational"),
+                "Type of pressure projection scheme applied (Standard|Irrotational).");
 
-        prm.declare_entry("convective_discretization_type",
-                        "Standard",
-                        Patterns::Selection("Standard|DivergenceForm|SkewSymmetric|RotationalForm"),
-                        "Type of discretization of convective term.");
+        prm.declare_entry("convective_weak_form",
+                "Standard",
+                Patterns::Selection("Standard|DivergenceForm|SkewSymmetric|RotationalForm"),
+                "Type of weak form of convective term (Standard|DivergenceForm|SkewSymmetric|RotationalForm).");
 
         prm.enter_subsection("Refinement parameters");
         {
@@ -324,8 +324,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
                         "Type of discretization of convective term.");
 
 
-        std::string projection_type_str;
-        projection_type_str = prm.get("pressure_update_type");
+        const std::string projection_type_str
+        = prm.get("pressure_update_type");
 
         if (projection_type_str == "Standard")
             projection_scheme = PressureUpdateType::StandardForm;
@@ -334,19 +334,19 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         else
             AssertThrow(false, ExcMessage("Unexpected string for pressure update scheme."));
 
-        std::string convective_type_str;
-        convective_type_str = prm.get("convective_discretization_type");
+        const std::string convective_weak_form_str
+        = prm.get("convective_weak_form");
 
-        if (convective_type_str == "Standard")
-            convective_discretization = ConvectiveDiscretizationType::Standard;
-        else if (convective_type_str == "DivergenceForm")
-            convective_discretization = ConvectiveDiscretizationType::DivergenceForm;
-        else if (convective_type_str == "SkewSymmetric")
-            convective_discretization = ConvectiveDiscretizationType::SkewSymmetric;
-        else if (convective_type_str == "RotationalForm")
-            convective_discretization = ConvectiveDiscretizationType::RotationalForm;
+        if (convective_weak_form_str == "Standard")
+            convective_weak_form = ConvectiveWeakForm::Standard;
+        else if (convective_weak_form_str == "DivergenceForm")
+            convective_weak_form = ConvectiveWeakForm::DivergenceForm;
+        else if (convective_weak_form_str == "SkewSymmetric")
+            convective_weak_form = ConvectiveWeakForm::SkewSymmetric;
+        else if (convective_weak_form_str == "RotationalForm")
+            convective_weak_form = ConvectiveWeakForm::RotationalForm;
         else
-            AssertThrow(false, ExcMessage("Unexpected string for convecitve discretization scheme."));
+            AssertThrow(false, ExcMessage("Unexpected string for convective weak form."));
 
         prm.enter_subsection("Refinement parameters");
         {
