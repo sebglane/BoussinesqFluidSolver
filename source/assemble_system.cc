@@ -149,39 +149,58 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     if (rebuild_navier_stokes_matrices)
     {
         assemble_navier_stokes_matrices();
-
-        // time stepping coefficients
-        const std::vector<double> alpha = (timestep_number != 0?
-                                           imex_coefficients.alpha(timestep/old_timestep):
-                                           std::vector<double>({1.0,-1.0,0.0}));
-        const std::vector<double> gamma = (timestep_number != 0?
-                                            imex_coefficients.gamma(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0,0.0}));
-        // correct (0,0)-block of stokes system
-        navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
-        navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
-        navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
-                                            navier_stokes_laplace_matrix.block(0,0));
-
-        // rebuild the preconditioner of diffusion solve
-        rebuild_diffusion_preconditioner = true;
     }
-    else if (timestep_number == 0)
+
+    if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+    {
+        navier_stokes_matrix.block(0,0) = 0;
+
+        // assemble right-hand side function
+        WorkStream::run(
+                navier_stokes_dof_handler.begin_active(),
+                navier_stokes_dof_handler.end(),
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_convection_matrix,
+                          this,
+                          std::placeholders::_1,
+                          std::placeholders::_2,
+                          std::placeholders::_3),
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_convection_matrix,
+                          this,
+                          std::placeholders::_1),
+                NavierStokesAssembly::Scratch::ConvectionMatrix<dim>(
+                        navier_stokes_fe,
+                        mapping,
+                        quadrature_formula,
+                        update_values|
+                        update_gradients|
+                        update_JxW_values),
+                NavierStokesAssembly::CopyData::ConvectionMatrix<dim>(navier_stokes_fe));
+    }
+
+    if (timestep_number == 0)
     {
         // time stepping coefficients
         const std::vector<double> alpha = std::vector<double>({1.0,-1.0,0.0});
         const std::vector<double> gamma = std::vector<double>({1.0,0.0,0.0});
 
         // correct (0,0)-block of stokes system
-        navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
-        navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
+        if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+        {
+            navier_stokes_matrix.block(0,0).add(alpha[0] / timestep,
+                                                navier_stokes_mass_matrix.block(0,0));
+        }
+        else
+        {
+            navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
+            navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
+        }
         navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                             navier_stokes_laplace_matrix.block(0,0));
 
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
-    else if (timestep_number == 1 || timestep_modified)
+    else
     {
         Assert(timestep_number != 0, ExcInternalError());
 
@@ -190,14 +209,28 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
         const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
 
         // correct (0,0)-block of navier stokes system
-        navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
-        navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
-        navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
-                                            navier_stokes_laplace_matrix.block(0,0));
+       if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+       {
+            navier_stokes_matrix.block(0,0).add(alpha[0] / timestep,
+                                                navier_stokes_mass_matrix.block(0,0));
+            navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
+                                                navier_stokes_laplace_matrix.block(0,0));
 
-        // rebuild the preconditioner of diffusion solve
-        rebuild_diffusion_preconditioner = true;
+            // rebuild the preconditioner of diffusion solve
+            rebuild_diffusion_preconditioner = true;
+       }
+       else if (timestep_number == 1 || timestep_modified)
+       {
+            navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
+            navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
+            navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
+                                                navier_stokes_laplace_matrix.block(0,0));
+
+            // rebuild the preconditioner of diffusion solve
+            rebuild_diffusion_preconditioner = true;
+       }
     }
+
     // reset all entries
     navier_stokes_rhs = 0;
 

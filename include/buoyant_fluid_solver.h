@@ -146,7 +146,10 @@ private:
     PreconditionerTypeTemperature;
 
     typedef PreconditionSSOR<SparseMatrix<double>>
-    PreconditionerTypeDiffusion;
+    PreconditionerTypeSymmetricDiffusion;
+
+    typedef PreconditionSOR<SparseMatrix<double>>
+    PreconditionerTypeNonSymmetricDiffusion;
 
     typedef SparseILU<double>
     PreconditionerTypeProjection;
@@ -158,8 +161,11 @@ private:
     std::shared_ptr<PreconditionerTypeTemperature>
     preconditioner_temperature;
 
-    std::shared_ptr<PreconditionerTypeDiffusion>
-    preconditioner_diffusion;
+    std::shared_ptr<PreconditionerTypeSymmetricDiffusion>
+    preconditioner_symmetric_diffusion;
+
+    std::shared_ptr<PreconditionerTypeNonSymmetricDiffusion>
+    preconditioner_nonsymmetric_diffusion;
 
     std::shared_ptr<PreconditionerTypeProjection>
     preconditioner_projection;

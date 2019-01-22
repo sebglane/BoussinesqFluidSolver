@@ -6,6 +6,7 @@
  */
 
 #include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/solver_control.h>
 
 #include <deal.II/numerics/vector_tools.h>
@@ -50,12 +51,24 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner diffusion");
 
-    preconditioner_diffusion.reset(new PreconditionerTypeDiffusion());
+    if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+    {
+        preconditioner_nonsymmetric_diffusion.reset(new PreconditionerTypeNonSymmetricDiffusion());
 
-    PreconditionerTypeDiffusion::AdditionalData     data;
-    preconditioner_diffusion->initialize(navier_stokes_matrix.block(0,0),
-                                         data);
+        PreconditionerTypeNonSymmetricDiffusion::AdditionalData     data;
+        preconditioner_nonsymmetric_diffusion
+        ->initialize(navier_stokes_matrix.block(0,0),
+                     data);
+    }
+    else
+    {
+        preconditioner_symmetric_diffusion.reset(new PreconditionerTypeSymmetricDiffusion());
 
+        PreconditionerTypeSymmetricDiffusion::AdditionalData    data;
+        preconditioner_symmetric_diffusion
+        ->initialize(navier_stokes_matrix.block(0,0),
+                     data);
+    }
     rebuild_diffusion_preconditioner = false;
 }
 
@@ -110,17 +123,28 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
                                    std::max(parameters.rel_tol * navier_stokes_solution.block(0).l2_norm(),
                                             parameters.abs_tol));;
 
-    SolverCG<Vector<double>>  cg(solver_control);
-
-
     navier_stokes_constraints.set_zero(navier_stokes_solution);
 
     try
     {
+        if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+        {
+            SolverGMRES<Vector<double>> gmres(solver_control);
+
+            gmres.solve(navier_stokes_matrix.block(0,0),
+                        navier_stokes_solution.block(0),
+                        navier_stokes_rhs.block(0),
+                        *preconditioner_nonsymmetric_diffusion);
+        }
+        else
+        {
+        SolverCG<Vector<double>>  cg(solver_control);
+
         cg.solve(navier_stokes_matrix.block(0,0),
                  navier_stokes_solution.block(0),
                  navier_stokes_rhs.block(0),
-                 *preconditioner_diffusion);
+                 *preconditioner_symmetric_diffusion);
+        }
     }
     catch (std::exception &exc)
     {
