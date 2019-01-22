@@ -125,6 +125,42 @@ grad_phi_pressure(scratch.grad_phi_pressure)
 {}
 
 template <int dim>
+ConvectionMatrix<dim>::ConvectionMatrix
+(const FiniteElement<dim> &stokes_fe,
+ const Mapping<dim>       &mapping,
+ const Quadrature<dim>    &stokes_quadrature,
+ const UpdateFlags         stokes_update_flags)
+:
+stokes_fe_values(mapping,
+                 stokes_fe,
+                 stokes_quadrature,
+                 stokes_update_flags),
+phi_velocity(stokes_fe.dofs_per_cell),
+grad_phi_velocity(stokes_fe.dofs_per_cell),
+old_velocity_values(stokes_quadrature.size()),
+old_old_velocity_values(stokes_quadrature.size()),
+old_velocity_divergences(stokes_quadrature.size()),
+old_old_velocity_divergences(stokes_quadrature.size())
+{}
+
+template <int dim>
+ConvectionMatrix<dim>::ConvectionMatrix
+(const ConvectionMatrix<dim>   &scratch)
+:
+stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
+                 scratch.stokes_fe_values.get_fe(),
+                 scratch.stokes_fe_values.get_quadrature(),
+                 scratch.stokes_fe_values.get_update_flags()),
+phi_velocity(scratch.phi_velocity),
+grad_phi_velocity(scratch.grad_phi_velocity),
+old_velocity_values(scratch.old_velocity_values),
+old_old_velocity_values(scratch.old_old_velocity_values),
+old_velocity_divergences(scratch.old_velocity_divergences),
+old_old_velocity_divergences(scratch.old_old_velocity_divergences)
+{}
+
+
+template <int dim>
 RightHandSide<dim>::RightHandSide
 (const FiniteElement<dim>  &stokes_fe,
  const Mapping<dim>        &mapping,
@@ -199,6 +235,24 @@ local_dof_indices(data.local_dof_indices)
 {}
 
 template <int dim>
+ConvectionMatrix<dim>::ConvectionMatrix
+(const FiniteElement<dim>    &stokes_fe)
+:
+local_matrix(stokes_fe.dofs_per_cell,
+             stokes_fe.dofs_per_cell),
+local_dof_indices(stokes_fe.dofs_per_cell)
+{}
+
+template <int dim>
+ConvectionMatrix<dim>::ConvectionMatrix
+(const ConvectionMatrix<dim>   &data)
+:
+local_matrix(data.local_matrix),
+local_dof_indices(data.local_dof_indices)
+{}
+
+
+template <int dim>
 RightHandSide<dim>::RightHandSide(const FiniteElement<dim> &stokes_fe)
 :
 local_rhs(stokes_fe.dofs_per_cell),
@@ -225,10 +279,14 @@ template class TemperatureAssembly::CopyData::RightHandSide<3>;
 
 template class NavierStokesAssembly::Scratch::Matrix<2>;
 template class NavierStokesAssembly::Scratch::Matrix<3>;
+template class NavierStokesAssembly::Scratch::ConvectionMatrix<2>;
+template class NavierStokesAssembly::Scratch::ConvectionMatrix<3>;
 template class NavierStokesAssembly::Scratch::RightHandSide<2>;
 template class NavierStokesAssembly::Scratch::RightHandSide<3>;
 
 template class NavierStokesAssembly::CopyData::Matrix<2>;
 template class NavierStokesAssembly::CopyData::Matrix<3>;
+template class NavierStokesAssembly::CopyData::ConvectionMatrix<2>;
+template class NavierStokesAssembly::CopyData::ConvectionMatrix<3>;
 template class NavierStokesAssembly::CopyData::RightHandSide<2>;
 template class NavierStokesAssembly::CopyData::RightHandSide<3>;

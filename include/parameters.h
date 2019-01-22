@@ -32,6 +32,17 @@ enum ConvectiveWeakForm
 
 /*
  *
+ * enumeration for the type of discretization of the convective term
+ *
+ */
+enum ConvectiveDiscretizationType
+{
+    LinearImplicit,
+    Explicit
+};
+
+/*
+ *
  * enumeration for the type of the pressure projection scheme
  *
  */
@@ -91,6 +102,7 @@ struct Parameters
     // discretization parameters
     PressureUpdateType              projection_scheme;
     ConvectiveWeakForm              convective_weak_form;
+    ConvectiveDiscretizationType    convective_scheme;
 
     unsigned int temperature_degree;
     unsigned int velocity_degree;

@@ -97,6 +97,27 @@ struct Matrix
     std::vector<Tensor<1,dim>>  grad_phi_pressure;
 };
 
+template<int dim>
+struct ConvectionMatrix
+{
+    ConvectionMatrix(const FiniteElement<dim> &stokes_fe,
+                     const Mapping<dim>       &mapping,
+                     const Quadrature<dim>    &stokes_quadrature,
+                     const UpdateFlags        stokes_update_flags);
+
+    ConvectionMatrix(const ConvectionMatrix<dim>  &scratch);
+
+    FEValues<dim>               stokes_fe_values;
+
+    std::vector<Tensor<1,dim>>  phi_velocity;
+    std::vector<Tensor<2,dim>>  grad_phi_velocity;
+
+    std::vector<Tensor<1,dim>>  old_velocity_values;
+    std::vector<Tensor<1,dim>>  old_old_velocity_values;
+    std::vector<double>         old_velocity_divergences;
+    std::vector<double>         old_old_velocity_divergences;
+};
+
 
 template<int dim>
 struct RightHandSide
@@ -138,6 +159,17 @@ struct Matrix
     FullMatrix<double>      local_matrix;
     FullMatrix<double>      local_mass_matrix;
     FullMatrix<double>      local_laplace_matrix;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+template <int dim>
+struct ConvectionMatrix
+{
+    ConvectionMatrix(const FiniteElement<dim> &navier_stokes_fe);
+    ConvectionMatrix(const ConvectionMatrix<dim>        &data);
+
+    FullMatrix<double>      local_matrix;
 
     std::vector<types::global_dof_index>   local_dof_indices;
 };

@@ -40,6 +40,7 @@ adaptive_timestep(true),
 // discretization parameters
 projection_scheme(PressureUpdateType::StandardForm),
 convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
+convective_scheme(ConvectiveDiscretizationType::Explicit),
 temperature_degree(1),
 velocity_degree(2),
 // refinement parameters
@@ -153,6 +154,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Standard",
                 Patterns::Selection("Standard|DivergenceForm|SkewSymmetric|RotationalForm"),
                 "Type of weak form of convective term (Standard|DivergenceForm|SkewSymmetric|RotationalForm).");
+
+        prm.declare_entry("convective_discretization_scheme",
+                "Explicit",
+                Patterns::Selection("Explicit|LinearImplicit"),
+                "Type of discretization scheme of convective term (Explicit|LinearImplicit).");
 
         prm.enter_subsection("Refinement parameters");
         {
@@ -347,6 +353,19 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             convective_weak_form = ConvectiveWeakForm::RotationalForm;
         else
             AssertThrow(false, ExcMessage("Unexpected string for convective weak form."));
+
+        const std::string convective_discretization_str
+        = prm.get("convective_discretization_scheme");
+
+        if (convective_discretization_str == "Explicit")
+            convective_scheme = ConvectiveDiscretizationType::Explicit;
+        else if (convective_discretization_str == "LinearImplicit")
+            convective_scheme = ConvectiveDiscretizationType::LinearImplicit;
+        else
+        {
+            std::cout << convective_discretization_str;
+            AssertThrow(false, ExcMessage("Unexpected string for convective discretization scheme."));
+        }
 
         prm.enter_subsection("Refinement parameters");
         {

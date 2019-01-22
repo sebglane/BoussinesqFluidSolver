@@ -204,6 +204,13 @@ private:
     void copy_local_to_global_stokes_matrix
     (const NavierStokesAssembly::CopyData::Matrix<dim>      &data);
 
+    void local_assemble_stokes_convection_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     NavierStokesAssembly::Scratch::ConvectionMatrix<dim>   &scratch,
+     NavierStokesAssembly::CopyData::ConvectionMatrix<dim>  &data);
+    void copy_local_to_global_stokes_convection_matrix
+    (const NavierStokesAssembly::CopyData::ConvectionMatrix<dim>    &data);
+
     void local_assemble_stokes_rhs
     (const typename DoFHandler<dim>::active_cell_iterator   &cell,
      NavierStokesAssembly::Scratch::RightHandSide<dim>      &scratch,
