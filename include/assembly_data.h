@@ -51,6 +51,22 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
 };
 
+template<int dim>
+struct Matrix
+{
+    Matrix(const FiniteElement<dim> &temperature_fe,
+           const Mapping<dim>       &mapping,
+           const Quadrature<dim>    &temperature_quadrature,
+           const UpdateFlags         temperature_update_flags);
+
+    Matrix(const Matrix<dim>  &scratch);
+
+    FEValues<dim>               fe_values;
+
+    std::vector<double>         phi;
+    std::vector<Tensor<1,dim>>  grad_phi;
+};
+
 }  // namespace Scratch
 
 namespace CopyData {
@@ -64,6 +80,18 @@ struct RightHandSide
     Vector<double>                          local_rhs;
     FullMatrix<double>                      matrix_for_bc;
     std::vector<types::global_dof_index>    local_dof_indices;
+};
+
+template <int dim>
+struct Matrix
+{
+    Matrix(const FiniteElement<dim> &temperature_fe);
+    Matrix(const Matrix<dim>        &data);
+
+    FullMatrix<double>      local_mass_matrix;
+    FullMatrix<double>      local_laplace_matrix;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
 };
 
 }  // namespace CopyData

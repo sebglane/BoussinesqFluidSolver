@@ -6,6 +6,8 @@
  */
 #include <deal.II/base/work_stream.h>
 
+#include <deal.II/grid/filtered_iterator.h>
+
 #include <deal.II/numerics/matrix_tools.h>
 
 #include "buoyant_fluid_solver.h"
@@ -19,7 +21,11 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
     TimerOutput::Scope timer_section(computing_timer, "assemble temperature system");
 
     if (parameters.verbose)
-        std::cout << "      Assembling temperature system..." << std::endl;
+        pcout << "      Assembling temperature system..." << std::endl;
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
 
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
@@ -29,18 +35,30 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         temperature_mass_matrix = 0;
         temperature_stiffness_matrix = 0;
 
-        MatrixCreator::create_mass_matrix(mapping,
-                                          temperature_dof_handler,
-                                          quadrature_formula,
-                                          temperature_mass_matrix,
-                                          (const Function<dim> *const)nullptr,
-                                          temperature_constraints);
-        MatrixCreator::create_laplace_matrix(mapping,
-                                             temperature_dof_handler,
-                                             quadrature_formula,
-                                             temperature_stiffness_matrix,
-                                             (const Function<dim> *const)nullptr,
-                                             temperature_constraints);
+        // assemble temperature right-hand side
+        WorkStream::run(
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           temperature_dof_handler.begin_active()),
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           temperature_dof_handler.end()),
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_matrix,
+                          this,
+                          std::placeholders::_1,
+                          std::placeholders::_2,
+                          std::placeholders::_3),
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix,
+                          this,
+                          std::placeholders::_1),
+                TemperatureAssembly::Scratch::Matrix<dim>(temperature_fe,
+                                                          mapping,
+                                                          quadrature_formula,
+                                                          update_values|
+                                                          update_gradients|
+                                                          update_JxW_values),
+                TemperatureAssembly::CopyData::Matrix<dim>(temperature_fe));
+
+        temperature_mass_matrix.compress(VectorOperation::add);
+        temperature_stiffness_matrix.compress(VectorOperation::add);
 
         const std::vector<double> alpha = (timestep_number != 0?
                                                 imex_coefficients.alpha(timestep/old_timestep):
@@ -76,8 +94,10 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     // assemble temperature right-hand side
     WorkStream::run(
-            temperature_dof_handler.begin_active(),
-            temperature_dof_handler.end(),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       temperature_dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       temperature_dof_handler.end()),
             std::bind(&BuoyantFluidSolver<dim>::local_assemble_temperature_rhs,
                       this,
                       std::placeholders::_1,
@@ -95,6 +115,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                                                              navier_stokes_fe,
                                                              update_values),
             TemperatureAssembly::CopyData::RightHandSide<dim>(temperature_fe));
+
+    temperature_rhs.compress(VectorOperation::add);
 }
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
@@ -106,10 +128,16 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
     navier_stokes_mass_matrix = 0;
     navier_stokes_laplace_matrix = 0;
 
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
     // assemble matrix
     WorkStream::run(
-            navier_stokes_dof_handler.begin_active(),
-            navier_stokes_dof_handler.end(),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.end()),
             std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_matrix,
                       this,
                       std::placeholders::_1,
@@ -127,6 +155,9 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
                     update_JxW_values),
             NavierStokesAssembly::CopyData::Matrix<dim>(navier_stokes_fe));
 
+    navier_stokes_matrix.compress(VectorOperation::add);
+    navier_stokes_mass_matrix.compress(VectorOperation::add);
+    navier_stokes_laplace_matrix.compress(VectorOperation::add);
 
     // rebuild both preconditionerss
     rebuild_projection_preconditioner = true;
@@ -140,9 +171,14 @@ template<int dim>
 void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 {
     if (parameters.verbose)
-        std::cout << "      Assembling diffusion system..." << std::endl;
+        pcout << "      Assembling diffusion system..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "assemble diffusion system");
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
 
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 
@@ -157,8 +193,10 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 
         // assemble right-hand side function
         WorkStream::run(
-                navier_stokes_dof_handler.begin_active(),
-                navier_stokes_dof_handler.end(),
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.begin_active()),
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.end()),
                 std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_convection_matrix,
                           this,
                           std::placeholders::_1,
@@ -197,6 +235,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
         navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                             navier_stokes_laplace_matrix.block(0,0));
 
+        navier_stokes_matrix.compress(VectorOperation::add);
+
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
@@ -216,6 +256,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
             navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                                 navier_stokes_laplace_matrix.block(0,0));
 
+            navier_stokes_matrix.compress(VectorOperation::add);
+
             // rebuild the preconditioner of diffusion solve
             rebuild_diffusion_preconditioner = true;
        }
@@ -226,6 +268,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
             navier_stokes_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
                                                 navier_stokes_laplace_matrix.block(0,0));
 
+            navier_stokes_matrix.compress(VectorOperation::add);
+
             // rebuild the preconditioner of diffusion solve
             rebuild_diffusion_preconditioner = true;
        }
@@ -235,7 +279,7 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     navier_stokes_rhs = 0;
 
     // compute extrapolated pressure
-    Vector<double>  extrapolated_pressure(old_navier_stokes_solution.block(1));
+    LA::Vector  extrapolated_pressure(old_navier_stokes_solution.block(1));
     const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
     switch (timestep_number)
     {
@@ -252,13 +296,18 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     extrapolated_pressure *= -1.0;
 
     // add pressure gradient to right-hand side
+    LA::Vector  distributed_pressure(navier_stokes_rhs.block(1));
+    distributed_pressure = extrapolated_pressure;
+
     navier_stokes_matrix.block(0,1).vmult(navier_stokes_rhs.block(0),
-                                          extrapolated_pressure);
+                                          distributed_pressure);
 
     // assemble right-hand side function
     WorkStream::run(
-            navier_stokes_dof_handler.begin_active(),
-            navier_stokes_dof_handler.end(),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.end()),
             std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs,
                       this,
                       std::placeholders::_1,
@@ -278,13 +327,15 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                     temperature_fe,
                     update_values),
             NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+
+    navier_stokes_rhs.compress(VectorOperation::add);
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_projection_system()
 {
     if (parameters.verbose)
-        std::cout << "      Assembling projection system..." << std::endl;
+        pcout << "      Assembling projection system..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "assemble projection system");
 
@@ -295,8 +346,13 @@ void BuoyantFluidSolver<dim>::assemble_projection_system()
         assemble_navier_stokes_matrices();
     }
 
+    LA::Vector  distributed_velocity(navier_stokes_rhs.block(0));
+    distributed_velocity = navier_stokes_solution.block(0);
+
     navier_stokes_matrix.block(1,0).vmult(navier_stokes_rhs.block(1),
-                                          navier_stokes_solution.block(0));
+                                          distributed_velocity);
+
+    navier_stokes_rhs.compress(VectorOperation::add);
 }
 
 

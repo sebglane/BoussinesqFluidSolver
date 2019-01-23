@@ -60,6 +60,32 @@ old_velocity_values(scratch.old_velocity_values),
 old_old_velocity_values(scratch.old_old_velocity_values)
 {}
 
+template <int dim>
+Matrix<dim>::Matrix(
+        const FiniteElement<dim> &temperature_fe,
+        const Mapping<dim>       &mapping,
+        const Quadrature<dim>    &temperature_quadrature,
+        const UpdateFlags         temperature_update_flags)
+:
+fe_values(mapping,
+          temperature_fe,
+          temperature_quadrature,
+          temperature_update_flags),
+phi(temperature_fe.dofs_per_cell),
+grad_phi(temperature_fe.dofs_per_cell)
+{}
+
+template <int dim>
+Matrix<dim>::Matrix(const Matrix<dim>   &scratch)
+:
+fe_values(scratch.fe_values.get_mapping(),
+          scratch.fe_values.get_fe(),
+          scratch.fe_values.get_quadrature(),
+          scratch.fe_values.get_update_flags()),
+phi(scratch.phi),
+grad_phi(scratch.grad_phi)
+{}
+
 }  // namespace Scratch
 
 namespace CopyData {
@@ -80,6 +106,24 @@ RightHandSide<dim>::RightHandSide(
 :
 local_rhs(data.local_rhs),
 matrix_for_bc(data.matrix_for_bc),
+local_dof_indices(data.local_dof_indices)
+{}
+
+template <int dim>
+Matrix<dim>::Matrix(const FiniteElement<dim>    &temperature_fe)
+:
+local_mass_matrix(temperature_fe.dofs_per_cell,
+                  temperature_fe.dofs_per_cell),
+local_laplace_matrix(temperature_fe.dofs_per_cell,
+                     temperature_fe.dofs_per_cell),
+local_dof_indices(temperature_fe.dofs_per_cell)
+{}
+
+template <int dim>
+Matrix<dim>::Matrix(const Matrix<dim>   &data)
+:
+local_mass_matrix(data.local_mass_matrix),
+local_laplace_matrix(data.local_laplace_matrix),
 local_dof_indices(data.local_dof_indices)
 {}
 
@@ -212,7 +256,6 @@ old_old_temperature_values(scratch.old_old_temperature_values)
 
 namespace CopyData {
 
-
 template <int dim>
 Matrix<dim>::Matrix(const FiniteElement<dim>    &navier_stokes_fe)
 :
@@ -273,9 +316,13 @@ local_dof_indices(data.local_dof_indices)
 // explicit instantiation
 template class TemperatureAssembly::Scratch::RightHandSide<2>;
 template class TemperatureAssembly::Scratch::RightHandSide<3>;
+template class TemperatureAssembly::Scratch::Matrix<2>;
+template class TemperatureAssembly::Scratch::Matrix<3>;
 
 template class TemperatureAssembly::CopyData::RightHandSide<2>;
 template class TemperatureAssembly::CopyData::RightHandSide<3>;
+template class TemperatureAssembly::CopyData::Matrix<2>;
+template class TemperatureAssembly::CopyData::Matrix<3>;
 
 template class NavierStokesAssembly::Scratch::Matrix<2>;
 template class NavierStokesAssembly::Scratch::Matrix<3>;

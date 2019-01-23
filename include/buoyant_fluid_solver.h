@@ -8,6 +8,84 @@
 #ifndef INCLUDE_BUOYANT_FLUID_SOLVER_H_
 #define INCLUDE_BUOYANT_FLUID_SOLVER_H_
 
+#include <deal.II/lac/sparsity_pattern.h>
+#include <deal.II/lac/block_sparsity_pattern.h>
+
+#include <deal.II/lac/trilinos_vector.h>
+#include <deal.II/lac/trilinos_sparse_matrix.h>
+#include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_block_sparse_matrix.h>
+#include <deal.II/lac/trilinos_precondition.h>
+
+/**
+ * A namespace that contains typedefs for classes used in the linear algebra
+ * description.
+ */
+namespace LA
+{
+    /**
+     * Typedef for the vector type used.
+     */
+    typedef dealii::TrilinosWrappers::MPI::Vector Vector;
+
+    /**
+     * Typedef for the type used to describe vectors that consist of multiple
+     * blocks.
+     */
+    typedef dealii::TrilinosWrappers::MPI::BlockVector BlockVector;
+
+    /**
+     * Typedef for the sparse matrix type used.
+     */
+    typedef dealii::TrilinosWrappers::SparseMatrix SparseMatrix;
+
+    /**
+     * Typedef for the type used to describe sparse matrices that consist of
+     * multiple blocks.
+     */
+    typedef dealii::TrilinosWrappers::BlockSparseMatrix BlockSparseMatrix;
+
+    /**
+     * Typedef for the base class for all preconditioners.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionBase PreconditionBase;
+
+    /**
+     * Typedef for the AMG preconditioner type used for the top left block of
+     * the Stokes matrix.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionAMG PreconditionAMG;
+
+    /**
+     * Typedef for the Incomplete Cholesky preconditioner used for other
+     * blocks of the system matrix.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionIC PreconditionIC;
+
+    /**
+     * Typedef for the Incomplete LU decomposition preconditioner used for
+     * other blocks of the system matrix.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionILU PreconditionILU;
+
+    /**
+     * Typedef for the Jacobi preconditioner.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionJacobi PreconditionJacobi;
+
+    /**
+     * Typedef for the block compressed sparsity pattern type.
+     */
+    typedef dealii::TrilinosWrappers::BlockSparsityPattern BlockDynamicSparsityPattern;
+
+    /**
+     * Typedef for the compressed sparsity pattern type.
+     */
+    typedef dealii::TrilinosWrappers::SparsityPattern DynamicSparsityPattern;
+}
+
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/index_set.h>
 #include <deal.II/base/timer.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -16,14 +94,7 @@
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/mapping_q.h>
 
-#include <deal.II/grid/tria.h>
-
-#include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/block_sparse_matrix.h>
-#include <deal.II/lac/constraint_matrix.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/sparse_ilu.h>
+#include <deal.II/distributed/tria.h>
 
 #include <memory>
 
@@ -54,7 +125,10 @@ private:
 
     void setup_dofs();
 
-    void setup_temperature_matrix(const types::global_dof_index n_temperature_dofs);
+    void setup_temperature_matrix
+    (const IndexSet &locally_owned_dofs,
+     const IndexSet &locally_relevant_dofs);
+
     void assemble_temperature_system();
     void build_temperature_preconditioner();
     void solve_temperature_system();
@@ -62,7 +136,9 @@ private:
 
     void compute_initial_pressure();
 
-    void setup_navier_stokes_system(const std::vector<types::global_dof_index> dofs_per_block);
+    void setup_navier_stokes_system
+    (const std::vector<IndexSet>    &locally_owned_dofs,
+     const std::vector<IndexSet>    &locally_relevant_dofs);
 
     void assemble_navier_stokes_matrices();
 
@@ -87,13 +163,15 @@ private:
 
     void refine_mesh();
 
+    MPI_Comm                        mpi_communicator;
+
     Parameters                     &parameters;
 
     TimeStepping::IMEXCoefficients  imex_coefficients;
 
     Tensor<1,dim>                   rotation_vector;
 
-    Triangulation<dim>              triangulation;
+    parallel::distributed::Triangulation<dim>   triangulation;
 
     const MappingQ<dim>             mapping;
 
@@ -101,80 +179,65 @@ private:
     const FE_Q<dim>                 temperature_fe;
     DoFHandler<dim>                 temperature_dof_handler;
 
+    IndexSet                        locally_owned_temperature_dofs;
+    IndexSet                        locally_relevant_temperature_dofs;
+
     // stokes FiniteElement and DoFHandler
     const FESystem<dim>             navier_stokes_fe;
     DoFHandler<dim>                 navier_stokes_dof_handler;
 
+    std::vector<IndexSet>           locally_owned_stokes_dofs;
+    std::vector<IndexSet>           locally_relevant_stokes_dofs;
+
     // temperature part
     ConstraintMatrix                temperature_constraints;
 
-    SparsityPattern                 temperature_sparsity_pattern;
-    SparseMatrix<double>            temperature_matrix;
-    SparseMatrix<double>            temperature_mass_matrix;
-    SparseMatrix<double>            temperature_stiffness_matrix;
+    LA::SparseMatrix     temperature_matrix;
+    LA::SparseMatrix     temperature_mass_matrix;
+    LA::SparseMatrix     temperature_stiffness_matrix;
 
     // vectors of temperature part
-    Vector<double>                  temperature_solution;
-    Vector<double>                  old_temperature_solution;
-    Vector<double>                  old_old_temperature_solution;
-    Vector<double>                  temperature_rhs;
+    LA::Vector           temperature_solution;
+    LA::Vector           old_temperature_solution;
+    LA::Vector           old_old_temperature_solution;
+    LA::Vector           temperature_rhs;
 
     // stokes part
     ConstraintMatrix                navier_stokes_constraints;
     ConstraintMatrix                stokes_pressure_constraints;
 
-    BlockSparsityPattern            stokes_sparsity_pattern;
-    BlockSparsityPattern            stokes_laplace_sparsity_pattern;
-    BlockSparsityPattern            stokes_mass_sparsity_pattern;
-
-    BlockSparseMatrix<double>       navier_stokes_matrix;
-    BlockSparseMatrix<double>       navier_stokes_laplace_matrix;
-    BlockSparseMatrix<double>       navier_stokes_mass_matrix;
+    LA::BlockSparseMatrix    navier_stokes_matrix;
+    LA::BlockSparseMatrix    navier_stokes_laplace_matrix;
+    LA::BlockSparseMatrix    navier_stokes_mass_matrix;
 
     // vectors of navier stokes part
-    BlockVector<double>             navier_stokes_solution;
-    BlockVector<double>             old_navier_stokes_solution;
-    BlockVector<double>             old_old_navier_stokes_solution;
-    BlockVector<double>             navier_stokes_rhs;
+    LA::BlockVector      navier_stokes_solution;
+    LA::BlockVector      old_navier_stokes_solution;
+    LA::BlockVector      old_old_navier_stokes_solution;
+    LA::BlockVector      navier_stokes_rhs;
 
-    BlockVector<double>             phi_pressure;
-    BlockVector<double>             old_phi_pressure;
-    BlockVector<double>             old_old_phi_pressure;
-
-    // preconditioner types
-    typedef PreconditionJacobi<SparseMatrix<double>>
-    PreconditionerTypeTemperature;
-
-    typedef PreconditionSSOR<SparseMatrix<double>>
-    PreconditionerTypeSymmetricDiffusion;
-
-    typedef PreconditionSOR<SparseMatrix<double>>
-    PreconditionerTypeNonSymmetricDiffusion;
-
-    typedef SparseILU<double>
-    PreconditionerTypeProjection;
-
-    typedef PreconditionJacobi<SparseMatrix<double>>
-    PreconditionerTypePressureMass;
+    LA::BlockVector      phi_pressure;
+    LA::BlockVector      old_phi_pressure;
+    LA::BlockVector      old_old_phi_pressure;
 
     // pointers to preconditioners
-    std::shared_ptr<PreconditionerTypeTemperature>
+    std::shared_ptr<LA::PreconditionBase>
     preconditioner_temperature;
 
-    std::shared_ptr<PreconditionerTypeSymmetricDiffusion>
-    preconditioner_symmetric_diffusion;
+    std::shared_ptr<LA::PreconditionBase>
+    preconditioner_diffusion;
 
-    std::shared_ptr<PreconditionerTypeNonSymmetricDiffusion>
-    preconditioner_nonsymmetric_diffusion;
-
-    std::shared_ptr<PreconditionerTypeProjection>
+    std::shared_ptr<LA::PreconditionBase>
     preconditioner_projection;
 
-    std::shared_ptr<PreconditionerTypePressureMass>
+    std::shared_ptr<LA::PreconditionBase>
     preconditioner_pressure_mass;
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
+
+    // parallel output
+    ConditionalOStream              pcout;
 
     // monitor of computing times
     TimerOutput                     computing_timer;
@@ -202,6 +265,14 @@ private:
     void copy_local_to_global_temperature_rhs
     (const TemperatureAssembly::CopyData::RightHandSide<dim>    &data);
 
+    void local_assemble_temperature_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     TemperatureAssembly::Scratch::Matrix<dim>       &scratch,
+     TemperatureAssembly::CopyData::Matrix<dim>      &data);
+    void copy_local_to_global_temperature_matrix
+    (const TemperatureAssembly::CopyData::Matrix<dim>    &data);
+
+
     // working stream methods for stokes assembly
     void local_assemble_stokes_matrix
     (const typename DoFHandler<dim>::active_cell_iterator   &cell,
@@ -223,7 +294,6 @@ private:
      NavierStokesAssembly::CopyData::RightHandSide<dim>     &data);
     void copy_local_to_global_stokes_rhs
     (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
-
 };
 
 }  // namespace BouyantFluid

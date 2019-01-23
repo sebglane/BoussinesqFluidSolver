@@ -10,6 +10,62 @@
 namespace BuoyantFluid {
 
 template <int dim>
+void BuoyantFluidSolver<dim>::local_assemble_temperature_matrix
+(const typename DoFHandler<dim>::active_cell_iterator   &cell,
+ TemperatureAssembly::Scratch::Matrix<dim>              &scratch,
+ TemperatureAssembly::CopyData::Matrix<dim>             &data)
+{
+    const unsigned int dofs_per_cell = scratch.fe_values.get_fe().dofs_per_cell;
+    const unsigned int n_q_points    = scratch.fe_values.n_quadrature_points;
+
+    scratch.fe_values.reinit(cell);
+
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_mass_matrix = 0;
+    data.local_laplace_matrix = 0;
+
+    for (unsigned int q=0; q<n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        {
+            scratch.phi[k]     = scratch.fe_values.shape_value(k, q);
+            scratch.grad_phi[k]= scratch.fe_values.shape_grad(k, q);
+        }
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+            for (unsigned int j=0; j<=i; ++j)
+            {
+                data.local_mass_matrix(i,j)
+                    += scratch.phi[i] * scratch.phi[j]
+                       * scratch.fe_values.JxW(q);
+                data.local_laplace_matrix(i,j)
+                    += scratch.grad_phi[i] * scratch.grad_phi[j]
+                       * scratch.fe_values.JxW(q);
+            }
+    for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int j=i+1; j<dofs_per_cell; ++j)
+        {
+            data.local_mass_matrix(i,j) = data.local_mass_matrix(j,i);
+            data.local_laplace_matrix(i,j) = data.local_laplace_matrix(j,i);
+        }
+    }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_matrix(
+        const TemperatureAssembly::CopyData::Matrix<dim> &data)
+{
+    temperature_constraints.distribute_local_to_global(
+            data.local_mass_matrix,
+            data.local_dof_indices,
+            temperature_mass_matrix);
+    temperature_constraints.distribute_local_to_global(
+            data.local_laplace_matrix,
+            data.local_dof_indices,
+            temperature_stiffness_matrix);
+}
+
+template <int dim>
 void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         const typename DoFHandler<dim>::active_cell_iterator    &cell,
         TemperatureAssembly::Scratch::RightHandSide<dim>        &scratch,
@@ -115,6 +171,21 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs(
 }  // namespace BuoyantFluid
 
 // explicit instantiation
+template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_temperature_matrix(
+        const typename DoFHandler<2>::active_cell_iterator    &cell,
+        TemperatureAssembly::Scratch::Matrix<2>        &scratch,
+        TemperatureAssembly::CopyData::Matrix<2>       &data);
+template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_temperature_matrix(
+        const typename DoFHandler<3>::active_cell_iterator    &cell,
+        TemperatureAssembly::Scratch::Matrix<3>        &scratch,
+        TemperatureAssembly::CopyData::Matrix<3>       &data);
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_temperature_matrix(
+        const TemperatureAssembly::CopyData::Matrix<2> &data);
+template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_temperature_matrix(
+        const TemperatureAssembly::CopyData::Matrix<3> &data);
+
+
 template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_temperature_rhs(
         const typename DoFHandler<2>::active_cell_iterator    &cell,
         TemperatureAssembly::Scratch::RightHandSide<2>        &scratch,
