@@ -236,12 +236,23 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << " CG iterations for projection step"
                 << std::endl;
 
+
     {
+        const double mean_value = VectorTools::compute_mean_value(mapping,
+                                                                  navier_stokes_dof_handler,
+                                                                  QGauss<dim>(parameters.velocity_degree - 1),
+                                                                  phi_pressure,
+                                                                  dim);
+        phi_pressure.block(1).add(-mean_value);
+    }
+    {
+
         const std::vector<double> alpha = (timestep_number != 0?
                                            imex_coefficients.alpha(timestep/old_timestep):
                                            std::vector<double>({1.0,-1.0,0.0}));
 
         phi_pressure.block(1) *= alpha[0] / timestep;
+
     }
 
     if (parameters.projection_scheme == PressureUpdateType::StandardForm)
@@ -252,6 +263,10 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
     }
     else if (parameters.projection_scheme == PressureUpdateType::IrrotationalForm)
     {
+        navier_stokes_matrix.block(0,1).Tvmult(navier_stokes_rhs.block(1),
+                                               navier_stokes_solution.block(0));
+        navier_stokes_rhs.block(1) *= -1.0;
+
         // solve linear system for irrotational update
         SolverControl   solver_control(parameters.n_max_iter,
                                        std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
@@ -260,7 +275,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         SolverCG<>      cg(solver_control);
 
         navier_stokes_constraints.set_zero(navier_stokes_solution);
-
         try
         {
             cg.solve(navier_stokes_mass_matrix.block(1,1),
@@ -291,7 +305,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                     << std::endl;
             std::abort();
         }
-
         navier_stokes_constraints.distribute(navier_stokes_solution);
 
         if (parameters.verbose)
@@ -306,14 +319,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         navier_stokes_solution.block(1) += old_navier_stokes_solution.block(1);
         navier_stokes_solution.block(1) += phi_pressure.block(1);
     }
-
-    const double mean_value = VectorTools::compute_mean_value(mapping,
-                                                              navier_stokes_dof_handler,
-                                                              QGauss<dim>(parameters.velocity_degree - 1),
-                                                              navier_stokes_solution,
-                                                              dim);
-    navier_stokes_solution.block(1).add(-mean_value);
-
 }
 
 template<int dim>

@@ -41,13 +41,9 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
             scratch.grad_phi_pressure[k]= scratch.stokes_fe_values[pressure].gradient(k, q);
         }
         for (unsigned int i=0; i<dofs_per_cell; ++i)
+        {
             for (unsigned int j=0; j<=i; ++j)
             {
-                data.local_matrix(i,j)
-                    += (
-                        - scratch.phi_pressure[i] * scratch.div_phi_velocity[j]
-                        - scratch.div_phi_velocity[i] * scratch.phi_pressure[j]
-                        ) * scratch.stokes_fe_values.JxW(q);
                 data.local_mass_matrix(i,j)
                     += (
                         scratch.phi_velocity[i] * scratch.phi_velocity[j]
@@ -59,11 +55,17 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
                       + scratch.grad_phi_pressure[i] * scratch.grad_phi_pressure[j]
                         ) * scratch.stokes_fe_values.JxW(q);
             }
+            for (unsigned int j=0; j<dofs_per_cell; ++j)
+                data.local_matrix(i,j)
+                    += (
+                        - scratch.div_phi_velocity[i] * scratch.phi_pressure[j]
+                        + scratch.grad_phi_pressure[i] * scratch.phi_velocity[j]
+                        ) * scratch.stokes_fe_values.JxW(q);
+        }
     }
     for (unsigned int i=0; i<dofs_per_cell; ++i)
         for (unsigned int j=i+1; j<dofs_per_cell; ++j)
         {
-            data.local_matrix(i,j) = data.local_matrix(j,i);
             data.local_mass_matrix(i,j) = data.local_mass_matrix(j,i);
             data.local_laplace_matrix(i,j) = data.local_laplace_matrix(j,i);
         }
