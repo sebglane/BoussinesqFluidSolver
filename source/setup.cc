@@ -4,6 +4,7 @@
  *  Created on: Nov 23, 2018
  *      Author: sg
  */
+#include <deal.II/base/utilities.h>
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
@@ -21,16 +22,22 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 {
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
-    std::cout << "Setup dofs..." << std::endl;
+    pcout << "Setup dofs..." << std::endl;
 
     // temperature part
     temperature_dof_handler.distribute_dofs(temperature_fe);
 
-    DoFRenumbering::boost::king_ordering(temperature_dof_handler);
+    DoFRenumbering::Cuthill_McKee(temperature_dof_handler);
+
+    // extract locally owned and relevant dofs
+    locally_owned_temperature_dofs = temperature_dof_handler.locally_owned_dofs ();
+    DoFTools::extract_locally_relevant_dofs(temperature_dof_handler,
+                                            locally_relevant_temperature_dofs);
 
     // temperature constraints
     {
         temperature_constraints.clear();
+        temperature_constraints.reinit(locally_relevant_temperature_dofs);
 
         DoFTools::make_hanging_node_constraints(
                 temperature_dof_handler,
@@ -50,24 +57,61 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         temperature_constraints.close();
     }
     // temperature matrix and vector setup
-    const unsigned int n_dofs_temperature
-    = temperature_dof_handler.n_dofs();
+    setup_temperature_matrix(locally_owned_temperature_dofs,
+                             locally_relevant_temperature_dofs);
 
-    setup_temperature_matrix(n_dofs_temperature);
+    temperature_solution.reinit(locally_relevant_temperature_dofs,
+                                mpi_communicator);
+    old_temperature_solution.reinit(temperature_solution);
+    old_old_temperature_solution.reinit(temperature_solution);
 
-    temperature_solution.reinit(n_dofs_temperature);
-    old_temperature_solution.reinit(n_dofs_temperature);
-    old_old_temperature_solution.reinit(n_dofs_temperature);
-    temperature_rhs.reinit(n_dofs_temperature);
+    temperature_rhs.reinit(locally_owned_temperature_dofs,
+                           locally_relevant_temperature_dofs,
+                           mpi_communicator,
+                           true);
 
     // stokes part
     navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
 
-    DoFRenumbering::boost::king_ordering(navier_stokes_dof_handler);
+    DoFRenumbering::Cuthill_McKee(navier_stokes_dof_handler);
     DoFRenumbering::block_wise(navier_stokes_dof_handler);
+
+    // count stokes dofs
+    std::vector<unsigned int> stokes_block_component(2,0);
+    stokes_block_component[1] = 1;
+    std::vector<types::global_dof_index> dofs_per_block(2);
+    DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
+                                   dofs_per_block,
+                                   stokes_block_component);
+
+    const unsigned int  n_velocity_dofs = dofs_per_block[0],
+                        n_pressure_dofs = dofs_per_block[1];
+
+    // extract locally owned and relevant dofs
+    IndexSet    locally_relevant_stokes_set;
+    {
+        const IndexSet locally_owned_stokes_set
+        = navier_stokes_dof_handler.locally_owned_dofs();
+
+        locally_owned_stokes_dofs.push_back(
+                locally_owned_stokes_set.get_view(0, n_velocity_dofs));
+        locally_owned_stokes_dofs.push_back(
+                locally_owned_stokes_set.get_view(n_velocity_dofs,
+                                                  n_velocity_dofs + n_pressure_dofs));
+
+        DoFTools::extract_locally_relevant_dofs(navier_stokes_dof_handler,
+                                                locally_relevant_stokes_set);
+
+        locally_relevant_stokes_dofs.push_back(
+                locally_relevant_stokes_set.get_view(0, n_velocity_dofs));
+        locally_relevant_stokes_dofs.push_back(
+                locally_relevant_stokes_set.get_view(n_velocity_dofs,
+                                                     n_velocity_dofs + n_pressure_dofs));
+    }
     // stokes constraints
     {
         navier_stokes_constraints.clear();
+        navier_stokes_constraints.reinit(locally_relevant_stokes_set);
 
         DoFTools::make_hanging_node_constraints(navier_stokes_dof_handler,
                                                 navier_stokes_constraints);
@@ -90,87 +134,104 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     // add pressure constraints
     {
         stokes_pressure_constraints.clear();
+        stokes_pressure_constraints.reinit(locally_relevant_stokes_set);
 
         stokes_pressure_constraints.merge(navier_stokes_constraints);
 
-        // find pressure boundary dofs
-        const FEValuesExtractors::Scalar pressure(dim);
+        const FEValuesExtractors::Scalar    pressure(dim);
 
-        std::vector<bool> boundary_dofs(navier_stokes_dof_handler.n_dofs(),
-                                        false);
+        IndexSet    boundary_pressure_dofs;
+
         DoFTools::extract_boundary_dofs(navier_stokes_dof_handler,
                                         navier_stokes_fe.component_mask(pressure),
-                                        boundary_dofs);
+                                        boundary_pressure_dofs);
 
-        // find first unconstrained pressure boundary dof
-        unsigned int first_boundary_dof = navier_stokes_dof_handler.n_dofs();
-        std::vector<bool>::const_iterator
-        dof = boundary_dofs.begin(),
-        end_dof = boundary_dofs.end();
-        for (; dof != end_dof; ++dof)
-            if (*dof)
-                if (!stokes_pressure_constraints.is_constrained(dof - boundary_dofs.begin()))
-                {
-                    first_boundary_dof = dof - boundary_dofs.begin();
-                    break;
-                }
-        Assert(first_boundary_dof < navier_stokes_dof_handler.n_dofs(),
-               ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
+        types::global_dof_index local_idx = numbers::invalid_dof_index;
+        
+        IndexSet::ElementIterator
+        idx = boundary_pressure_dofs.begin(),
+        endidx = boundary_pressure_dofs.end();
+        for(; idx != endidx; ++idx)
+            if (stokes_pressure_constraints.can_store_line(*idx)
+                    && !stokes_pressure_constraints.is_constrained(*idx))
+                local_idx = *idx;
 
-        std::vector<bool>::const_iterator it = std::find(boundary_dofs.begin(),
-                                                         boundary_dofs.end(),
-                                                         true);
-        Assert(first_boundary_dof >= it - boundary_dofs.begin(),
-               ExcMessage(std::string("Pressure boundary dof is not well constrained.").c_str()));
+        // Make a reduction to find the smallest index (processors that
+        // found a larger candidate just happened to not be able to store
+        // that index with the minimum value). Note that it is possible that
+        // some processors might not be able to find a potential DoF, for
+        // example because they don't own any DoFs. On those processors we
+        // will use dof_handler.n_dofs() when building the minimum (larger
+        // than any valid DoF index).
+        const types::global_dof_index global_idx
+        = Utilities::MPI::min(
+                (local_idx != numbers::invalid_dof_index) ?
+                        local_idx :
+                        navier_stokes_dof_handler.n_dofs(),
+                mpi_communicator);
 
-        // set first pressure boundary dof to zero
-        stokes_pressure_constraints.add_line(first_boundary_dof);
+        Assert(global_idx < navier_stokes_dof_handler.n_dofs(),
+               ExcMessage("Error, couldn't find a pressure DoF to constrain."));
+
+        // Finally set this DoF to zero (if we care about it):
+        if (stokes_pressure_constraints.can_store_line(global_idx))
+        {
+            Assert(!stokes_pressure_constraints.is_constrained(global_idx), ExcInternalError());
+            stokes_pressure_constraints.add_line(global_idx);
+        }
 
         stokes_pressure_constraints.close();
     }
 
     // count dofs
-    std::vector<unsigned int> stokes_block_component(2,0);
-    stokes_block_component[1] = 1;
-    std::vector<types::global_dof_index> dofs_per_block(2);
-    DoFTools::count_dofs_per_block(navier_stokes_dof_handler,
-                                   dofs_per_block,
-                                   stokes_block_component);
+    const types::global_dof_index n_dofs_temperature
+    = temperature_dof_handler.n_dofs();
 
     // stokes matrix and vector setup
-    setup_navier_stokes_system(dofs_per_block);
+    setup_navier_stokes_system(locally_owned_stokes_dofs,
+                               locally_relevant_stokes_dofs);
 
     // reinit block vectors
-    navier_stokes_solution.reinit(dofs_per_block);
-    old_navier_stokes_solution.reinit(dofs_per_block);
-    old_old_navier_stokes_solution.reinit(dofs_per_block);
-    navier_stokes_rhs.reinit(dofs_per_block);
+    navier_stokes_solution.reinit(locally_relevant_stokes_dofs,
+                                  mpi_communicator);
+    old_navier_stokes_solution.reinit(navier_stokes_solution);
+    old_old_navier_stokes_solution.reinit(navier_stokes_solution);
+
+    navier_stokes_rhs.reinit(locally_owned_stokes_dofs,
+                             locally_relevant_stokes_dofs,
+                             mpi_communicator,
+                             true);
 
     // reinit pressure vectors
-    phi_pressure.reinit(dofs_per_block);
-    old_phi_pressure.reinit(dofs_per_block);
-    old_old_phi_pressure.reinit(dofs_per_block);
+    phi_pressure.reinit(navier_stokes_solution);
+    old_phi_pressure.reinit(navier_stokes_solution);
+    old_old_phi_pressure.reinit(navier_stokes_solution);
 
     // print info message
-    std::cout << "   Number of active cells: "
-              << triangulation.n_active_cells()
-              << std::endl
-              << "   Number of degrees of freedom: "
-              << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature
-              << std::endl
-              << "   Number of velocity degrees of freedom: "
-              << dofs_per_block[0]
-              << std::endl
-              << "   Number of pressure degrees of freedom: "
-              << dofs_per_block[1]
-              << std::endl
-              << "   Number of temperature degrees of freedom: "
-              << n_dofs_temperature
-              << std::endl;
+    std::locale s = pcout.get_stream().getloc();
+    pcout.get_stream().imbue(std::locale(""));
+    pcout << "   Number of active cells: "
+          << triangulation.n_global_active_cells()
+          << std::endl
+          << "   Number of degrees of freedom: "
+          << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature
+          << std::endl
+          << "   Number of velocity degrees of freedom: "
+          << dofs_per_block[0]
+          << std::endl
+          << "   Number of pressure degrees of freedom: "
+          << dofs_per_block[1]
+          << std::endl
+          << "   Number of temperature degrees of freedom: "
+          << n_dofs_temperature
+          << std::endl;
+    pcout.get_stream().imbue(s);
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_index n_temperature_dofs)
+void BuoyantFluidSolver<dim>::setup_temperature_matrix
+(const IndexSet &locally_owned_dofs,
+ const IndexSet &locally_relevant_dofs)
 {
     preconditioner_temperature.reset();
 
@@ -178,27 +239,31 @@ void BuoyantFluidSolver<dim>::setup_temperature_matrix(const types::global_dof_i
     temperature_mass_matrix.clear();
     temperature_stiffness_matrix.clear();
 
-    DynamicSparsityPattern dsp(n_temperature_dofs, n_temperature_dofs);
+    LA::DynamicSparsityPattern  dsp(locally_owned_dofs,
+                                    locally_owned_dofs,
+                                    locally_relevant_dofs,
+                                    mpi_communicator);
 
     DoFTools::make_sparsity_pattern(temperature_dof_handler,
                                     dsp,
-                                    temperature_constraints);
+                                    temperature_constraints,
+                                    false,
+                                    Utilities::MPI::this_mpi_process(mpi_communicator));
 
-    temperature_sparsity_pattern.copy_from(dsp);
+    dsp.compress();
 
-    temperature_matrix.reinit(temperature_sparsity_pattern);
-    temperature_mass_matrix.reinit(temperature_sparsity_pattern);
-    temperature_stiffness_matrix.reinit(temperature_sparsity_pattern);
+    temperature_matrix.reinit(dsp);
+    temperature_mass_matrix.reinit(dsp);
+    temperature_stiffness_matrix.reinit(dsp);
 
     rebuild_temperature_matrices = true;
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
-        const std::vector<types::global_dof_index> dofs_per_block)
+void BuoyantFluidSolver<dim>::setup_navier_stokes_system
+(const std::vector<IndexSet>    &locally_owned_dofs,
+ const std::vector<IndexSet>    &locally_releveant_dofs)
 {
-    preconditioner_symmetric_diffusion.reset();
-    preconditioner_nonsymmetric_diffusion.reset();
     preconditioner_projection.reset();
 
     navier_stokes_matrix.clear();
@@ -206,6 +271,10 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
     navier_stokes_laplace_matrix.clear();
 
     // sparsity pattern for stokes matrix
+    LA::BlockDynamicSparsityPattern dsp(locally_owned_dofs,
+                                        locally_owned_dofs,
+                                        locally_releveant_dofs,
+                                        mpi_communicator);
     {
         Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
         for (unsigned int c=0; c<dim+1; ++c)
@@ -217,20 +286,24 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
                 else
                     stokes_coupling[c][d] = DoFTools::none;
 
-        BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                        dofs_per_block);
-
         DoFTools::make_sparsity_pattern(
                 navier_stokes_dof_handler,
                 stokes_coupling,
                 dsp,
-                navier_stokes_constraints);
+                navier_stokes_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
 
-        stokes_sparsity_pattern.copy_from(dsp);
+        dsp.compress();
     }
-    navier_stokes_matrix.reinit(stokes_sparsity_pattern);
+
+    navier_stokes_matrix.reinit(dsp);
 
     // sparsity pattern for laplace matrix
+    LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_stokes_dofs,
+                                                locally_owned_stokes_dofs,
+                                                locally_relevant_stokes_dofs,
+                                                mpi_communicator);
     {
         // auxiliary coupling structure
         Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
@@ -241,21 +314,24 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
                 else
                     pressure_coupling[c][d] = DoFTools::none;
 
-        BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                        dofs_per_block);
-
         DoFTools::make_sparsity_pattern(
                 navier_stokes_dof_handler,
                 pressure_coupling,
-                dsp,
-                stokes_pressure_constraints);
+                laplace_dsp,
+                stokes_pressure_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
 
-        stokes_laplace_sparsity_pattern.copy_from(dsp);
+        laplace_dsp.compress();
     }
-    navier_stokes_laplace_matrix.reinit(stokes_laplace_sparsity_pattern);
-    navier_stokes_laplace_matrix.block(0,0).reinit(stokes_sparsity_pattern.block(0,0));
+    navier_stokes_laplace_matrix.reinit(laplace_dsp);
+    navier_stokes_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
 
     // sparsity pattern for mass matrix
+    LA::BlockDynamicSparsityPattern mass_dsp(locally_owned_stokes_dofs,
+                                             locally_owned_stokes_dofs,
+                                             locally_relevant_stokes_dofs,
+                                             mpi_communicator);
     {
         // auxiliary coupling structure
         Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
@@ -266,19 +342,16 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
                 else
                     pressure_coupling[c][d] = DoFTools::none;
 
-        BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                        dofs_per_block);
-
         DoFTools::make_sparsity_pattern(
                 navier_stokes_dof_handler,
                 pressure_coupling,
-                dsp,
+                mass_dsp,
                 navier_stokes_constraints);
 
-        stokes_mass_sparsity_pattern.copy_from(dsp);
+        mass_dsp.compress();
     }
-    navier_stokes_mass_matrix.reinit(stokes_mass_sparsity_pattern);
-    navier_stokes_mass_matrix.block(0,0).reinit(stokes_sparsity_pattern.block(0,0));
+    navier_stokes_mass_matrix.reinit(mass_dsp);
+    navier_stokes_mass_matrix.block(0,0).reinit(dsp.block(0,0));
 
     rebuild_navier_stokes_matrices = true;
 }
@@ -289,8 +362,16 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system(
 template void BuoyantFluid::BuoyantFluidSolver<2>::setup_dofs();
 template void BuoyantFluid::BuoyantFluidSolver<3>::setup_dofs();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrix(const unsigned int );
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrix(const unsigned int );
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_temperature_matrix
+(const IndexSet &,
+ const IndexSet &);
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_temperature_matrix
+(const IndexSet &,
+ const IndexSet &);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );
-template void BuoyantFluid::BuoyantFluidSolver<3>::setup_navier_stokes_system(const std::vector<types::global_dof_index> );
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_navier_stokes_system
+(const std::vector<IndexSet>    &,
+ const std::vector<IndexSet>    &);
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_navier_stokes_system
+(const std::vector<IndexSet>    &,
+ const std::vector<IndexSet>    &);
