@@ -11,11 +11,18 @@
 namespace BuoyantFluid {
 
 template<int dim>
+PostProcessor<dim>::PostProcessor(const unsigned int partition)
+:
+partition(partition)
+{}
+
+template<int dim>
 std::vector<std::string> PostProcessor<dim>::get_names() const
 {
     std::vector<std::string> solution_names(dim, "velocity");
-    solution_names.push_back("pressure");
-    solution_names.push_back("temperature");
+    solution_names.emplace_back("pressure");
+    solution_names.emplace_back("temperature");
+    solution_names.emplace_back("partition");
 
     return solution_names;
 }
@@ -32,6 +39,7 @@ PostProcessor<dim>::get_data_component_interpretation() const
 {
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
     component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
 
@@ -56,6 +64,8 @@ void PostProcessor<dim>::evaluate_vector_field(
         computed_quantities[q](dim) = pressure;
         const double temperature = inputs.solution_values[q](dim+1);
         computed_quantities[q](dim+1) = temperature;
+
+        computed_quantities[q](dim+2) = partition;
     }
 }
 

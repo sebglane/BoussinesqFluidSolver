@@ -18,7 +18,7 @@ template<int dim>
 class PostProcessor : public DataPostprocessor<dim>
 {
 public:
-    PostProcessor() : DataPostprocessor<dim>()  {};
+    PostProcessor(const unsigned partition);
 
     virtual void evaluate_vector_field(
             const DataPostprocessorInputs::Vector<dim> &inputs,
@@ -30,6 +30,8 @@ public:
     get_data_component_interpretation() const;
 
     virtual UpdateFlags get_needed_update_flags() const;
+private:
+  const unsigned int partition;
 };
 
 }

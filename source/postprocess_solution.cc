@@ -6,6 +6,9 @@
  */
 
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/utilities.h>
+
+#include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_values.h>
 
@@ -38,9 +41,9 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
     const FEValuesExtractors::Vector velocities (0);
 
-    double rms_velocity = 0;
-    double rms_temperature = 0;
-    double volume = 0;
+    double local_sum_velocity = 0;
+    double local_sum_temperature = 0;
+    double local_volume = 0;
 
     typename DoFHandler<dim>::active_cell_iterator
     cell = navier_stokes_dof_handler.begin_active(),
@@ -48,6 +51,7 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
     endc = navier_stokes_dof_handler.end();
 
     for (; cell != endc; ++cell, ++temperature_cell)
+    if (cell->is_locally_owned())
     {
         stokes_fe_values.reinit(cell);
         temperature_fe_values.reinit(temperature_cell);
@@ -59,19 +63,25 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
-            rms_velocity += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
-            rms_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
-            volume += stokes_fe_values.JxW(q);
+            local_sum_velocity += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+            local_sum_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
+            local_volume += stokes_fe_values.JxW(q);
         }
     }
 
-    rms_velocity /= volume;
-    AssertIsFinite(rms_velocity);
-    Assert(rms_velocity >= 0, ExcLowerRangeType<double>(rms_velocity, 0));
+    AssertIsFinite(local_sum_velocity);
+    Assert(local_sum_velocity >= 0, ExcLowerRangeType<double>(local_sum_velocity, 0));
+    AssertIsFinite(local_sum_temperature);
+    Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+    Assert(local_volume >= 0, ExcLowerRangeType<double>(local_volume, 0));
 
-    rms_temperature /= volume;
-    AssertIsFinite(rms_temperature);
-    Assert(rms_temperature >= 0, ExcLowerRangeType<double>(rms_temperature, 0));
+    const double local_sums[3]  = { local_sum_velocity, local_sum_temperature, local_volume};
+    double global_sums[3];
+
+    Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+
+    const double rms_velocity = global_sums[0] / global_sums[2];
+    const double rms_temperature = global_sums[1] / global_sums[2];
 
     return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
 }
@@ -95,6 +105,7 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     double max_cfl = 0;
 
     for (auto cell : navier_stokes_dof_handler.active_cell_iterators())
+    if (cell->is_locally_owned())
     {
         fe_values.reinit (cell);
         fe_values[velocities].get_function_values(navier_stokes_solution,
@@ -106,14 +117,19 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
         max_cfl = std::max(max_cfl,
                            max_cell_velocity / cell->diameter());
     }
-    return max_cfl * timestep;
+    const double local_cfl = max_cfl * timestep;
+
+    const double global_cfl
+    = Utilities::MPI::max(local_cfl, mpi_communicator);
+
+    return global_cfl;
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 {
     if (parameters.verbose)
-        std::cout << "Output results..." << std::endl;
+        pcout << "Output results..." << std::endl;
 
     // create joint finite element
     const FESystem<dim> joint_fe(navier_stokes_fe, 1,
@@ -128,9 +144,9 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
            ExcInternalError());
 
     // create joint solution
-    Vector<double>      joint_solution;
-    joint_solution.reinit(joint_dof_handler.n_dofs());
-
+    LA::Vector  distributed_joint_solution;
+    distributed_joint_solution.reinit(joint_dof_handler.locally_owned_dofs(),
+                                      mpi_communicator);
     {
         std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
         std::vector<types::global_dof_index> local_stokes_dof_indices(navier_stokes_fe.dofs_per_cell);
@@ -142,6 +158,7 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
         stokes_cell      = navier_stokes_dof_handler.begin_active(),
         temperature_cell = temperature_dof_handler.begin_active();
         for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell)
+        if (joint_cell->is_locally_owned())
         {
             joint_cell->get_dof_indices(local_joint_dof_indices);
             stokes_cell->get_dof_indices(local_stokes_dof_indices);
@@ -152,7 +169,7 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                 {
                     Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
                             ExcInternalError());
-                    joint_solution(local_joint_dof_indices[i])
+                    distributed_joint_solution(local_joint_dof_indices[i])
                     = navier_stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
                 }
                 else
@@ -161,14 +178,25 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                             ExcInternalError());
                     Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
                             ExcInternalError());
-                    joint_solution(local_joint_dof_indices[i])
+                    distributed_joint_solution(local_joint_dof_indices[i])
                     = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
                 }
         }
     }
+    distributed_joint_solution.compress(VectorOperation::insert);
+
+    IndexSet locally_relevant_joint_dofs(joint_dof_handler.n_dofs());
+    DoFTools::extract_locally_relevant_dofs(joint_dof_handler,
+                                            locally_relevant_joint_dofs);
+
+    LA::Vector  joint_solution;
+    joint_solution.reinit(locally_relevant_joint_dofs,
+                          mpi_communicator);
+    joint_solution = distributed_joint_solution;
+
 
     // create post processor
-    PostProcessor<dim>   postprocessor;
+    PostProcessor<dim>   postprocessor(Utilities::MPI::this_mpi_process(mpi_communicator));
 
     // prepare data out object
     DataOut<dim>    data_out;
@@ -177,13 +205,40 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
     data_out.build_patches();
 
     // write output to disk
+    static int out_index = 0;
     const std::string filename = ("solution-" +
-                                  (initial_condition ?
-                                  "initial":
-                                  Utilities::int_to_string(timestep_number, 5)) +
-                                  ".vtk");
-    std::ofstream output(filename.c_str());
-    data_out.write_vtk(output);
+                                  (initial_condition ? "initial":
+                                   Utilities::int_to_string (timestep_number, 5)) +
+                                  "." +
+                                  Utilities::int_to_string
+                                  (triangulation.locally_owned_subdomain(), 4) +
+                                  ".vtu");
+    std::ofstream output (filename.c_str());
+    data_out.write_vtu (output);
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    {
+        std::vector<std::string> filenames;
+        for (unsigned int i=0; i<Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD); ++i)
+            filenames.push_back(std::string("solution-") +
+                                (initial_condition ? "initial":
+                                Utilities::int_to_string (timestep_number, 5)) +
+                                "." +
+                                Utilities::int_to_string(i, 4) +
+                                ".vtu");
+        const std::string
+        pvtu_master_filename = ("solution-" +
+                                Utilities::int_to_string (out_index, 5) +
+                                ".pvtu");
+        std::ofstream pvtu_master(pvtu_master_filename.c_str());
+        data_out.write_pvtu_record(pvtu_master, filenames);
+        const std::string
+        visit_master_filename = ("solution-" +
+                                 Utilities::int_to_string (out_index, 5) +
+                                 ".visit");
+        std::ofstream visit_master(visit_master_filename.c_str());
+        DataOutBase::write_visit_record(visit_master, filenames);
+    }
 }
 }  // namespace BuoyantFluid
 
