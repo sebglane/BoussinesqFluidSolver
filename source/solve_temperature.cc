@@ -16,7 +16,7 @@ template<int dim>
 void BuoyantFluidSolver<dim>::temperature_step()
 {
     if (parameters.verbose)
-        std::cout << "   Temperature step..." << std::endl;
+        pcout << "   Temperature step..." << std::endl;
 
     // assemble right-hand side (and system if necessary)
     assemble_temperature_system();
@@ -36,10 +36,10 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner temperature");
 
-    preconditioner_temperature.reset(new PreconditionerTypeTemperature());
+    preconditioner_temperature.reset(new LA::PreconditionSSOR());
 
-    PreconditionerTypeTemperature::AdditionalData     data;
-    data.relaxation = 0.6;
+    LA::PreconditionSSOR::AdditionalData     data;
+    data.omega = 0.6;
 
     preconditioner_temperature->initialize(temperature_matrix,
                                  data);
@@ -52,30 +52,32 @@ template <int dim>
 void BuoyantFluidSolver<dim>::solve_temperature_system()
 {
     if (parameters.verbose)
-        std::cout << "      Solving temperature system..." << std::endl;
+        pcout << "      Solving temperature system..." << std::endl;
 
     TimerOutput::Scope  timer_section(computing_timer, "solve temperature");
+
+    LA::Vector  distributed_solution(temperature_rhs);
+    distributed_solution = temperature_solution;
 
     // solve linear system
     SolverControl solver_control(30, 1e-6 * temperature_rhs.l2_norm());
 
-    SolverCG<>   cg(solver_control);
-
-    temperature_constraints.set_zero(temperature_solution);
+    LA::SolverCG    cg(solver_control);
 
     cg.solve(temperature_matrix,
-             temperature_solution,
+            distributed_solution,
              temperature_rhs,
              *preconditioner_temperature);
 
-    temperature_constraints.distribute(temperature_solution);
+    temperature_constraints.distribute(distributed_solution);
+    temperature_solution = distributed_solution;
 
     // write info message
     if (parameters.verbose)
-        std::cout << "      "
-                << solver_control.last_step()
-                << " CG iterations for temperature"
-                << std::endl;
+        pcout << "      "
+              << solver_control.last_step()
+              << " CG iterations for temperature"
+              << std::endl;
 }
 }  // namespace BouyantFluid
 
