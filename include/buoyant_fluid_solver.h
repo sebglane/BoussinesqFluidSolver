@@ -16,6 +16,7 @@
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
 #include <deal.II/lac/trilinos_block_sparse_matrix.h>
 #include <deal.II/lac/trilinos_precondition.h>
+#include <deal.II/lac/trilinos_solver.h>
 
 /**
  * A namespace that contains typedefs for classes used in the linear algebra
@@ -74,6 +75,17 @@ namespace LA
     typedef dealii::TrilinosWrappers::PreconditionJacobi PreconditionJacobi;
 
     /**
+     * Typedef for the SSOR preconditioner.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionBlockSSOR PreconditionSSOR;
+
+    /**
+     * Typedef for the SSOR preconditioner.
+     */
+    typedef dealii::TrilinosWrappers::PreconditionSOR PreconditionSOR;
+
+
+    /**
      * Typedef for the block compressed sparsity pattern type.
      */
     typedef dealii::TrilinosWrappers::BlockSparsityPattern BlockDynamicSparsityPattern;
@@ -82,6 +94,17 @@ namespace LA
      * Typedef for the compressed sparsity pattern type.
      */
     typedef dealii::TrilinosWrappers::SparsityPattern DynamicSparsityPattern;
+
+    /**
+     * Typedef for conjugate gradient linear solver.
+     */
+    typedef dealii::TrilinosWrappers::SolverCG  SolverCG;
+
+    /**
+     * Typedef for gmres method linear solver.
+     */
+    typedef dealii::TrilinosWrappers::SolverGMRES  SolverGMRES;
+
 }
 
 #include <deal.II/base/conditional_ostream.h>
@@ -221,16 +244,19 @@ private:
     LA::BlockVector      old_old_phi_pressure;
 
     // pointers to preconditioners
-    std::shared_ptr<LA::PreconditionBase>
+    std::shared_ptr<LA::PreconditionSSOR>
     preconditioner_temperature;
 
-    std::shared_ptr<LA::PreconditionBase>
-    preconditioner_diffusion;
+    std::shared_ptr<LA::PreconditionSOR>
+    preconditioner_asymmetric_diffusion;
 
-    std::shared_ptr<LA::PreconditionBase>
+    std::shared_ptr<LA::PreconditionSSOR>
+    preconditioner_symmetric_diffusion;
+
+    std::shared_ptr<LA::PreconditionAMG>
     preconditioner_projection;
 
-    std::shared_ptr<LA::PreconditionBase>
+    std::shared_ptr<LA::PreconditionJacobi>
     preconditioner_pressure_mass;
 
     // equation coefficients

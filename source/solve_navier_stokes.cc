@@ -5,8 +5,6 @@
  *      Author: sg
  */
 
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/solver_gmres.h>
 #include <deal.II/lac/solver_control.h>
 
 #include <deal.II/numerics/vector_tools.h>
@@ -21,7 +19,7 @@ template<int dim>
 void BuoyantFluidSolver<dim>::navier_stokes_step()
 {
     if (parameters.verbose)
-        std::cout << "   Navier-Stokes step..." << std::endl;
+        pcout << "   Navier-Stokes step..." << std::endl;
 
     // assemble right-hand side (and system if necessary)
     assemble_diffusion_system();
@@ -53,18 +51,21 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
 
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
     {
-        preconditioner_nonsymmetric_diffusion.reset(new PreconditionerTypeNonSymmetricDiffusion());
+        preconditioner_asymmetric_diffusion.reset(new LA::PreconditionSOR());
 
-        PreconditionerTypeNonSymmetricDiffusion::AdditionalData     data;
-        preconditioner_nonsymmetric_diffusion
+        LA::PreconditionSOR::AdditionalData     data;
+        data.omega = 1.5;
+
+        preconditioner_asymmetric_diffusion
         ->initialize(navier_stokes_matrix.block(0,0),
                      data);
     }
     else
     {
-        preconditioner_symmetric_diffusion.reset(new PreconditionerTypeSymmetricDiffusion());
+        preconditioner_symmetric_diffusion.reset(new LA::PreconditionSSOR());
 
-        PreconditionerTypeSymmetricDiffusion::AdditionalData    data;
+        LA::PreconditionSSOR::AdditionalData    data;
+        data.omega = 1.5;
         preconditioner_symmetric_diffusion
         ->initialize(navier_stokes_matrix.block(0,0),
                      data);
@@ -80,11 +81,9 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
-    preconditioner_projection.reset(new PreconditionerTypeProjection());
+    preconditioner_projection.reset(new LA::PreconditionAMG());
 
-    PreconditionerTypeProjection::AdditionalData     data;
-    data.strengthen_diagonal = 0.1;
-    data.extra_off_diagonals = 60;
+    LA::PreconditionAMG::AdditionalData     data;
 
     preconditioner_projection->initialize(navier_stokes_laplace_matrix.block(1,1),
                                           data);
@@ -100,9 +99,9 @@ void BuoyantFluidSolver<dim>::build_pressure_mass_preconditioner()
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
-    preconditioner_pressure_mass.reset(new PreconditionerTypePressureMass());
+    preconditioner_pressure_mass.reset(new LA::PreconditionJacobi());
 
-    PreconditionerTypePressureMass::AdditionalData     data;
+    LA::PreconditionJacobi::AdditionalData  data;
 
     preconditioner_pressure_mass->initialize(navier_stokes_mass_matrix.block(1,1),
                                              data);
@@ -114,34 +113,35 @@ template<int dim>
 void BuoyantFluidSolver<dim>::solve_diffusion_system()
 {
     if (parameters.verbose)
-        std::cout << "      Solving diffusion system..." << std::endl;
+        pcout << "      Solving diffusion system..." << std::endl;
 
     TimerOutput::Scope  timer_section(computing_timer, "solve diffusion");
 
     // solve linear system
     SolverControl   solver_control(parameters.n_max_iter,
-                                   std::max(parameters.rel_tol * navier_stokes_solution.block(0).l2_norm(),
+                                   std::max(parameters.rel_tol * navier_stokes_rhs.block(0).l2_norm(),
                                             parameters.abs_tol));;
 
-    navier_stokes_constraints.set_zero(navier_stokes_solution);
+    LA::BlockVector     distributed_solution(navier_stokes_rhs);
+    distributed_solution = navier_stokes_solution;
 
     try
     {
         if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
         {
-            SolverGMRES<Vector<double>> gmres(solver_control);
+            LA::SolverGMRES gmres(solver_control);
 
             gmres.solve(navier_stokes_matrix.block(0,0),
-                        navier_stokes_solution.block(0),
+                        distributed_solution.block(0),
                         navier_stokes_rhs.block(0),
-                        *preconditioner_nonsymmetric_diffusion);
+                        *preconditioner_asymmetric_diffusion);
         }
         else
         {
-        SolverCG<Vector<double>>  cg(solver_control);
+        LA::SolverCG    cg(solver_control);
 
         cg.solve(navier_stokes_matrix.block(0,0),
-                 navier_stokes_solution.block(0),
+                 distributed_solution.block(0),
                  navier_stokes_rhs.block(0),
                  *preconditioner_symmetric_diffusion);
         }
@@ -169,11 +169,13 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
                 << std::endl;
         std::abort();
     }
-    navier_stokes_constraints.distribute(navier_stokes_solution);
+    navier_stokes_constraints.distribute(distributed_solution);
+
+    navier_stokes_solution = distributed_solution;
 
     // write info message
     if (parameters.verbose)
-        std::cout << "      "
+        pcout << "      "
                 << solver_control.last_step()
                 << " CG iterations for diffusion step"
                 << std::endl;
@@ -184,7 +186,7 @@ template<int dim>
 void BuoyantFluidSolver<dim>::solve_projection_system()
 {
     if (parameters.verbose)
-        std::cout << "      Solving projection system..." << std::endl;
+        pcout << "      Solving projection system..." << std::endl;
 
     TimerOutput::Scope  timer_section(computing_timer, "solve projection");
 
@@ -193,14 +195,15 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                                    std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
                                    parameters.abs_tol));
 
-    SolverCG<>      cg(solver_control);
+    LA::SolverCG    cg(solver_control);
 
-    stokes_pressure_constraints.set_zero(phi_pressure);
+    LA::BlockVector     distributed_solution(navier_stokes_rhs);
+    distributed_solution = phi_pressure;
 
     try
     {
         cg.solve(navier_stokes_laplace_matrix.block(1,1),
-                 phi_pressure.block(1),
+                 distributed_solution.block(1),
                  navier_stokes_rhs.block(1),
                  *preconditioner_projection);
     }
@@ -227,23 +230,24 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << std::endl;
         std::abort();
     }
-    stokes_pressure_constraints.distribute(phi_pressure);
+    stokes_pressure_constraints.distribute(distributed_solution);
 
     // write info message
     if (parameters.verbose)
-        std::cout << "      "
+        pcout << "      "
                 << solver_control.last_step()
                 << " CG iterations for projection step"
                 << std::endl;
 
 
+    phi_pressure.block(1) = distributed_solution.block(1);
     {
         const double mean_value = VectorTools::compute_mean_value(mapping,
                                                                   navier_stokes_dof_handler,
                                                                   QGauss<dim>(parameters.velocity_degree - 1),
                                                                   phi_pressure,
                                                                   dim);
-        phi_pressure.block(1).add(-mean_value);
+        distributed_solution.block(1).add(-mean_value);
     }
     {
 
@@ -251,20 +255,26 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                                            imex_coefficients.alpha(timestep/old_timestep):
                                            std::vector<double>({1.0,-1.0,0.0}));
 
-        phi_pressure.block(1) *= alpha[0] / timestep;
+        distributed_solution.block(1) *= alpha[0] / timestep;
 
     }
+    phi_pressure.block(1) = distributed_solution.block(1);
 
     if (parameters.projection_scheme == PressureUpdateType::StandardForm)
     {
         // update pressure
-        navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
-        navier_stokes_solution.block(1) += phi_pressure.block(1);
+        LA::Vector distributed_old_pressure(distributed_solution.block(1));
+        distributed_old_pressure = old_navier_stokes_solution.block(1);
+        distributed_solution.block(1) += distributed_old_pressure;
+
+        navier_stokes_solution.block(1) = distributed_solution.block(1);
     }
     else if (parameters.projection_scheme == PressureUpdateType::IrrotationalForm)
     {
+        distributed_solution.block(0) = navier_stokes_solution.block(0);
+
         navier_stokes_matrix.block(0,1).Tvmult(navier_stokes_rhs.block(1),
-                                               navier_stokes_solution.block(0));
+                                               distributed_solution.block(0));
         navier_stokes_rhs.block(1) *= -1.0;
 
         // solve linear system for irrotational update
@@ -272,13 +282,12 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                                        std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
                                                 parameters.abs_tol));
 
-        SolverCG<>      cg(solver_control);
+        LA::SolverCG    cg(solver_control);
 
-        navier_stokes_constraints.set_zero(navier_stokes_solution);
         try
         {
             cg.solve(navier_stokes_mass_matrix.block(1,1),
-                     navier_stokes_solution.block(1),
+                     distributed_solution.block(1),
                      navier_stokes_rhs.block(1),
                      *preconditioner_pressure_mass);
         }
@@ -305,19 +314,25 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                     << std::endl;
             std::abort();
         }
-        navier_stokes_constraints.distribute(navier_stokes_solution);
+        navier_stokes_constraints.distribute(distributed_solution);
 
         if (parameters.verbose)
-            std::cout << "      "
+            pcout << "      "
                       << solver_control.last_step()
                       << " CG iterations for pressure mass matrix solve"
                       << std::endl;
 
-        navier_stokes_solution.block(1) *= -equation_coefficients[1];
+        distributed_solution.block(1) *= -equation_coefficients[1];
 
         // update pressure
-        navier_stokes_solution.block(1) += old_navier_stokes_solution.block(1);
-        navier_stokes_solution.block(1) += phi_pressure.block(1);
+        LA::Vector aux_distributed_vector(distributed_solution.block(1));
+        aux_distributed_vector = phi_pressure.block(1);
+        distributed_solution.block(1) += aux_distributed_vector;
+
+        aux_distributed_vector = old_navier_stokes_solution.block(1);
+        distributed_solution.block(1) += aux_distributed_vector;
+
+        navier_stokes_solution.block(1) = distributed_solution.block(1);
     }
 }
 
@@ -325,9 +340,10 @@ template<int dim>
 void BuoyantFluidSolver<dim>::compute_initial_pressure()
 {
     if (parameters.verbose)
-        std::cout << "Computing initial pressure..." << std::endl;
+        pcout << "Computing initial pressure..." << std::endl;
 
     assemble_navier_stokes_matrices();
+
     build_projection_preconditioner();
 
     const FEValuesExtractors::Scalar    pressure(dim);
@@ -357,7 +373,8 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
     std::vector<double>  temperature_values(n_q_points);
 
     for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
-    {
+        if (cell->is_locally_owned())
+        {
         local_rhs = 0;
 
         cell->get_dof_indices(local_dof_indices);
@@ -393,20 +410,24 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
                                                                navier_stokes_rhs);
     }
 
+    navier_stokes_rhs.compress(VectorOperation::add);
+
+
     TimerOutput::Scope  timer_section(computing_timer, "solve projection");
 
     // solve linear system for pressure update
-    SolverControl   solver_control(parameters.n_max_iter,
+    SolverControl   solver_control(navier_stokes_laplace_matrix.block(1,1).m(),
                                    std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
                                    parameters.abs_tol));
 
-    SolverCG<>      cg(solver_control);
+    LA::SolverCG    cg(solver_control);
 
-    stokes_pressure_constraints.set_zero(old_navier_stokes_solution);
+    LA::BlockVector distributed_solution(navier_stokes_rhs);
+
     try
     {
         cg.solve(navier_stokes_laplace_matrix.block(1,1),
-                 old_navier_stokes_solution.block(1),
+                 distributed_solution.block(1),
                  navier_stokes_rhs.block(1),
                  *preconditioner_projection);
     }
@@ -433,21 +454,23 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
                 << std::endl;
         std::abort();
     }
-    stokes_pressure_constraints.distribute(old_navier_stokes_solution);
+    stokes_pressure_constraints.distribute(distributed_solution);
 
     // write info message
     if (parameters.verbose)
-        std::cout << "   "
+        pcout << "   "
                 << solver_control.last_step()
                 << " CG iterations for projection step"
                 << std::endl;
 
+    old_navier_stokes_solution = distributed_solution;
     const double mean_value = VectorTools::compute_mean_value(mapping,
                                                               navier_stokes_dof_handler,
                                                               QGauss<dim>(parameters.velocity_degree - 1),
                                                               old_navier_stokes_solution,
                                                               dim);
-    old_navier_stokes_solution.block(1).add(-mean_value);
+    distributed_solution.block(1).add(-mean_value);
+    old_navier_stokes_solution = distributed_solution;
 }
 }  // namespace BuoyantFluid
 

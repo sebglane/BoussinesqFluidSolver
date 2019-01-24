@@ -279,28 +279,29 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     navier_stokes_rhs = 0;
 
     // compute extrapolated pressure
-    LA::Vector  extrapolated_pressure(old_navier_stokes_solution.block(1));
+    LA::Vector  extrapolated_pressure(navier_stokes_rhs.block(1));
+    LA::Vector  aux_distributed_pressure(navier_stokes_rhs.block(1));
     const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
     switch (timestep_number)
     {
         case 0:
             break;
         case 1:
-            extrapolated_pressure.add(-alpha[1], old_phi_pressure.block(1));
+            aux_distributed_pressure = old_phi_pressure.block(1);
+            extrapolated_pressure.add(-alpha[1], aux_distributed_pressure);
             break;
         default:
-            extrapolated_pressure.add(-alpha[1]/alpha[0], old_phi_pressure.block(1),
-                                      -alpha[2]/alpha[0], old_old_phi_pressure.block(1));
+            aux_distributed_pressure = old_phi_pressure.block(1);
+            extrapolated_pressure.add(-alpha[1]/alpha[0], aux_distributed_pressure);
+            aux_distributed_pressure = old_old_phi_pressure.block(1);
+            extrapolated_pressure.add(-alpha[2]/alpha[0], aux_distributed_pressure);
             break;
     }
     extrapolated_pressure *= -1.0;
 
     // add pressure gradient to right-hand side
-    LA::Vector  distributed_pressure(navier_stokes_rhs.block(1));
-    distributed_pressure = extrapolated_pressure;
-
     navier_stokes_matrix.block(0,1).vmult(navier_stokes_rhs.block(0),
-                                          distributed_pressure);
+                                          extrapolated_pressure);
 
     // assemble right-hand side function
     WorkStream::run(

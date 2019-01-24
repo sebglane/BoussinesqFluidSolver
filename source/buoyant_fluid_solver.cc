@@ -12,7 +12,7 @@
 
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/grid_refinement.h>
+#include <deal.II/distributed/grid_refinement.h>
 
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
@@ -28,9 +28,10 @@ namespace BuoyantFluid {
 template<int dim>
 BuoyantFluidSolver<dim>::BuoyantFluidSolver(Parameters &parameters_)
 :
+mpi_communicator(MPI_COMM_WORLD),
 parameters(parameters_),
 imex_coefficients(parameters.imex_scheme),
-triangulation(),
+triangulation(mpi_communicator),
 mapping(4),
 // temperature part
 temperature_fe(parameters.temperature_degree),
@@ -44,32 +45,36 @@ equation_coefficients{(parameters.rotation ? 2.0/parameters.Ek: 0.0),
                       (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
                       (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
                       (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr) )},
+// parallel output
+pcout(std::cout,
+      (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
 // monitor
-computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
+computing_timer(mpi_communicator, pcout,
+                TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
 timestep(parameters.initial_timestep),
 old_timestep(parameters.initial_timestep)
 {
-    std::cout << "Boussinesq solver by S. Glane\n"
-              << "This program solves the Navier-Stokes system with thermal convection.\n"
-              << "The stable Taylor-Hood (P2-P1) element and an approximative Schur complement solver is used.\n\n"
-              << "The governing equations are\n\n"
-              << "\t-- Incompressibility constraint:\n\t\t div(v) = 0,\n\n"
-              << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega .times. v\n"
-              << "\t\t\t\t= - grad(p) + C2 div(grad(v)) - C3 T g,\n\n"
-              << "\t-- Heat conduction equation:\n\t\tdT/dt + v . grad(T) = C4 div(grad(T)).\n\n"
-              << "The coefficients C1 to C4 depend on the normalization as follows.\n\n";
+    pcout << "Boussinesq solver by S. Glane\n"
+          << "This program solves the Navier-Stokes system with thermal convection.\n"
+          << "The stable Taylor-Hood (P2-P1) element and an approximative Schur complement solver is used.\n\n"
+          << "The governing equations are\n\n"
+          << "\t-- Incompressibility constraint:\n\t\t div(v) = 0,\n\n"
+          << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega .times. v\n"
+          << "\t\t\t\t= - grad(p) + C2 div(grad(v)) - C3 T g,\n\n"
+          << "\t-- Heat conduction equation:\n\t\tdT/dt + v . grad(T) = C4 div(grad(T)).\n\n"
+          << "The coefficients C1 to C4 depend on the normalization as follows.\n\n";
 
     // generate a nice table of the equation coefficients
-    std::cout << "\n\n"
-              << "+-------------------+----------+---------------+----------+-------------------+\n"
-              << "|       case        |    C1    |      C2       |    C3    |        C4         |\n"
-              << "+-------------------+----------+---------------+----------+-------------------+\n"
-              << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |\n"
-              << "| Rotating case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           |\n"
-              << "+-------------------+----------+---------------+----------+-------------------+\n";
+    pcout << "\n\n"
+          << "+-------------------+----------+---------------+----------+-------------------+\n"
+          << "|       case        |    C1    |      C2       |    C3    |        C4         |\n"
+          << "+-------------------+----------+---------------+----------+-------------------+\n"
+          << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |\n"
+          << "| Rotating case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           |\n"
+          << "+-------------------+----------+---------------+----------+-------------------+\n";
 
-    std::cout << std::endl << "You have chosen ";
+    pcout << std::endl << "You have chosen ";
 
     std::stringstream ss;
     ss << "+----------+----------+----------+----------+----------+----------+----------+\n"
@@ -80,16 +85,16 @@ old_timestep(parameters.initial_timestep)
     {
         rotation_vector[dim-1] = 1.0;
 
-        std::cout << "the rotating case with the following parameters: "
-                  << std::endl;
+        pcout << "the rotating case with the following parameters: "
+              << std::endl;
         ss << "| ";
         ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ek;
         ss << " | ";
     }
     else
     {
-        std::cout << "the non-rotating case with the following parameters: "
-                  << std::endl;
+        pcout << "the non-rotating case with the following parameters: "
+              << std::endl;
         ss << "|     0    | ";
     }
 
@@ -107,11 +112,9 @@ old_timestep(parameters.initial_timestep)
 
     ss << "\n+----------+----------+----------+----------+----------+----------+----------+\n";
 
-    std::cout << std::endl << ss.str()
-              << std::endl << std::fixed << std::flush;
+    pcout << std::endl << ss.str()
+          << std::endl << std::fixed << std::flush;
 }
-
-
 
 template<int dim>
 void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
@@ -119,7 +122,7 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     TimerOutput::Scope  timer_section(computing_timer, "update time step");
 
     if (parameters.verbose)
-        std::cout << "   Updating time step..." << std::endl;
+        pcout << "   Updating time step..." << std::endl;
 
     old_timestep = timestep;
     timestep_modified = false;
@@ -163,13 +166,15 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
                   << std::endl;
 }
 
+/*
+ *
 template<int dim>
 void BuoyantFluidSolver<dim>::refine_mesh()
 {
     TimerOutput::Scope timer_section(computing_timer, "refine mesh");
 
     if (parameters.verbose)
-        std::cout << "   Mesh refinement..." << std::endl;
+        pcout << "   Mesh refinement..." << std::endl;
 
     // error estimation based on temperature
     Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
@@ -262,6 +267,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         navier_stokes_constraints.distribute(old_old_phi_pressure);
     }
 }
+*
+*/
 
 template<int dim>
 void BuoyantFluidSolver<dim>::run()
@@ -277,13 +284,17 @@ void BuoyantFluidSolver<dim>::run()
                         0.5,
                         -0.5,
                         parameters.temperature_perturbation);
+    {
+        LA::Vector  distributed_temperature(temperature_rhs);
 
-    VectorTools::interpolate(mapping,
-                             temperature_dof_handler,
-                             initial_temperature,
-                             old_temperature_solution);
+        VectorTools::interpolate(mapping,
+                                 temperature_dof_handler,
+                                 initial_temperature,
+                                 distributed_temperature);
+        temperature_constraints.distribute(distributed_temperature);
 
-    temperature_constraints.distribute(old_temperature_solution);
+        old_temperature_solution = distributed_temperature;
+    }
 
     // compute consistent initial pressure
     compute_initial_pressure();
@@ -300,10 +311,10 @@ void BuoyantFluidSolver<dim>::run()
 
     do
     {
-        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
-                  << "time: " << time << ", "
-                  << "time step: " << timestep
-                  << std::endl;
+        pcout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
+              << "time: " << time << ", "
+              << "time step: " << timestep
+              << std::endl;
 
         // evolve temperature
         temperature_step();
@@ -316,12 +327,12 @@ void BuoyantFluidSolver<dim>::run()
 
             const std::pair<double,double> rms_values = compute_rms_values();
 
-            std::cout << "   velocity rms value: "
-                      << rms_values.first
-                      << std::endl
-                      << "   temperature rms value: "
-                      << rms_values.second
-                      << std::endl;
+            pcout << "   velocity rms value: "
+                  << rms_values.first
+                  << std::endl
+                  << "   temperature rms value: "
+                  << rms_values.second
+                  << std::endl;
         }
 
         {
@@ -330,19 +341,23 @@ void BuoyantFluidSolver<dim>::run()
             cfl_number = compute_cfl_number();
 
             if (timestep_number % parameters.cfl_frequency == 0)
-                std::cout << "   current cfl number: "
-                          << cfl_number
-                          << std::endl;
+                pcout << "   current cfl number: "
+                      << cfl_number
+                      << std::endl;
         }
         if (timestep_number % parameters.vtk_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "output results");
             output_results();
         }
+        /*
+         *
         // mesh refinement
         if ((timestep_number > 0)
                 && (timestep_number % parameters.refinement_frequency == 0))
             refine_mesh();
+         *
+         */
         // adjust time step
         if (parameters.adaptive_timestep && timestep_number > 1)
             update_timestep(cfl_number);
@@ -352,18 +367,36 @@ void BuoyantFluidSolver<dim>::run()
         old_temperature_solution = temperature_solution;
 
         // extrapolate temperature solution
-        temperature_solution.sadd(1. + timestep / old_timestep,
-                                  timestep / old_timestep,
-                                  old_old_temperature_solution);
+        {
+            LA::Vector  extrapolated_solution(temperature_rhs),
+                        old_old_distributed_solution(temperature_rhs);
+            extrapolated_solution = old_temperature_solution;
+            old_old_distributed_solution = old_old_temperature_solution;
 
-        // extrapolate stokes solution
+            extrapolated_solution.sadd(1. + timestep / old_timestep,
+                                       timestep / old_timestep,
+                                       old_old_distributed_solution);
+
+            temperature_solution = extrapolated_solution;
+        }
+
+        // move stokes solution
         old_old_navier_stokes_solution = old_navier_stokes_solution;
         old_navier_stokes_solution = navier_stokes_solution;
 
         // extrapolate stokes solution
-        navier_stokes_solution.sadd(1. + timestep / old_timestep,
-                                    timestep / old_timestep,
-                                    old_old_navier_stokes_solution);
+        {
+            LA::BlockVector extrapolated_solution(navier_stokes_rhs),
+                            old_old_distributed_solution(navier_stokes_rhs);
+            extrapolated_solution = old_navier_stokes_solution;
+            old_old_distributed_solution = old_old_navier_stokes_solution;
+
+            extrapolated_solution.sadd(1. + timestep / old_timestep,
+                                       timestep / old_timestep,
+                                       old_old_distributed_solution);
+
+            navier_stokes_solution = extrapolated_solution;
+        }
 
         // copy auxiliary pressure solution
         old_old_phi_pressure = old_phi_pressure;
@@ -378,12 +411,12 @@ void BuoyantFluidSolver<dim>::run()
     if (parameters.n_steps % parameters.vtk_frequency != 0)
         output_results();
 
-    std::cout << std::fixed;
+    pcout << std::fixed;
 
     computing_timer.print_summary();
     computing_timer.reset();
 
-    std::cout << std::endl;
+    pcout << std::endl;
 }
 
 }  // namespace BouyantFluid
