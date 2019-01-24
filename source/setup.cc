@@ -25,6 +25,8 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     pcout << "Setup dofs..." << std::endl;
 
     // temperature part
+    locally_owned_temperature_dofs.clear();
+    locally_relevant_temperature_dofs.clear();
     temperature_dof_handler.distribute_dofs(temperature_fe);
 
     DoFRenumbering::Cuthill_McKee(temperature_dof_handler);
@@ -71,6 +73,8 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                            true);
 
     // stokes part
+    locally_owned_stokes_dofs.clear();
+    locally_relevant_stokes_dofs.clear();
     navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
 
     DoFRenumbering::Cuthill_McKee(navier_stokes_dof_handler);
@@ -264,7 +268,10 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system
 (const std::vector<IndexSet>    &locally_owned_dofs,
  const std::vector<IndexSet>    &locally_releveant_dofs)
 {
+    preconditioner_symmetric_diffusion.reset();
+    preconditioner_asymmetric_diffusion.reset();
     preconditioner_projection.reset();
+    preconditioner_pressure_mass.reset();
 
     navier_stokes_matrix.clear();
     navier_stokes_mass_matrix.clear();

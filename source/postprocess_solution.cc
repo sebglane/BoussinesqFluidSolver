@@ -205,7 +205,6 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
     data_out.build_patches();
 
     // write output to disk
-    static int out_index = 0;
     const std::string filename = ("solution-" +
                                   (initial_condition ? "initial":
                                    Utilities::int_to_string (timestep_number, 5)) +
@@ -228,13 +227,13 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                                 ".vtu");
         const std::string
         pvtu_master_filename = ("solution-" +
-                                Utilities::int_to_string (out_index, 5) +
+                                Utilities::int_to_string (timestep_number, 5) +
                                 ".pvtu");
         std::ofstream pvtu_master(pvtu_master_filename.c_str());
         data_out.write_pvtu_record(pvtu_master, filenames);
         const std::string
         visit_master_filename = ("solution-" +
-                                 Utilities::int_to_string (out_index, 5) +
+                                 Utilities::int_to_string (timestep_number, 5) +
                                  ".visit");
         std::ofstream visit_master(visit_master_filename.c_str());
         DataOutBase::write_visit_record(visit_master, filenames);
