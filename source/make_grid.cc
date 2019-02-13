@@ -16,7 +16,7 @@ void BuoyantFluidSolver<dim>::make_grid()
 {
     TimerOutput::Scope timer_section(computing_timer, "make grid");
 
-    pcout << "   Making grid..." << std::endl;
+    pcout << "Making grid..." << std::endl;
 
     GridFactory::SphericalShell<dim> spherical_shell(parameters.aspect_ratio);
     spherical_shell.create_coarse_mesh(triangulation);
@@ -25,7 +25,7 @@ void BuoyantFluidSolver<dim>::make_grid()
     if (parameters.n_global_refinements > 0)
     {
         triangulation.refine_global(parameters.n_global_refinements);
-        pcout << "      Number of cells after "
+        pcout << "   Number of cells after "
               << parameters.n_global_refinements
               << " global refinements: "
               << triangulation.n_active_cells()
@@ -42,11 +42,11 @@ void BuoyantFluidSolver<dim>::make_grid()
                     cell->set_refine_flag();
             triangulation.execute_coarsening_and_refinement();
         }
-        std::cout << "      Number of cells after "
-                  << parameters.n_boundary_refinements
-                  << " boundary refinements: "
-                  << triangulation.n_active_cells()
-                  << std::endl;
+        pcout << "   Number of cells after "
+              << parameters.n_boundary_refinements
+              << " boundary refinements: "
+              << triangulation.n_active_cells()
+              << std::endl;
     }
 }
 }  // namespace BuoyantFluid

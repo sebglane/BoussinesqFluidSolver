@@ -51,10 +51,11 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
 
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
     {
-        preconditioner_asymmetric_diffusion.reset(new LA::PreconditionSOR());
+        preconditioner_asymmetric_diffusion.reset(new LA::PreconditionAMG());
 
-        LA::PreconditionSOR::AdditionalData     data;
-        data.omega = 1.5;
+        LA::PreconditionAMG::AdditionalData     data;
+        data.higher_order_elements = true;
+        data.elliptic = true;
 
         preconditioner_asymmetric_diffusion
         ->initialize(navier_stokes_matrix.block(0,0),

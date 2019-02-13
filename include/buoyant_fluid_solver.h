@@ -247,7 +247,7 @@ private:
     std::shared_ptr<LA::PreconditionSSOR>
     preconditioner_temperature;
 
-    std::shared_ptr<LA::PreconditionSOR>
+    std::shared_ptr<LA::PreconditionAMG>
     preconditioner_asymmetric_diffusion;
 
     std::shared_ptr<LA::PreconditionSSOR>
