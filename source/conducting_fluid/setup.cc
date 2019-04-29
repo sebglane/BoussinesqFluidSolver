@@ -9,6 +9,7 @@
 
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
+#include <deal.II/dofs/function_map.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -18,22 +19,6 @@
 namespace ConductingFluid {
 
 template<int dim>
-void ConductingFluidSolver<dim>::set_active_fe_indices()
-{
-    std::cout << "   Setup active indices..." << std::endl;
-    for (auto cell: magnetic_dof_handler.active_cell_iterators())
-    {
-        if (cell->material_id() == DomainIdentifiers::MaterialIds::Fluid ||
-            cell->material_id() == DomainIdentifiers::MaterialIds::Solid)
-            cell->set_active_fe_index(0);
-        else if (cell->material_id() == DomainIdentifiers::MaterialIds::Vacuum)
-            cell->set_active_fe_index(1);
-        else
-            Assert (false, ExcInternalError());
-    }
-}
-
-template<int dim>
 void ConductingFluidSolver<dim>::setup_dofs()
 {
 
@@ -41,11 +26,9 @@ void ConductingFluidSolver<dim>::setup_dofs()
 
     std::cout << "   Setup dofs..." << std::endl;
 
-    set_active_fe_indices();
+    magnetic_dof_handler.distribute_dofs(magnetic_fe);
 
-    magnetic_dof_handler.distribute_dofs(fe_collection);
-
-    DoFRenumbering::boost::king_ordering(magnetic_dof_handler);
+    DoFRenumbering::Cuthill_McKee(magnetic_dof_handler);
 
     DoFRenumbering::block_wise(magnetic_dof_handler);
 
@@ -60,10 +43,10 @@ void ConductingFluidSolver<dim>::setup_dofs()
               << "      Number of degrees of freedom: "
               << magnetic_dof_handler.n_dofs()
               << std::endl
-              << "      Number of vector potential degrees of freedom: "
+              << "      Number of magnetic field degrees of freedom: "
               << dofs_per_block[0]
               << std::endl
-              << "      Number of scalar potential degrees of freedom: "
+              << "      Number of pseudo pressure degrees of freedom: "
               << dofs_per_block[1]
               << std::endl;
 
@@ -73,13 +56,36 @@ void ConductingFluidSolver<dim>::setup_dofs()
         DoFTools::make_hanging_node_constraints(magnetic_dof_handler,
                                                 magnetic_constraints);
 
-        const FEValuesExtractors::Scalar scalar_potential(dim);
-        VectorTools::interpolate_boundary_values(magnetic_dof_handler,
-                                                 DomainIdentifiers::BoundaryIds::FVB,
-                                                 ZeroFunction<dim>(dim+1),
-                                                 magnetic_constraints,
-                                                 fe_collection.component_mask(scalar_potential));
+        const FEValuesExtractors::Scalar    pseudo_pressure(dim);
 
+        {
+            const Functions::ZeroFunction<dim>  zero_function(dim+1);
+            typename FunctionMap<dim,double>::type  function_map
+            {{types::boundary_id(DomainIdentifiers::BoundaryIds::ICB),&zero_function},
+             {types::boundary_id(DomainIdentifiers::BoundaryIds::CMB),&zero_function}};
+
+            VectorTools::interpolate_boundary_values(
+                    magnetic_dof_handler,
+                    function_map,
+                    magnetic_constraints,
+                    magnetic_fe.component_mask(pseudo_pressure));
+        }
+        {
+            const Functions::ZeroFunction<dim>  zero_function(dim);
+            typename FunctionMap<dim,double>::type  function_map
+                    {{types::boundary_id(DomainIdentifiers::BoundaryIds::ICB),&zero_function},
+                     {types::boundary_id(DomainIdentifiers::BoundaryIds::CMB),&zero_function}};
+
+            const std::set<types::boundary_id>  boundary_ids{DomainIdentifiers::BoundaryIds::ICB,
+                                                             DomainIdentifiers::BoundaryIds::CMB};
+
+            VectorTools::compute_nonzero_tangential_flux_constraints(
+                    magnetic_dof_handler,
+                    0,
+                    boundary_ids,
+                    function_map,
+                    magnetic_constraints);
+        }
         magnetic_constraints.close();
     }
 
@@ -88,44 +94,113 @@ void ConductingFluidSolver<dim>::setup_dofs()
     magnetic_solution.reinit(dofs_per_block);
     old_magnetic_solution.reinit(dofs_per_block);
     old_old_magnetic_solution.reinit(dofs_per_block);
+
     magnetic_rhs.reinit(dofs_per_block);
+
+    /*
+     *
+    phi_pseudo_pressure.reinit(dofs_per_block);
+    old_phi_pseudo_pressure.reinit(dofs_per_block);
+    old_old_phi_pseudo_pressure.reinit(dofs_per_block);
+     *
+     */
+
 }
 
 template<int dim>
 void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block)
 {
-    BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                    dofs_per_block);
-    Table<2,DoFTools::Coupling> cell_coupling(fe_collection.n_components(),
-            fe_collection.n_components());
-    Table<2,DoFTools::Coupling> face_coupling(fe_collection.n_components(),
-            fe_collection.n_components());
+    magnetic_matrix.clear();
+//    magnetic_curl_matrix.clear();
+//    magnetic_mass_matrix.clear();
 
-    for (unsigned int i=0; i<fe_collection.n_components(); ++i)
-        for (unsigned int j=0; j<fe_collection.n_components(); ++j)
-            if ((i<dim && j<dim) || (i==j))
-                cell_coupling[i][j] = DoFTools::Coupling::always;
-            else if ((i<dim && j==dim) || (i==dim && j<dim))
-                face_coupling[i][j] = DoFTools::Coupling::nonzero;
+    // sparsity pattern for magnetic matrix
+    {
+        Table<2,DoFTools::Coupling> coupling(dim+1, dim+1);
 
-    DoFTools::make_flux_sparsity_pattern(magnetic_dof_handler,
-            dsp,
-            cell_coupling,
-            face_coupling);
+        for (unsigned int i=0; i<dim+1; ++i)
+            for (unsigned int j=0; j<dim+1; ++j)
+                if (i<dim && j<dim)
+                    coupling[i][j] = DoFTools::Coupling::always;
+                else if ((i<dim && j==dim) || (i==dim && j<dim))
+                    coupling[i][j] = DoFTools::Coupling::always;
+                else if (i==dim && i==j)
+                    coupling[i][j] = DoFTools::Coupling::always;
+                else
+                    coupling[i][j] = DoFTools::none;
 
-    magnetic_constraints.condense(dsp);
-    magnetic_sparsity_pattern.copy_from(dsp);
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
+                                        dofs_per_block);
 
+        DoFTools::make_sparsity_pattern(magnetic_dof_handler,
+                                        coupling,
+                                        dsp,
+                                        magnetic_constraints);
+
+        magnetic_sparsity_pattern.copy_from(dsp);
+    }
     magnetic_matrix.reinit(magnetic_sparsity_pattern);
+
+    /*
+     *
+
+    // sparsity pattern for laplace matrix
+    {
+        // auxiliary coupling structure
+        Table<2,DoFTools::Coupling> pseudo_pressure_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c==dim)
+                    pseudo_pressure_coupling[c][d] = DoFTools::always;
+                else
+                    pseudo_pressure_coupling[c][d] = DoFTools::none;
+
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
+                                        dofs_per_block);
+
+        DoFTools::make_sparsity_pattern(magnetic_dof_handler,
+                                        pseudo_pressure_coupling,
+                                        dsp,
+                                        magnetic_constraints);
+        magnetic_curl_sparsity_pattern.copy_from(dsp);
+    }
+    magnetic_curl_matrix.reinit(magnetic_curl_sparsity_pattern);
+    magnetic_curl_matrix.block(0,0).reinit(magnetic_sparsity_pattern.block(0,0));
+
+
+    // sparsity pattern for mass matrix
+    {
+        // auxiliary coupling structure
+        Table<2,DoFTools::Coupling> pseudo_pressure_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c==dim)
+                    pseudo_pressure_coupling[c][d] = DoFTools::always;
+                else
+                    pseudo_pressure_coupling[c][d] = DoFTools::none;
+
+        BlockDynamicSparsityPattern dsp(dofs_per_block,
+                                        dofs_per_block);
+
+        DoFTools::make_sparsity_pattern(magnetic_dof_handler,
+                                        pseudo_pressure_coupling,
+                                        dsp,
+                                        magnetic_constraints);
+
+        magnetic_mass_sparsity_pattern.copy_from(dsp);
+    }
+    magnetic_mass_matrix.reinit(magnetic_mass_sparsity_pattern);
+    magnetic_mass_matrix.block(0,0).reinit(magnetic_sparsity_pattern.block(0,0));
+
+     *
+     */
+
+    rebuild_magnetic_matrices = true;
 }
+
 }  // namespace ConductingFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<2>::set_active_fe_indices();
-template void ConductingFluid::ConductingFluidSolver<3>::set_active_fe_indices();
-
-template void ConductingFluid::ConductingFluidSolver<2>::setup_dofs();
 template void ConductingFluid::ConductingFluidSolver<3>::setup_dofs();
 
-template void ConductingFluid::ConductingFluidSolver<2>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block);
 template void ConductingFluid::ConductingFluidSolver<3>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block);

@@ -29,49 +29,19 @@ enum BoundaryIds
 };
 
 template<int dim>
-class TemperatureInitialValues : public Function<dim>
-{
-public:
-    TemperatureInitialValues(const double inner_radius,
-                             const double outer_radius,
-                             const double inner_temperature,
-                             const double outer_temperature);
-
-    virtual double value(const Point<dim>   &point,
-                         const unsigned int component = 0) const;
-
-private:
-    const double ri;
-    const double ro;
-    const double Ti;
-    const double To;
-};
-
-template<int dim>
 class InitialField : public Function<dim>
 {
 public:
-    InitialField(const double outer_radius = 1.0);
+    InitialField(const double inner_radius = 0.35, const double outer_radius = 1.0);
 
     virtual void vector_value(const Point<dim>   &point,
                               Vector<double>     &values) const;
 
 private:
-    const double ro;
-    const double tol = 1e-12;
+    const double inner_radius;
+    const double outer_radius;
 };
 
-template <int dim>
-class GravityVector : public TensorFunction<1,dim>
-{
-public:
-    GravityVector();
-
-    virtual Tensor<1,dim>   value(const Point<dim> &p) const;
-
-    virtual void            value_list(const std::vector<Point<dim>>    &points,
-                                       std::vector<Tensor<1,dim>>       &values) const;
-};
 
 }  // namespace EquationData
 

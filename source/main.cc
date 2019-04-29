@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
         else
             parameter_filename = "default_parameters.prm";
 
-        ConductingFluidSolver<3> problem_3D(1e-3, 10, 1);
+        ConductingFluidSolver<3>    problem_3D;
         problem_3D.run();
     }
     catch (std::exception &exc)

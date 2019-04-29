@@ -5,10 +5,8 @@
  *      Author: sg
  */
 
-#include <deal.II/grid/grid_out.h>
-
-#include "grid_factory.h"
 #include "conducting_fluid_solver.h"
+#include "grid_factory.h"
 
 namespace ConductingFluid {
 
@@ -19,19 +17,12 @@ void ConductingFluidSolver<dim>::make_grid()
 
     std::cout << "   Making grid..." << std::endl;
 
-    GridFactory::SphericalShell<dim> spherical_shell(0.35,
-                                                     true,
-                                                     true,
-                                                     3.0);
+    GridFactory::SphericalShell<dim> spherical_shell(aspect_ratio);
     spherical_shell.create_coarse_mesh(triangulation);
 
     const Point<dim> center;
 
-    for (auto cell: triangulation.active_cell_iterators())
-        if (cell->center().distance(center) < 1.0)
-            cell->set_material_id(DomainIdentifiers::MaterialIds::Fluid);
-
-    const unsigned int n_global_refinements = 2;
+    const unsigned int n_global_refinements = 3;
     // initial global refinements
     if (n_global_refinements > 0)
     {
@@ -43,17 +34,18 @@ void ConductingFluidSolver<dim>::make_grid()
                   << std::endl;
     }
 
-    const unsigned int n_interface_refinements = 0;
+    const unsigned int n_interface_refinements = 1;
+
     // initial boundary refinements
     if (n_interface_refinements > 0)
     {
         for (unsigned int step=0; step<n_interface_refinements; ++step)
         {
             for (auto cell: triangulation.active_cell_iterators())
-                if (!cell->at_boundary() &&
+                if (cell->at_boundary() &&
                         cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
                     for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
-                        if (cell->neighbor(f)->material_id()== DomainIdentifiers::MaterialIds::Vacuum)
+                        if (cell->face(f)->at_boundary())
                             cell->set_refine_flag();
             triangulation.execute_coarsening_and_refinement();
         }
@@ -67,5 +59,4 @@ void ConductingFluidSolver<dim>::make_grid()
 }  // namespace BuoyantFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<2>::make_grid();
 template void ConductingFluid::ConductingFluidSolver<3>::make_grid();

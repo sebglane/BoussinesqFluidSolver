@@ -8,8 +8,6 @@
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/dofs/dof_renumbering.h>
 
-#include <deal.II/fe/fe_nedelec.h>
-#include <deal.II/fe/fe_nothing.h>
 #include <deal.II/fe/fe_q.h>
 
 #include <deal.II/grid/grid_refinement.h>
@@ -31,80 +29,69 @@ namespace ConductingFluid {
 
 template<int dim>
 ConductingFluidSolver<dim>::ConductingFluidSolver(
-        const double       &timestep,
-        const unsigned int &n_steps,
-        const unsigned int &output_frequency,
-        const unsigned int &refinement_frequency)
+        const double        &aspect_ratio,
+        const double        &timestep,
+        const unsigned int  &n_steps,
+        const unsigned int  &vtk_frequency,
+        const double        &t_final)
 :
-magnetic_degree(1),
+magnetic_degree(2),
+pseudo_pressure_degree(magnetic_degree - 1),
 imex_coefficients(TimeStepping::IMEXType::CNAB),
-triangulation(),
+triangulation(Triangulation<dim>::MeshSmoothing::limit_level_difference_at_vertices),
 mapping(4),
 // magnetic part
-interior_magnetic_fe(FE_Nedelec<dim>(magnetic_degree), 1,
-                     FE_Nothing<dim>(), 1),
-exterior_magnetic_fe(FE_Nothing<dim>(dim), 1,
-                     FE_Q<dim>(magnetic_degree), 1),
+magnetic_fe(FESystem<dim>(FE_Q<dim>(magnetic_degree), dim), 1,
+            FE_Q<dim>(pseudo_pressure_degree), 1),
 magnetic_dof_handler(triangulation),
 // coefficients
 equation_coefficients{1.0},
 // monitor
 computing_timer(std::cout, TimerOutput::summary, TimerOutput::wall_times),
-// time stepping
+//// time stepping
 timestep(timestep),
 old_timestep(timestep),
-// TODO: goes to parameter file later
+aspect_ratio(aspect_ratio),
+//// TODO: goes to parameter file later
+t_final(t_final),
 n_steps(n_steps),
-output_frequency(output_frequency),
-refinement_frequency(refinement_frequency),
-interpolate_initial_values(false)
-{
-    fe_collection.push_back(interior_magnetic_fe);
-    fe_collection.push_back(exterior_magnetic_fe);
-}
+vtk_frequency(vtk_frequency),
+rms_frequency(1)
+{}
+
 
 template<int dim>
-void ConductingFluidSolver<dim>::output_results() const
+void ConductingFluidSolver<dim>::output_results(const bool initial_condition) const
 {
     std::cout << "   Output results..." << std::endl;
 
-    PostProcessor<dim>  postprocessor;
+    std::vector<std::string> solution_names(dim,"magnetic_field");
+    solution_names.push_back("pseudo_pressure");
 
-//    std::vector<std::string> solution_names(dim,"vector_potential");
-//    solution_names.push_back("scalar_potential");
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
 
-//    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-//    data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-//    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-//
     // prepare data out object
-    DataOut<dim, hp::DoFHandler<dim>>    data_out;
+    DataOut<dim, DoFHandler<dim>>    data_out;
     data_out.attach_dof_handler(magnetic_dof_handler);
-    data_out.add_data_vector(magnetic_solution, postprocessor);
-//    data_out.add_data_vector(magnetic_solution,
-//                             solution_names,
-//                             DataOut<dim,hp::DoFHandler<dim> >::type_dof_data,
-//                             data_component_interpretation);
-
-    Vector<float>   material_ids(triangulation.n_active_cells());
-    for (auto cell: triangulation.active_cell_iterators())
-        if (cell->is_locally_owned())
-            if (cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
-                material_ids(cell->active_cell_index()) = 0.;
-            else if (cell->material_id() == DomainIdentifiers::MaterialIds::Vacuum)
-                material_ids(cell->active_cell_index()) = 1.;
-            else
-                Assert(false, ExcInternalError());
-    data_out.add_data_vector(material_ids, "material_id");
+    data_out.add_data_vector(magnetic_solution,
+                             solution_names,
+                             DataOut<dim,DoFHandler<dim> >::type_dof_data,
+                             data_component_interpretation);
 
     data_out.build_patches();
+
     // write output to disk
     const std::string filename = ("solution-" +
-                                  Utilities::int_to_string(timestep_number, 5) +
+                                  (initial_condition ?
+                                  "initial":
+                                  Utilities::int_to_string(timestep_number, 5)) +
                                   ".vtk");
     std::ofstream output(filename.c_str());
     data_out.write_vtk(output);
 }
+
 
 /*
  *
@@ -155,7 +142,8 @@ void ConductingFluidSolver<dim>::refine_mesh()
 }
  *
  */
-
+/*
+ *
 
 template <int dim>
 void ConductingFluidSolver<dim>::solve()
@@ -190,89 +178,62 @@ void ConductingFluidSolver<dim>::solve()
             << " GMRES iterations for magnetic system, "
             << std::endl;
 }
-
+ *
+ */
 
 template<int dim>
 std::pair<double, double> ConductingFluidSolver<dim>::compute_rms_values() const
 {
-    const QGauss<dim> quadrature(magnetic_degree + 2);
+    const QGauss<dim> quadrature(magnetic_degree + 1);
 
-    hp::QCollection<dim> q_collection;
-    q_collection.push_back(quadrature);
-    q_collection.push_back(quadrature);
+    FEValues<dim> fe_values(mapping,
+                            magnetic_fe,
+                            quadrature,
+                            update_values|
+                            update_JxW_values);
 
-    hp::FEValues<dim> hp_fe_values(fe_collection,
-                                   q_collection,
-                                   update_values|
-                                   update_JxW_values);
+    const unsigned int n_q_points = quadrature.size();
 
-    const FEValuesExtractors::Vector vector_potential(0);
-    const FEValuesExtractors::Scalar scalar_potential(dim);
+    std::vector<Tensor<1,dim>>  magnetic_field_values(n_q_points);
+    std::vector<double>  pseudo_pressure_values(n_q_points);
 
-    std::vector<Tensor<1,dim>>  vector_potential_values(q_collection[0].size());
-    std::vector<double>         scalar_potential_values(q_collection[1].size());
+    const FEValuesExtractors::Vector magnetic_field(0);
+    const FEValuesExtractors::Scalar pseudo_pressure(dim);
 
 
-    double rms_vector_potential = 0;
-    double rms_scalar_potential = 0;
-    double fluid_volume = 0;
-    double vacuum_volume = 0;
+    double rms_magnetic_field = 0;
+    double rms_pseudo_pressure = 0;
+    double volume = 0;
 
     for (auto cell: magnetic_dof_handler.active_cell_iterators())
     {
-        hp_fe_values.reinit(cell);
+        fe_values.reinit(cell);
 
-        const FEValues<dim> &fe_values = hp_fe_values.get_present_fe_values();
-
-        if (cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
+        fe_values[magnetic_field].get_function_values(magnetic_solution,
+                                                      magnetic_field_values);
+        fe_values[pseudo_pressure].get_function_values(magnetic_solution,
+                                                       pseudo_pressure_values);
+        for (unsigned int q=0; q<n_q_points; ++q)
         {
-            AssertDimension(vector_potential_values.size(),
-                            fe_values.n_quadrature_points);
-
-            fe_values[vector_potential].get_function_values(magnetic_solution,
-                                                            vector_potential_values);
-
-            for (unsigned int q=0; q<fe_values.n_quadrature_points; ++q)
-            {
-                rms_vector_potential += vector_potential_values[q] * vector_potential_values[q] * fe_values.JxW(q);
-                fluid_volume += fe_values.JxW(q);
-            }
+            rms_magnetic_field += magnetic_field_values[q] * magnetic_field_values[q] * fe_values.JxW(q);
+            rms_pseudo_pressure += pseudo_pressure_values[q] * pseudo_pressure_values[q] * fe_values.JxW(q);
+            volume += fe_values.JxW(q);
         }
-        // vacuum domain
-        else if (cell->material_id() == DomainIdentifiers::MaterialIds::Vacuum)
-        {
-            AssertDimension(scalar_potential_values.size(),
-                            fe_values.n_quadrature_points);
-
-            fe_values[scalar_potential].get_function_values(magnetic_solution,
-                                                            scalar_potential_values);
-
-            for (unsigned int q=0; q<fe_values.n_quadrature_points; ++q)
-            {
-                rms_scalar_potential += scalar_potential_values[q] * scalar_potential_values[q] * fe_values.JxW(q);
-                vacuum_volume += fe_values.JxW(q);
-            }
-        }
-        else
-            Assert(false, ExcInternalError());
     }
 
-    rms_vector_potential /= fluid_volume;
-    AssertIsFinite(rms_vector_potential);
-    Assert(rms_vector_potential >= 0,
-           ExcLowerRangeType<double>(rms_vector_potential, 0));
+    rms_magnetic_field /= volume;
+    AssertIsFinite(rms_magnetic_field);
+    Assert(rms_magnetic_field >= 0,
+           ExcLowerRangeType<double>(rms_magnetic_field, 0));
 
-    rms_scalar_potential /= vacuum_volume;
-    AssertIsFinite(rms_scalar_potential);
-    Assert(rms_scalar_potential >= 0,
-           ExcLowerRangeType<double>(rms_scalar_potential, 0));
+    rms_pseudo_pressure /= volume;
+    AssertIsFinite(rms_pseudo_pressure);
+    Assert(rms_pseudo_pressure >= 0,
+           ExcLowerRangeType<double>(rms_pseudo_pressure, 0));
 
-    return std::pair<double,double>(std::sqrt(rms_vector_potential),
-                                    std::sqrt(rms_scalar_potential));
+    return std::pair<double,double>(std::sqrt(rms_magnetic_field),
+                                    std::sqrt(rms_pseudo_pressure));
 }
-
-
-
 
 template<int dim>
 void ConductingFluidSolver<dim>::run()
@@ -281,113 +242,77 @@ void ConductingFluidSolver<dim>::run()
 
     setup_dofs();
 
-    if (interpolate_initial_values)
-    {
-        const EquationData::InitialField<dim> initial_potential;
-        const Functions::ZeroFunction<dim>             zero_function(dim+1);
+    const EquationData::InitialField<dim>   initial_field;
 
-        const std::map<types::material_id, const Function<dim>*>
-        initial_values = {{DomainIdentifiers::MaterialIds::Fluid, &initial_potential},
-                          {EquationData::BoundaryIds::CMB, &zero_function}};
-
-        VectorTools::interpolate_based_on_material_id(mapping,
-                                                      magnetic_dof_handler,
-                                                      initial_values,
-                                                      old_magnetic_solution);
-
-        magnetic_constraints.distribute(old_magnetic_solution);
-    }
-    else
-    {
-        const EquationData::InitialField<dim> initial_potential;
-        QGauss<dim> quadrature(magnetic_degree+2);
-
-        hp::QCollection<dim> q_collection;
-        q_collection.push_back(quadrature);
-        q_collection.push_back(quadrature);
-
-        VectorTools::project(magnetic_dof_handler,
-                             magnetic_constraints,
-                             q_collection,
-                             initial_potential,
+    VectorTools::interpolate(mapping,
+                             magnetic_dof_handler,
+                             initial_field,
                              old_magnetic_solution);
 
-        magnetic_constraints.distribute(old_magnetic_solution);
-    }
-
-
-    std::cout << "   vector potential linfty_norm: "
-                     << old_magnetic_solution.block(0).linfty_norm()
-                     << std::endl
-                     << "   scalar potential linfty_norm: "
-                     << old_magnetic_solution.block(1).linfty_norm()
-                     << std::endl;
+    magnetic_constraints.distribute(old_magnetic_solution);
 
     magnetic_solution = old_magnetic_solution;
 
-    output_results();
+    output_results(true);
 
-//    double time = 0;
-//
-//    do
-//    {
-//        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
-//                  << "time: " << time << ", "
-//                  << "time step: " << timestep
-//                  << std::endl;
-//
-//        assemble_magnetic_system();
-//
-//        solve();
-//        {
-//            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
-//
-//            const std::pair<double,double> rms_values = compute_rms_values();
-//
-//            std::cout << "   vector potential rms value: "
-//                      << rms_values.first
-//                      << std::endl
-//                      << "   scalar potential rms value: "
-//                      << rms_values.second
-//                      << std::endl;
-//        }
-//
-//        std::cout << "   vector potential linfty_norm: "
-//                         << magnetic_solution.block(0).linfty_norm()
-//                         << std::endl
-//                         << "   scalar potential linfty_norm: "
-//                         << magnetic_solution.block(1).linfty_norm()
-//                         << std::endl;
-//
-//        if (timestep_number % output_frequency == 0 && timestep_number != 0)
-//        {
-//            TimerOutput::Scope  timer_section(computing_timer, "output results");
-//            output_results();
-//        }
-//        /*
-//         *
-//        // mesh refinement
-//        if ((timestep_number > 0) && (timestep_number % refinement_frequency == 0))
-//            refine_mesh();
-//         *
-//         */
-//
-//        // advance magnetic solution
-//        old_old_magnetic_solution = old_magnetic_solution;
-//        old_magnetic_solution = magnetic_solution;
-//
-//        // extrapolate magnetic solution
-//        magnetic_solution.sadd(1. + timestep / old_timestep,
-//                               timestep / old_timestep,
-//                               old_old_magnetic_solution);
-//        // advance in time
-//        time += timestep;
-//        ++timestep_number;
-//
-//    } while (timestep_number <= n_steps);
-//
-//    if (n_steps % output_frequency != 0)
-//        output_results();
+    double time = 0;
+
+    do
+    {
+        std::cout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
+                  << "time: " << time << ", "
+                  << "time step: " << timestep
+                  << std::endl;
+
+        // evolve magnetic field
+        magnetic_step();
+
+        if (timestep_number % rms_frequency == 0)
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
+
+            const std::pair<double,double> rms_values = compute_rms_values();
+
+            std::cout << "   magnetic field rms value: "
+                      << rms_values.first
+                      << std::endl
+                      << "   pseudo pressure rms value: "
+                      << rms_values.second
+                      << std::endl;
+        }
+
+        if (timestep_number % vtk_frequency == 0)
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "output results");
+            output_results();
+        }
+
+        // copy magnetic solution
+        old_old_magnetic_solution = old_magnetic_solution;
+        old_magnetic_solution = magnetic_solution;
+
+        /*
+         *
+
+
+        // copy auxiliary pseudo pressure solution
+        old_old_phi_pseudo_pressure = old_phi_pseudo_pressure;
+        old_magnetic_solution = phi_pseudo_pressure;
+
+         *
+         */
+        // extrapolate magnetic solution
+        magnetic_solution.sadd(1. + timestep / old_timestep,
+                               timestep / old_timestep,
+                               old_old_magnetic_solution);
+        // advance in time
+        time += timestep;
+        ++timestep_number;
+
+    } while (timestep_number < n_steps && time < t_final);
+
+    if (n_steps % vtk_frequency != 0)
+        output_results();
 
     std::cout << std::fixed;
 

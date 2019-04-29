@@ -18,7 +18,6 @@
 #include <deal.II/grid/tria.h>
 
 #include <deal.II/hp/dof_handler.h>
-#include <deal.II/hp/fe_collection.h>
 #include <deal.II/hp/fe_values.h>
 
 #include <deal.II/lac/block_vector.h>
@@ -52,49 +51,46 @@ template <int dim>
 class ConductingFluidSolver
 {
 public:
-    ConductingFluidSolver(const double       &time_step = 1e-3,
-                          const unsigned int &n_steps = 10,
-                          const unsigned int &output_frequency = 5,
-                          const unsigned int &refinement_frequency = 100);
+    ConductingFluidSolver(const double          &aspect_ratio = 0.35,
+                          const double          &time_step = 1e-3,
+                          const unsigned int    &n_steps = 10,
+                          const unsigned int    &vtk_frequency = 2,
+                          const double          &t_final = 1.0);
 
     void run();
 
 private:
     void make_grid();
 
-    void set_active_fe_indices();
-
     void setup_dofs();
 
     void setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block);
 
-    void assemble_magnetic_system();
-
-    void assemble_magnetic_interface_term(
-            const FEFaceValuesBase<dim> &int_fe_face_values,
-            const FEFaceValuesBase<dim> &ext_fe_face_values,
-            std::vector<typename FEValuesViews::Vector<dim>::curl_type>  &int_curl_values,
-            std::vector<double> &ext_phi_values,
-            FullMatrix<double> &local_interface_matrix) const;
-
-    void distribute_magnetic_interface_term(
-            const FullMatrix<double> &local_interface_matrix,
-            const std::vector<types::global_dof_index> &local_fluid_dof_indices,
-            const std::vector<types::global_dof_index> &local_vacuum_dof_indices);
-
-    void solve();
-
-    void output_results() const;
-
-    std::pair<double, double> compute_rms_values() const;
+    void assemble_magnetic_matrices();
+    void assemble_magnetic_rhs();
 
     /*
      *
-    void refine_mesh();
+    void assemble_diffusion_system();
+    void assemble_projection_system();
+
+//    void build_diffusion_preconditioner();
+//    void build_projection_preconditioner();
+//    void build_pressure_mass_preconditioner();
+
+    void solve_diffusion_system();
+    void solve_projection_system();
      *
      */
 
+    void magnetic_step();
+
+    void output_results(const bool initial_step=false) const;
+
+    std::pair<double, double> compute_rms_values() const;
+
     const unsigned int magnetic_degree;
+    const unsigned int pseudo_pressure_degree;
 
     TimeStepping::IMEXCoefficients  imex_coefficients;
 
@@ -103,23 +99,43 @@ private:
     const MappingQ<dim>             mapping;
 
     // magnetic FiniteElement and DoFHandler
-    FESystem<dim>   interior_magnetic_fe;
-    FESystem<dim>   exterior_magnetic_fe;
+    FESystem<dim>                   magnetic_fe;
 
-    hp::FECollection<dim> fe_collection;
-    hp::DoFHandler<dim>   magnetic_dof_handler;
+    DoFHandler<dim>                 magnetic_dof_handler;
 
     // magnetic part
     ConstraintMatrix                magnetic_constraints;
 
     BlockSparsityPattern            magnetic_sparsity_pattern;
+    /*
+     *
+    BlockSparsityPattern            magnetic_mass_sparsity_pattern;
+    BlockSparsityPattern            magnetic_curl_sparsity_pattern;
+     *
+     */
+
     BlockSparseMatrix<double>       magnetic_matrix;
+    /*
+     *
+    BlockSparseMatrix<double>       magnetic_curl_matrix;
+    BlockSparseMatrix<double>       magnetic_mass_matrix;
+     *
+     */
 
     // vectors of magnetic part
     BlockVector<double>             magnetic_solution;
     BlockVector<double>             old_magnetic_solution;
     BlockVector<double>             old_old_magnetic_solution;
+
     BlockVector<double>             magnetic_rhs;
+
+    /*
+     *
+    BlockVector<double>             phi_pseudo_pressure;
+    BlockVector<double>             old_phi_pseudo_pressure;
+    BlockVector<double>             old_old_phi_pseudo_pressure;
+     *
+     */
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -128,22 +144,29 @@ private:
     TimerOutput                     computing_timer;
 
 private:
+    const double        aspect_ratio;
+
     // TODO: goes to parameter file later
-    const unsigned int n_steps;
-    const unsigned int output_frequency;
-    const unsigned int refinement_frequency;
+    const unsigned int  n_steps;
+    const unsigned int  vtk_frequency;
+    const unsigned int  rms_frequency;
+
+    const double        t_final;
 
     // time stepping variables
-    double                          timestep;
-    double                          old_timestep;
-    unsigned int                    timestep_number = 0;
-    bool                            timestep_modified = false;
+    double              timestep;
+    double              old_timestep;
+
+    bool                timestep_modified = false;
+
+    unsigned int        timestep_number = 0;
+//    bool                            timestep_modified = false;
 
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_magnetic_matrices = true;
-    bool    rebuild_magnetic_preconditioner = true;
+    bool    rebuild_magnetic_diffusion_preconditioner = true;
+    bool    rebuild_magnetic_projection_preconditioner = true;
 
-    bool    interpolate_initial_values;
 };
 }  // namespace ConductingFluid
 
