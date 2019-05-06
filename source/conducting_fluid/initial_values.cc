@@ -43,30 +43,35 @@ void InitialField<3>::vector_value(
     Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(theta, -numbers::PI));
     Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
 
-    const double b_r = 5./(8. * sqrt(2.)) * (
-            -48. * inner_radius * outer_radius + (4. * outer_radius + inner_radius * (4. + 3. * outer_radius)) * 6. * radius
-            -4. * (4. + 3. * (inner_radius + outer_radius) ) * pow(radius, 2.) + 9. * pow(radius, 3.)
-            ) * cos(theta);
+    const double b_r = 5./(8. * sqrt(2.)) *
+            (
+                - 48. * inner_radius * outer_radius
+                + (4. * outer_radius + inner_radius * (4. + 3. * outer_radius) ) * 6. * radius
+                - 4. * (4. + 3. * (inner_radius + outer_radius) ) * pow(radius, 2.)
+                + 9. * pow(radius, 3.)
+            ) / radius * cos(theta);
     AssertIsFinite(b_r);
 
-    const double b_theta = 15. / (4. * sqrt(2.)) * (radius - outer_radius) * (radius - inner_radius) *
-            (3. * radius - 4.) / radius * sin(theta);
+    const double b_theta = 15. / (4. * sqrt(2.))
+            * (radius - outer_radius)
+            * (radius - inner_radius)
+            * (3. * radius - 4.) / radius * sin(theta);
     AssertIsFinite(b_theta);
 
-    const double b_phi = 15. / (8. * sqrt(2.)) * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius)) * sin(2. * theta);
+    const double b_phi = 15. / (8. * sqrt(2.))
+            * sin(numbers::PI * (radius -  inner_radius) / (outer_radius - inner_radius) )
+            * sin(2. * theta);
     AssertIsFinite(b_phi);
 
-    value[0] = b_r * sin(theta) * cos(phi)
-            + b_theta * cos(theta) * cos(phi)
+    value[0] = (b_r * sin(theta) + b_theta * cos(theta) ) * cos(phi)
             - b_phi * sin(phi);
     AssertIsFinite(value[0]);
 
-    value[1] = b_r * sin(theta) * sin(phi)
-            + b_theta * cos(theta) * cos(phi)
+    value[1] = (b_r * sin(theta) + b_theta * cos(theta) ) * sin(phi)
             + b_phi * cos(phi);
     AssertIsFinite(value[1]);
 
-    value[2] = b_r * sin(theta) - b_theta * cos(theta);
+    value[2] = b_r * cos(theta) - b_theta * sin(theta);
     AssertIsFinite(value[2]);
 
     value[3] = 0.0;
