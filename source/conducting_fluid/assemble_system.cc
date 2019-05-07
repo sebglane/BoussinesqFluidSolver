@@ -17,13 +17,12 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
 {
     TimerOutput::Scope timer_section(computing_timer, "assemble magnetic system");
 
-    std::cout << "      Assembling magnetic system..." << std::endl;
-
     if (rebuild_magnetic_matrices)
     {
         magnetic_matrix = 0;
-//        magnetic_mass_matrix = 0;
-//        magnetic_curl_matrix = 0;
+        magnetic_mass_matrix = 0;
+        magnetic_curl_matrix = 0;
+        magnetic_stabilization_matrix = 0;
     }
 
     const QGauss<dim> quadrature(magnetic_degree + 1);
@@ -41,10 +40,12 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
 
     FullMatrix<double> local_matrix(dofs_per_cell,
                                     dofs_per_cell);
-//    FullMatrix<double> local_mass_matrix(dofs_per_cell,
-//                                         dofs_per_cell);
-//    FullMatrix<double> local_curl_matrix(dofs_per_cell,
-//                                         dofs_per_cell);
+    FullMatrix<double> local_mass_matrix(dofs_per_cell,
+                                         dofs_per_cell);
+    FullMatrix<double> local_curl_matrix(dofs_per_cell,
+                                         dofs_per_cell);
+    FullMatrix<double> local_stabilization_matrix(dofs_per_cell,
+                                                  dofs_per_cell);
 
     std::vector<types::global_dof_index>    local_dof_indices(dofs_per_cell);
 
@@ -60,26 +61,22 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
     const FEValuesExtractors::Vector magnetic_field(0);
     const FEValuesExtractors::Scalar pseudo_pressure(dim);
 
-    const std::vector<double> alpha = (timestep_number != 0?
-                                       imex_coefficients.alpha(timestep/old_timestep):
-                                       std::vector<double>({1.0,-1.0,0.0}));
-    const std::vector<double> gamma = (timestep_number != 0?
-                                       imex_coefficients.gamma(timestep/old_timestep):
-                                       std::vector<double>({1.0,0.0,0.0}));
+    const double    D = (1. - aspect_ratio);
 
-    const std::vector<double>   tau{(1. - aspect_ratio) * (1. - aspect_ratio) / equation_coefficients[0],
-                                    equation_coefficients[0] / (1. - aspect_ratio) / (1. - aspect_ratio)};
+    const std::vector<double>   tau{D * D / equation_coefficients[0],
+                                    equation_coefficients[0] / D / D};
 
     for (auto cell: magnetic_dof_handler.active_cell_iterators())
     {
         fe_values.reinit(cell);
 
-        const double h = cell->diameter();
+        const double tau_h_sqr= tau[1] * pow(cell->diameter(), 2);
 
         // assemble volume terms
         local_matrix = 0;
-//        local_mass_matrix = 0;
-//        local_curl_matrix = 0;
+        local_mass_matrix = 0;
+        local_curl_matrix = 0;
+        local_stabilization_matrix = 0;
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
@@ -96,38 +93,29 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
 
             // symmetric local matrix assembly
             for (unsigned int i=0; i<dofs_per_cell; ++i)
+            {
                 for (unsigned int j=0; j<=i; ++j)
                 {
                     local_matrix(i, j) += (
-                              (alpha[0] / timestep) * phi_magnetic_field[i] * phi_magnetic_field[j]
-                            + equation_coefficients[0] * gamma[0] * curl_phi_magnetic_field[i] * curl_phi_magnetic_field[j]
-                            + tau[0] * div_phi_magnetic_field[i] * div_phi_magnetic_field[j]
-                            + (tau[1] * h * h) * grad_phi_pseudo_pressure[i] * grad_phi_pseudo_pressure[j]
-                            + grad_phi_pseudo_pressure[i] * phi_magnetic_field[j]
-                            + phi_magnetic_field[i] * grad_phi_pseudo_pressure[i]
-                            ) * fe_values.JxW(q);
-
-                    /*
-                     *
-
-                    local_matrix(i, j) += (
                               grad_phi_pseudo_pressure[i] * phi_magnetic_field[j]
-                            + phi_magnetic_field[i] * grad_phi_pseudo_pressure[i]
+                            + phi_magnetic_field[i] * grad_phi_pseudo_pressure[j]
                             ) * fe_values.JxW(q);
                     local_mass_matrix(i, j) += (
                               phi_magnetic_field[i] * phi_magnetic_field[j]
-                            + phi_pseudo_pressure[i] * phi_pseudo_pressure[j]
                             ) * fe_values.JxW(q);
                     local_curl_matrix(i, j) += (
                               curl_phi_magnetic_field[i] * curl_phi_magnetic_field[j]
-                            + tau[0] * div_phi_magnetic_field[i] * div_phi_magnetic_field[j]
                             + grad_phi_pseudo_pressure[i] * grad_phi_pseudo_pressure[j]
-                            + tau[1] * h * h * grad_phi_pseudo_pressure[i] * grad_phi_pseudo_pressure[j]
+                            ) * fe_values.JxW(q);
+                }
+                for (unsigned int j=0; j<dofs_per_cell; ++j)
+                    local_stabilization_matrix(i, j) += (
+                              tau[0] * div_phi_magnetic_field[i] * div_phi_magnetic_field[j]
+                            + tau_h_sqr * grad_phi_pseudo_pressure[i] * grad_phi_pseudo_pressure[j]
+                            + tau_h_sqr * phi_magnetic_field[i] * grad_phi_pseudo_pressure[j]
                             ) * fe_values.JxW(q);
 
-                     *
-                     */
-                }
+            }
         }
 
         // symmetrize local matrix
@@ -135,8 +123,8 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
             for (unsigned int j=i+1; j<dofs_per_cell; ++j)
             {
                 local_matrix(i, j) = local_matrix(j, i);
-//                local_mass_matrix(i, j) = local_mass_matrix(j, i);
-//                local_curl_matrix(i, j) = local_curl_matrix(j, i);
+                local_mass_matrix(i, j) = local_mass_matrix(j, i);
+                local_curl_matrix(i, j) = local_curl_matrix(j, i);
             }
 
         // distribute local matrix to global matrix
@@ -146,15 +134,21 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
                 local_matrix,
                 local_dof_indices,
                 magnetic_matrix);
-//        magnetic_constraints.distribute_local_to_global(
-//                local_mass_matrix,
-//                local_dof_indices,
-//                magnetic_mass_matrix);
-//        magnetic_constraints.distribute_local_to_global(
-//                local_curl_matrix,
-//                local_dof_indices,
-//                magnetic_curl_matrix);
 
+        magnetic_constraints.distribute_local_to_global(
+                local_mass_matrix,
+                local_dof_indices,
+                magnetic_mass_matrix);
+
+        magnetic_constraints.distribute_local_to_global(
+                local_curl_matrix,
+                local_dof_indices,
+                magnetic_curl_matrix);
+
+        magnetic_constraints.distribute_local_to_global(
+                local_stabilization_matrix,
+                local_dof_indices,
+                magnetic_stabilization_matrix);
     }
     rebuild_magnetic_matrices = false;
 }
@@ -162,11 +156,11 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
 template<int dim>
 void ConductingFluidSolver<dim>::assemble_magnetic_rhs()
 {
-    TimerOutput::Scope timer_section(computing_timer, "assemble magnetic system");
-
     std::cout << "      Assembling magnetic rhs..." << std::endl;
 
-    const QGauss<dim> quadrature(magnetic_degree + 1);
+    TimerOutput::Scope timer_section(computing_timer, "assemble magnetic rhs");
+
+    const QGauss<dim>   quadrature(magnetic_degree + 1);
 
     FEValues<dim> fe_values(mapping,
                             magnetic_fe,
@@ -254,16 +248,13 @@ void ConductingFluidSolver<dim>::assemble_magnetic_rhs()
     }
 }
 
-/*
- *
+
 template<int dim>
 void ConductingFluidSolver<dim>::assemble_diffusion_system()
 {
-
     std::cout << "      Assembling diffusion system..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "assemble diffusion system");
-
 
     if (rebuild_magnetic_matrices)
     {
@@ -271,22 +262,29 @@ void ConductingFluidSolver<dim>::assemble_diffusion_system()
     }
 
     if (timestep_number == 0)
+    // perform an Euler step
     {
         // time stepping coefficients
         const std::vector<double> alpha = std::vector<double>({1.0,-1.0,0.0});
         const std::vector<double> gamma = std::vector<double>({1.0,0.0,0.0});
 
-        // correct (0,0)-block of magnetic system
+        // initialize system matrix with mass matrix
         magnetic_matrix.block(0,0).copy_from(magnetic_mass_matrix.block(0,0));
         magnetic_matrix.block(0,0) *= alpha[0] / timestep;
 
+        // add curl-curl term to system matrix
         magnetic_matrix.block(0,0).add(equation_coefficients[0] * gamma[0],
                                        magnetic_curl_matrix.block(0,0));
+
+        // add stabilization term to system matrix
+        magnetic_matrix.block(0,0).add(1.0,
+                                       magnetic_stabilization_matrix.block(0,0));
 
         // rebuild the preconditioner of diffusion solve
         rebuild_magnetic_diffusion_preconditioner = true;
     }
-    else
+    else if (timestep_number == 1 || timestep_modified)
+    // perform an IMEX step
     {
         Assert(timestep_number != 0, ExcInternalError());
 
@@ -294,46 +292,30 @@ void ConductingFluidSolver<dim>::assemble_diffusion_system()
         const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
         const std::vector<double> gamma = imex_coefficients.gamma(timestep/old_timestep);
 
-        if (timestep_number == 1 || timestep_modified)
-        {
-            magnetic_matrix.block(0,0).copy_from(magnetic_mass_matrix.block(0,0));
-            magnetic_matrix.block(0,0) *= alpha[0] / timestep;
+        // initialize system matrix with mass matrix
+        magnetic_matrix.block(0,0).copy_from(magnetic_mass_matrix.block(0,0));
+        magnetic_matrix.block(0,0) *= alpha[0] / timestep;
 
-            magnetic_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
-                                           magnetic_curl_matrix.block(0,0));
+        // add curl-curl term to system matrix
+        magnetic_matrix.block(0,0).add(equation_coefficients[1] * gamma[0],
+                                       magnetic_curl_matrix.block(0,0));
 
+        // add stabilization term to system matrix
+        magnetic_matrix.block(0,0).add(1.0,
+                                       magnetic_stabilization_matrix.block(0,0));
 
-            // rebuild the preconditioner of diffusion solve
-            rebuild_magnetic_diffusion_preconditioner = true;
-        }
+        // rebuild the preconditioner of diffusion solve
+        rebuild_magnetic_diffusion_preconditioner = true;
     }
-
-    // reset all entries
-    magnetic_rhs = 0;
-
-    // compute extrapolated pressure
-    Vector<double>  extrapolated_pseudo_pressure(magnetic_rhs.block(1));
-    const std::vector<double> alpha = imex_coefficients.alpha(timestep/old_timestep);
-    switch (timestep_number)
-    {
-        case 0:
-            break;
-        case 1:
-            extrapolated_pseudo_pressure.add(-alpha[1], old_phi_pseudo_pressure.block(1));
-            break;
-        default:
-            extrapolated_pseudo_pressure.add(-alpha[1]/alpha[0], old_phi_pseudo_pressure.block(1));
-            extrapolated_pseudo_pressure.add(-alpha[2]/alpha[0], old_phi_pseudo_pressure.block(1));
-            break;
-    }
-    extrapolated_pseudo_pressure *= -1.0;
 
     // add pressure gradient to right-hand side
     magnetic_matrix.block(0,1).vmult(magnetic_rhs.block(0),
-                                     extrapolated_pseudo_pressure);
+                                     old_magnetic_solution.block(1));
+    magnetic_rhs.block(0) *= -1.0;
 
-    // assemble right-hand side function
+    // assemble other terms
     assemble_magnetic_rhs();
+
 }
 
 template<int dim>
@@ -348,20 +330,34 @@ void ConductingFluidSolver<dim>::assemble_projection_system()
         assemble_magnetic_matrices();
     }
 
+    // compute stiffness matrix with PSPG term
+    if (timestep_number == 0 || timestep_modified)
+    {
+        //
+        magnetic_matrix.block(1,1).copy_from(magnetic_curl_matrix.block(1,1));
+
+        magnetic_matrix.block(1,1).add(1. / timestep,
+                                       magnetic_stabilization_matrix.block(1,1));
+    }
+
+    // compute right-hand side vector, initialize with: a0 / dt * ( B, grad(s))
     magnetic_matrix.block(1,0).vmult(magnetic_rhs.block(1),
                                      magnetic_solution.block(0));
-}
- *
- */
 
+    const std::vector<double> alpha = (timestep_number != 0?
+                                       imex_coefficients.alpha(timestep/old_timestep):
+                                       std::vector<double>({1.0,-1.0,0.0}));
+
+    magnetic_rhs.block(1) *= alpha[0] / timestep;
+
+    // add pressure laplacian to right-hand side
+    magnetic_curl_matrix.block(1,1).vmult_add(magnetic_rhs.block(1),
+                                              old_magnetic_solution.block(1));
+}
 }  // namespace ConductingFluid
 
 // explicit instantiation
 template void ConductingFluid::ConductingFluidSolver<3>::assemble_magnetic_matrices();
 template void ConductingFluid::ConductingFluidSolver<3>::assemble_magnetic_rhs();
-/*
- *
 template void ConductingFluid::ConductingFluidSolver<3>::assemble_diffusion_system();
 template void ConductingFluid::ConductingFluidSolver<3>::assemble_projection_system();
- *
- */

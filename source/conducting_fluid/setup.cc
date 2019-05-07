@@ -96,23 +96,15 @@ void ConductingFluidSolver<dim>::setup_dofs()
     old_old_magnetic_solution.reinit(dofs_per_block);
 
     magnetic_rhs.reinit(dofs_per_block);
-
-    /*
-     *
-    phi_pseudo_pressure.reinit(dofs_per_block);
-    old_phi_pseudo_pressure.reinit(dofs_per_block);
-    old_old_phi_pseudo_pressure.reinit(dofs_per_block);
-     *
-     */
-
 }
 
 template<int dim>
 void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block)
 {
     magnetic_matrix.clear();
-//    magnetic_curl_matrix.clear();
-//    magnetic_mass_matrix.clear();
+    magnetic_curl_matrix.clear();
+    magnetic_mass_matrix.clear();
+    magnetic_stabilization_matrix.clear();
 
     // sparsity pattern for magnetic matrix
     {
@@ -120,10 +112,13 @@ void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types
 
         for (unsigned int i=0; i<dim+1; ++i)
             for (unsigned int j=0; j<dim+1; ++j)
+                // magnetic-magnetic coupling
                 if (i<dim && j<dim)
                     coupling[i][j] = DoFTools::Coupling::always;
+                // magnetic-pseudo pressure coupling
                 else if ((i<dim && j==dim) || (i==dim && j<dim))
                     coupling[i][j] = DoFTools::Coupling::always;
+                // pseudo pressure-pseudo pressure coupling
                 else if (i==dim && i==j)
                     coupling[i][j] = DoFTools::Coupling::always;
                 else
@@ -141,59 +136,36 @@ void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types
     }
     magnetic_matrix.reinit(magnetic_sparsity_pattern);
 
-    /*
-     *
-
-    // sparsity pattern for laplace matrix
+    // void sparsity pattern
     {
         // auxiliary coupling structure
-        Table<2,DoFTools::Coupling> pseudo_pressure_coupling(dim+1, dim+1);
+        Table<2,DoFTools::Coupling> void_coupling(dim+1, dim+1);
         for (unsigned int c=0; c<dim+1; ++c)
             for (unsigned int d=0; d<dim+1; ++d)
-                if (c==d && c==dim)
-                    pseudo_pressure_coupling[c][d] = DoFTools::always;
-                else
-                    pseudo_pressure_coupling[c][d] = DoFTools::none;
+                void_coupling[c][d] = DoFTools::none;
 
         BlockDynamicSparsityPattern dsp(dofs_per_block,
                                         dofs_per_block);
 
         DoFTools::make_sparsity_pattern(magnetic_dof_handler,
-                                        pseudo_pressure_coupling,
+                                        void_coupling,
                                         dsp,
                                         magnetic_constraints);
-        magnetic_curl_sparsity_pattern.copy_from(dsp);
+
+        void_sparsity_pattern.copy_from(dsp);
     }
-    magnetic_curl_matrix.reinit(magnetic_curl_sparsity_pattern);
+
+    magnetic_curl_matrix.reinit(void_sparsity_pattern);
     magnetic_curl_matrix.block(0,0).reinit(magnetic_sparsity_pattern.block(0,0));
+    magnetic_curl_matrix.block(1,1).reinit(magnetic_sparsity_pattern.block(1,1));
 
-
-    // sparsity pattern for mass matrix
-    {
-        // auxiliary coupling structure
-        Table<2,DoFTools::Coupling> pseudo_pressure_coupling(dim+1, dim+1);
-        for (unsigned int c=0; c<dim+1; ++c)
-            for (unsigned int d=0; d<dim+1; ++d)
-                if (c==d && c==dim)
-                    pseudo_pressure_coupling[c][d] = DoFTools::always;
-                else
-                    pseudo_pressure_coupling[c][d] = DoFTools::none;
-
-        BlockDynamicSparsityPattern dsp(dofs_per_block,
-                                        dofs_per_block);
-
-        DoFTools::make_sparsity_pattern(magnetic_dof_handler,
-                                        pseudo_pressure_coupling,
-                                        dsp,
-                                        magnetic_constraints);
-
-        magnetic_mass_sparsity_pattern.copy_from(dsp);
-    }
-    magnetic_mass_matrix.reinit(magnetic_mass_sparsity_pattern);
+    magnetic_mass_matrix.reinit(void_sparsity_pattern);
     magnetic_mass_matrix.block(0,0).reinit(magnetic_sparsity_pattern.block(0,0));
 
-     *
-     */
+    magnetic_stabilization_matrix.reinit(void_sparsity_pattern);
+    magnetic_stabilization_matrix.block(0,0).reinit(magnetic_sparsity_pattern.block(0,0));
+    magnetic_stabilization_matrix.block(0,1).reinit(magnetic_sparsity_pattern.block(0,1));
+    magnetic_stabilization_matrix.block(1,1).reinit(magnetic_sparsity_pattern.block(1,1));
 
     rebuild_magnetic_matrices = true;
 }

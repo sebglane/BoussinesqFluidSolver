@@ -53,8 +53,8 @@ class ConductingFluidSolver
 public:
     ConductingFluidSolver(const double          &aspect_ratio = 0.35,
                           const double          &time_step = 1e-3,
-                          const unsigned int    &n_steps = 10,
-                          const unsigned int    &vtk_frequency = 2,
+                          const unsigned int    &n_steps = 200,
+                          const unsigned int    &vtk_frequency = 1,
                           const double          &t_final = 1.0);
 
     void run();
@@ -69,19 +69,11 @@ private:
     void assemble_magnetic_matrices();
     void assemble_magnetic_rhs();
 
-    /*
-     *
     void assemble_diffusion_system();
     void assemble_projection_system();
 
-//    void build_diffusion_preconditioner();
-//    void build_projection_preconditioner();
-//    void build_pressure_mass_preconditioner();
-
     void solve_diffusion_system();
     void solve_projection_system();
-     *
-     */
 
     void magnetic_step();
 
@@ -107,20 +99,12 @@ private:
     ConstraintMatrix                magnetic_constraints;
 
     BlockSparsityPattern            magnetic_sparsity_pattern;
-    /*
-     *
-    BlockSparsityPattern            magnetic_mass_sparsity_pattern;
-    BlockSparsityPattern            magnetic_curl_sparsity_pattern;
-     *
-     */
+    BlockSparsityPattern            void_sparsity_pattern;
 
     BlockSparseMatrix<double>       magnetic_matrix;
-    /*
-     *
     BlockSparseMatrix<double>       magnetic_curl_matrix;
     BlockSparseMatrix<double>       magnetic_mass_matrix;
-     *
-     */
+    BlockSparseMatrix<double>       magnetic_stabilization_matrix;
 
     // vectors of magnetic part
     BlockVector<double>             magnetic_solution;
@@ -128,14 +112,6 @@ private:
     BlockVector<double>             old_old_magnetic_solution;
 
     BlockVector<double>             magnetic_rhs;
-
-    /*
-     *
-    BlockVector<double>             phi_pseudo_pressure;
-    BlockVector<double>             old_phi_pseudo_pressure;
-    BlockVector<double>             old_old_phi_pseudo_pressure;
-     *
-     */
 
     // equation coefficients
     const std::vector<double>       equation_coefficients;
@@ -160,7 +136,6 @@ private:
     bool                timestep_modified = false;
 
     unsigned int        timestep_number = 0;
-//    bool                            timestep_modified = false;
 
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_magnetic_matrices = true;

@@ -37,7 +37,7 @@ ConductingFluidSolver<dim>::ConductingFluidSolver(
 :
 magnetic_degree(2),
 pseudo_pressure_degree(magnetic_degree - 1),
-imex_coefficients(TimeStepping::IMEXType::CNAB),
+imex_coefficients(TimeStepping::IMEXType::SBDF),
 triangulation(Triangulation<dim>::MeshSmoothing::limit_level_difference_at_vertices),
 mapping(4),
 // magnetic part
@@ -56,9 +56,8 @@ aspect_ratio(aspect_ratio),
 t_final(t_final),
 n_steps(n_steps),
 vtk_frequency(vtk_frequency),
-rms_frequency(1)
+rms_frequency(10)
 {}
-
 
 template<int dim>
 void ConductingFluidSolver<dim>::output_results(const bool initial_condition) const
@@ -91,7 +90,6 @@ void ConductingFluidSolver<dim>::output_results(const bool initial_condition) co
     std::ofstream output(filename.c_str());
     data_out.write_vtk(output);
 }
-
 
 /*
  *
@@ -139,44 +137,6 @@ void ConductingFluidSolver<dim>::refine_mesh()
     }
     // set rebuild flags
     rebuild_magnetic_matrices = true;
-}
- *
- */
-/*
- *
-
-template <int dim>
-void ConductingFluidSolver<dim>::solve()
-{
-    std::cout << "   Solving magnetic system..." << std::endl;
-
-    TimerOutput::Scope  timer_section(computing_timer, "magnetic solve");
-
-    magnetic_constraints.set_zero(magnetic_solution);
-
-    PrimitiveVectorMemory<BlockVector<double>> vector_memory;
-
-    SolverControl solver_control(1000,
-                                 1e-6 * magnetic_rhs.l2_norm());
-
-    SolverGMRES<BlockVector<double>>
-    solver(solver_control,
-           vector_memory,
-           SolverGMRES<BlockVector<double>>::AdditionalData(30, true));
-
-    PreconditionJacobi<BlockSparseMatrix<double>> preconditioner;
-    preconditioner.initialize(magnetic_matrix,
-                              PreconditionJacobi<BlockSparseMatrix<double>>::AdditionalData());
-
-    solver.solve(magnetic_matrix,
-                 magnetic_solution,
-                 magnetic_rhs,
-                 preconditioner);
-
-    std::cout << "      "
-            << solver_control.last_step()
-            << " GMRES iterations for magnetic system, "
-            << std::endl;
 }
  *
  */
@@ -291,16 +251,6 @@ void ConductingFluidSolver<dim>::run()
         old_old_magnetic_solution = old_magnetic_solution;
         old_magnetic_solution = magnetic_solution;
 
-        /*
-         *
-
-
-        // copy auxiliary pseudo pressure solution
-        old_old_phi_pseudo_pressure = old_phi_pseudo_pressure;
-        old_magnetic_solution = phi_pseudo_pressure;
-
-         *
-         */
         // extrapolate magnetic solution
         magnetic_solution.sadd(1. + timestep / old_timestep,
                                timestep / old_timestep,

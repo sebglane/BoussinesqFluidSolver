@@ -34,7 +34,7 @@ void ConductingFluidSolver<dim>::make_grid()
                   << std::endl;
     }
 
-    const unsigned int n_interface_refinements = 1;
+    const unsigned int n_interface_refinements = 0;
 
     // initial boundary refinements
     if (n_interface_refinements > 0)
