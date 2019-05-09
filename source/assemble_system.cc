@@ -77,6 +77,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
         temperature_matrix.compress(VectorOperation::add);
 
         rebuild_temperature_matrices = false;
+        rebuild_temperature_preconditioner = true;
     }
 
     if (timestep_number == 0 || timestep_number == 1 || timestep_modified)
@@ -108,14 +109,20 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
             std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_temperature_rhs,
                       this,
                       std::placeholders::_1),
-            TemperatureAssembly::Scratch::RightHandSide<dim>(temperature_fe,
-                                                             mapping,
-                                                             quadrature_formula,
-                                                             update_values|
-                                                             update_gradients|
-                                                             update_JxW_values,
-                                                             navier_stokes_fe,
-                                                             update_values),
+            TemperatureAssembly::Scratch::RightHandSide<dim>(
+                    temperature_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_gradients|
+                    update_JxW_values,
+                    navier_stokes_fe,
+                    update_values,
+                    alpha,
+                    (timestep_number != 0?
+                            imex_coefficients.beta(timestep/old_timestep):
+                            std::vector<double>({1.0,0.0})),
+                    gamma),
             TemperatureAssembly::CopyData::RightHandSide<dim>(temperature_fe));
 
     temperature_rhs.compress(VectorOperation::add);
@@ -302,7 +309,12 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                     update_JxW_values|
                     update_gradients,
                     temperature_fe,
-                    update_values),
+                    update_values,
+                    alpha,
+                    (timestep_number != 0?
+                            imex_coefficients.beta(timestep/old_timestep):
+                            std::vector<double>({1.0,0.0})),
+                    gamma),
             NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
 
     navier_stokes_rhs.compress(VectorOperation::add);

@@ -17,8 +17,11 @@ RightHandSide<dim>::RightHandSide(
         const Mapping<dim>          &mapping,
         const Quadrature<dim>       &temperature_quadrature,
         const UpdateFlags            temperature_update_flags,
-        const FiniteElement<dim> &stokes_fe,
-        const UpdateFlags         stokes_update_flags)
+        const FiniteElement<dim>    &stokes_fe,
+        const UpdateFlags            stokes_update_flags,
+        const std::vector<double>   &alpha,
+        const std::vector<double>   &beta,
+        const std::vector<double>   &gamma)
 :
 temperature_fe_values(mapping,
                       temperature_fe,
@@ -35,7 +38,10 @@ stokes_fe_values(mapping,
                  temperature_quadrature,
                  stokes_update_flags),
 old_velocity_values(temperature_quadrature.size()),
-old_old_velocity_values(temperature_quadrature.size())
+old_old_velocity_values(temperature_quadrature.size()),
+alpha(alpha),
+beta(beta),
+gamma(gamma)
 {}
 
 template<int dim>
@@ -57,7 +63,10 @@ stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
                  scratch.stokes_fe_values.get_quadrature(),
                  scratch.stokes_fe_values.get_update_flags()),
 old_velocity_values(scratch.old_velocity_values),
-old_old_velocity_values(scratch.old_old_velocity_values)
+old_old_velocity_values(scratch.old_old_velocity_values),
+alpha(scratch.alpha),
+beta(scratch.beta),
+gamma(scratch.gamma)
 {}
 
 template <int dim>
@@ -170,10 +179,10 @@ grad_phi_pressure(scratch.grad_phi_pressure)
 
 template <int dim>
 ConvectionMatrix<dim>::ConvectionMatrix
-(const FiniteElement<dim> &stokes_fe,
- const Mapping<dim>       &mapping,
- const Quadrature<dim>    &stokes_quadrature,
- const UpdateFlags         stokes_update_flags)
+(const FiniteElement<dim>   &stokes_fe,
+ const Mapping<dim>         &mapping,
+ const Quadrature<dim>     &stokes_quadrature,
+ const UpdateFlags          stokes_update_flags)
 :
 stokes_fe_values(mapping,
                  stokes_fe,
@@ -206,12 +215,15 @@ old_old_velocity_divergences(scratch.old_old_velocity_divergences)
 
 template <int dim>
 RightHandSide<dim>::RightHandSide
-(const FiniteElement<dim>  &stokes_fe,
- const Mapping<dim>        &mapping,
- const Quadrature<dim>    &stokes_quadrature,
- const UpdateFlags         stokes_update_flags,
- const FiniteElement<dim> &temperature_fe,
- const UpdateFlags         temperature_update_flags)
+(const FiniteElement<dim>   &stokes_fe,
+ const Mapping<dim>         &mapping,
+ const Quadrature<dim>      &stokes_quadrature,
+ const UpdateFlags           stokes_update_flags,
+ const FiniteElement<dim>   &temperature_fe,
+ const UpdateFlags           temperature_update_flags,
+ const std::vector<double>  &alpha,
+ const std::vector<double>  &beta,
+ const std::vector<double>  &gamma)
 :
 stokes_fe_values(mapping,
                  stokes_fe,
@@ -228,7 +240,10 @@ temperature_fe_values(mapping,
                       stokes_quadrature,
                       temperature_update_flags),
 old_temperature_values(stokes_quadrature.size()),
-old_old_temperature_values(stokes_quadrature.size())
+old_old_temperature_values(stokes_quadrature.size()),
+alpha(alpha),
+beta(beta),
+gamma(gamma)
 {}
 
 template <int dim>
@@ -249,7 +264,10 @@ temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
                       scratch.temperature_fe_values.get_quadrature(),
                       scratch.temperature_fe_values.get_update_flags()),
 old_temperature_values(scratch.old_temperature_values),
-old_old_temperature_values(scratch.old_old_temperature_values)
+old_old_temperature_values(scratch.old_old_temperature_values),
+alpha(scratch.alpha),
+beta(scratch.beta),
+gamma(scratch.gamma)
 {}
 
 }  // namespace Scratch

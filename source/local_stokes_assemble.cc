@@ -191,13 +191,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
         NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
-    const std::vector<double> alpha = (timestep_number != 0?
-                                        imex_coefficients.alpha(timestep/old_timestep):
-                                        std::vector<double>({1.0,-1.0,0.0}));
-    const std::vector<double> gamma = (timestep_number != 0?
-                                        imex_coefficients.gamma(timestep/old_timestep):
-                                        std::vector<double>({1.0,0.0,0.0}));
-
     const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
     const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
 
@@ -238,12 +231,12 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
         }
 
         const Tensor<1,dim> time_derivative_velocity
-            = alpha[1] / timestep * scratch.old_velocity_values[q]
-                + alpha[2] / timestep * scratch.old_old_velocity_values[q];
+            = scratch.alpha[1] / timestep * scratch.old_velocity_values[q]
+                + scratch.alpha[2] / timestep * scratch.old_old_velocity_values[q];
 
         const Tensor<2,dim> linear_term_velocity
-            = gamma[1] * scratch.old_velocity_gradients[q]
-                + gamma[2] * scratch.old_old_velocity_gradients[q];
+            = scratch.gamma[1] * scratch.old_velocity_gradients[q]
+                + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
 
         const double extrapolated_temperature
             = (timestep != 0 ?
@@ -274,30 +267,26 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
 
         if (parameters.convective_scheme == ConvectiveDiscretizationType::Explicit)
         {
-        const std::vector<double> beta = (timestep_number != 0?
-                                            imex_coefficients.beta(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0}));
-
         Tensor<1,dim> nonlinear_term_velocity;
         bool skew = false;
         switch (parameters.convective_weak_form)
         {
         case ConvectiveWeakForm::Standard:
             nonlinear_term_velocity
-                = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+                = scratch.beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + scratch.beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
             break;
         case ConvectiveWeakForm::DivergenceForm:
             nonlinear_term_velocity
-                = beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                + 0.5 * beta[0] * trace(scratch.old_velocity_gradients[q]) * scratch.old_velocity_values[q]
-                + beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q]
-                + 0.5 * beta[1] * trace(scratch.old_old_velocity_gradients[q]) * scratch.old_old_velocity_values[q];
+                = scratch.beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + 0.5 * scratch.beta[0] * trace(scratch.old_velocity_gradients[q]) * scratch.old_velocity_values[q]
+                + scratch.beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q]
+                + 0.5 * scratch.beta[1] * trace(scratch.old_old_velocity_gradients[q]) * scratch.old_old_velocity_values[q];
             break;
         case ConvectiveWeakForm::SkewSymmetric:
             nonlinear_term_velocity
-                = 0.5 * beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
-                + 0.5 * beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
+                = 0.5 * scratch.beta[0] * scratch.old_velocity_gradients[q] * scratch.old_velocity_values[q]
+                + 0.5 * scratch.beta[1] * scratch.old_old_velocity_gradients[q] * scratch.old_old_velocity_values[q];
             skew = true;
             break;
         default:
@@ -310,8 +299,8 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                 += (
                     - time_derivative_velocity * scratch.phi_velocity[i]
                     - nonlinear_term_velocity * scratch.phi_velocity[i]
-                    + (skew ? 0.5 * beta[0] * (scratch.grad_phi_velocity[i] * scratch.old_velocity_values[q]) * scratch.old_velocity_values[q]
-                            + 0.5 * beta[1] * (scratch.grad_phi_velocity[i] * scratch.old_old_velocity_values[q]) * scratch.old_old_velocity_values[q]
+                    + (skew ? 0.5 * scratch.beta[0] * (scratch.grad_phi_velocity[i] * scratch.old_velocity_values[q]) * scratch.old_velocity_values[q]
+                            + 0.5 * scratch.beta[1] * (scratch.grad_phi_velocity[i] * scratch.old_old_velocity_values[q]) * scratch.old_old_velocity_values[q]
                             : 0.0)
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
                     - (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)

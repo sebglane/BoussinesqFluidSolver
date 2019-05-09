@@ -71,16 +71,6 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         TemperatureAssembly::Scratch::RightHandSide<dim>        &scratch,
         TemperatureAssembly::CopyData::RightHandSide<dim>       &data)
 {
-    const std::vector<double> alpha = (timestep_number != 0?
-                                            imex_coefficients.alpha(timestep/old_timestep):
-                                            std::vector<double>({1.0,-1.0,0.0}));
-    const std::vector<double> beta = (timestep_number != 0?
-                                            imex_coefficients.beta(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0}));
-    const std::vector<double> gamma = (timestep_number != 0?
-                                            imex_coefficients.gamma(timestep/old_timestep):
-                                            std::vector<double>({1.0,0.0,0.0}));
-
     const FEValuesExtractors::Vector    velocity(0);
 
     const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
@@ -124,16 +114,16 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         }
 
         const double time_derivative_temperature =
-                alpha[1] / timestep * scratch.old_temperature_values[q]
-                    + alpha[2] / timestep * scratch.old_old_temperature_values[q];
+                scratch.alpha[1] / timestep * scratch.old_temperature_values[q]
+                    + scratch.alpha[2] / timestep * scratch.old_old_temperature_values[q];
 
         const double nonlinear_term_temperature =
-                beta[0] * scratch.old_temperature_gradients[q] * scratch.old_velocity_values[q]
-                    + beta[1] * scratch.old_old_temperature_gradients[q] * scratch.old_old_velocity_values[q];
+                scratch.beta[0] * scratch.old_temperature_gradients[q] * scratch.old_velocity_values[q]
+                    + scratch.beta[1] * scratch.old_old_temperature_gradients[q] * scratch.old_old_velocity_values[q];
 
         const Tensor<1,dim> linear_term_temperature =
-                gamma[1] * scratch.old_temperature_gradients[q]
-                    + gamma[2] * scratch.old_old_temperature_gradients[q];
+                scratch.gamma[1] * scratch.old_temperature_gradients[q]
+                    + scratch.gamma[2] * scratch.old_old_temperature_gradients[q];
 
         for (unsigned int i=0; i<dofs_per_cell; ++i)
         {
@@ -146,9 +136,9 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
             if (temperature_constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
                 for (unsigned int j=0; j<dofs_per_cell; ++j)
                     data.matrix_for_bc(j,i) += (
-                                  alpha[0] / timestep *
+                                  scratch.alpha[0] / timestep *
                                   scratch.phi_temperature[i] * scratch.phi_temperature[j]
-                                + gamma[0] * equation_coefficients[3]
+                                + scratch.gamma[0] * equation_coefficients[3]
                                   * scratch.grad_phi_temperature[i] * scratch.grad_phi_temperature[j]
                                 ) * scratch.temperature_fe_values.JxW(q);
 

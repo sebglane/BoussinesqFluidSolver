@@ -29,12 +29,15 @@ namespace Scratch {
 template<int dim>
 struct RightHandSide
 {
-    RightHandSide(const FiniteElement<dim> &temperature_fe,
-                  const Mapping<dim>       &mapping,
-                  const Quadrature<dim>    &temperature_quadrature,
-                  const UpdateFlags         temperature_update_flags,
-                  const FiniteElement<dim> &stokes_fe,
-                  const UpdateFlags         stokes_update_flags);
+    RightHandSide(const FiniteElement<dim>  &temperature_fe,
+                  const Mapping<dim>        &mapping,
+                  const Quadrature<dim>     &temperature_quadrature,
+                  const UpdateFlags          temperature_update_flags,
+                  const FiniteElement<dim>  &stokes_fe,
+                  const UpdateFlags          stokes_update_flags,
+                  const std::vector<double> &alpha,
+                  const std::vector<double> &beta,
+                  const std::vector<double> &gamma);
 
     RightHandSide(const RightHandSide<dim> &scratch);
 
@@ -49,6 +52,10 @@ struct RightHandSide
     FEValues<dim>               stokes_fe_values;
     std::vector<Tensor<1,dim>>  old_velocity_values;
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
+
+    const std::vector<double>   alpha;
+    const std::vector<double>   beta;
+    const std::vector<double>   gamma;
 };
 
 template<int dim>
@@ -128,10 +135,10 @@ struct Matrix
 template<int dim>
 struct ConvectionMatrix
 {
-    ConvectionMatrix(const FiniteElement<dim> &stokes_fe,
-                     const Mapping<dim>       &mapping,
-                     const Quadrature<dim>    &stokes_quadrature,
-                     const UpdateFlags        stokes_update_flags);
+    ConvectionMatrix(const FiniteElement<dim>   &stokes_fe,
+                     const Mapping<dim>         &mapping,
+                     const Quadrature<dim>      &stokes_quadrature,
+                     const UpdateFlags          stokes_update_flags);
 
     ConvectionMatrix(const ConvectionMatrix<dim>  &scratch);
 
@@ -144,6 +151,7 @@ struct ConvectionMatrix
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
     std::vector<double>         old_velocity_divergences;
     std::vector<double>         old_old_velocity_divergences;
+
 };
 
 
@@ -155,7 +163,10 @@ struct RightHandSide
                   const Quadrature<dim>     &stokes_quadrature,
                   const UpdateFlags          stokes_update_flags,
                   const FiniteElement<dim>  &temperature_fe,
-                  const UpdateFlags          temperature_update_flags);
+                  const UpdateFlags          temperature_update_flags,
+                  const std::vector<double> &alpha,
+                  const std::vector<double> &beta,
+                  const std::vector<double> &gamma);
 
     RightHandSide(const RightHandSide<dim>  &scratch);
 
@@ -171,6 +182,10 @@ struct RightHandSide
     FEValues<dim>               temperature_fe_values;
     std::vector<double>         old_temperature_values;
     std::vector<double>         old_old_temperature_values;
+
+    const std::vector<double>   alpha;
+    const std::vector<double>   beta;
+    const std::vector<double>   gamma;
 };
 
 
