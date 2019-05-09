@@ -12,6 +12,7 @@ namespace BuoyantFluid {
 Parameters::Parameters(const std::string &parameter_filename)
 :
 // runtime parameters
+dim(2),
 n_steps(100),
 refinement_frequency(30),
 t_final(1.0),
@@ -82,6 +83,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 {
     prm.enter_subsection("Runtime parameters");
     {
+        prm.declare_entry("dim",
+                "2",
+                Patterns::Integer(2,3),
+                "Spatial dimension of the simulation");
         prm.declare_entry("n_steps",
                 "1000",
                 Patterns::Integer(),
@@ -273,6 +278,9 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 {
     prm.enter_subsection("Runtime parameters");
     {
+        dim = prm.get_integer("dim");
+        Assert(dim > 1, ExcLowerRange(1, dim));
+
         refinement_frequency = prm.get_integer("refinement_freq");
         Assert(refinement_frequency > 0, ExcLowerRange(0, refinement_frequency));
 

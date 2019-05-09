@@ -59,6 +59,7 @@ struct Parameters
     void parse_parameters(ParameterHandler &prm);
 
     // runtime parameters
+    unsigned int    dim;
     unsigned int    n_steps;
     unsigned int    refinement_frequency;
 
