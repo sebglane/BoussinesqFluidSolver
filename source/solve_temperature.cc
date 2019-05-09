@@ -60,7 +60,8 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
     distributed_solution = temperature_solution;
 
     // solve linear system
-    SolverControl solver_control(30, 1e-6 * temperature_rhs.l2_norm());
+    SolverControl solver_control(parameters.n_max_iter, std::max(parameters.rel_tol * temperature_rhs.l2_norm(),
+                                 parameters.abs_tol));
 
     LA::SolverCG    cg(solver_control);
 
