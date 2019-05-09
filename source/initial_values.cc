@@ -14,18 +14,15 @@ template <int dim>
 TemperatureInitialValues<dim>::TemperatureInitialValues(
         const double                    inner_radius,
         const double                    outer_radius,
-        const double                    inner_temperature,
-        const double                    outer_temperature,
         const TemperaturePerturbation   perturbation_type_)
 :
 Function<dim>(1),
 ri(inner_radius),
 ro(outer_radius),
-Ti(inner_temperature),
-To(outer_temperature),
 perturbation_type(perturbation_type_)
 {
-    Assert(To < Ti, ExcLowerRangeType<double>(To, Ti));
+    Assert(ri > 0.0, ExcLowerRangeType<double>(0, ri));
+    Assert(ro > 0.0, ExcLowerRangeType<double>(0, ro));
     Assert(ri < ro, ExcLowerRangeType<double>(ri, ro));
 }
 
@@ -34,29 +31,39 @@ double TemperatureInitialValues<2>::value(
         const Point<2>    &point,
         const unsigned int  /* component */) const
 {
-    const double radius = point.distance(Point<2>());
-    Assert(radius > 0.0, ExcLowerRangeType<double>(0, radius));
-    const double log_radius = std::log(radius);
-    AssertIsFinite(log_radius);
-    const double log_ro = std::log(ro), log_ri = std::log(ri);
+    const double r = point.distance(Point<2>());
+    Assert(r > 0.0, ExcLowerRangeType<double>(0, r));
+
+    const double log_r = log(r);
+    AssertIsFinite(log_r);
+
+    const double log_ro = log(ro), log_ri = log(ri);
     AssertIsFinite(log_ro);
     AssertIsFinite(log_ri);
 
-    double value = 0.0;
+    double value = 0.;
+
     switch (perturbation_type)
     {
         case TemperaturePerturbation::None:
-            value += (Ti - To) * log_radius / (log_ri - log_ro)
-                        + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
+            value = (log_ro - log_r) / (log_ro - log_ri);
             break;
         case TemperaturePerturbation::Sinusoidal:
         {
-            value += (Ti - To) * log_radius / (log_ri - log_ro)
-                        + (To * log_ri - Ti *  log_ro) / (log_ri - log_ro);
-            const double phi = std::atan2(point[1], point[0]);
-            double perturbation = (radius - ri) * (ro - radius)  * (1. - 3. * (ro - radius))
-                                   * std::cos(4.*phi);
-            perturbation *= std::max(std::abs(Ti), std::abs(To)) * relative_amplitude;
+            value = (log_ro - log_r) / (log_ro - log_ri);;
+
+            const double phi = atan2(point[1], point[0]);
+            Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(phi, -numbers::PI));
+            Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, phi));
+
+            const double tol = 1e-12;
+            const double xi = (2.0 * r - ro - ri)/(ro - ri);
+            Assert(xi >= -1.0 - tol, ExcLowerRangeType<double>(xi, -1.0));
+            Assert(xi <= 1.0 + tol, ExcLowerRangeType<double>(1.0, xi));
+
+            double perturbation = 21. / sqrt(17920. * numbers::PI)
+                    * (1. - 3. * pow(xi, 2) + 3. * pow(xi, 4) - pow(xi, 6))
+                    * std::cos(4.*phi);
             value += perturbation;
             break;
         }
@@ -71,9 +78,45 @@ double TemperatureInitialValues<3>::value(
         const Point<3>    &point,
         const unsigned int  /* component */) const
 {
-    const double radius = point.distance(Point<3>());
-    const double value = (ri * Ti - ro * To)/(ri - ro)
-            + ri * ro * (To - Ti)/(radius * (ri - ro));
+    const double r = point.distance(Point<3>());
+    Assert(r > 0.0, ExcLowerRangeType<double>(0, r));
+
+    double value = 0.;
+
+    switch (perturbation_type)
+    {
+        case TemperaturePerturbation::None:
+            value = (ro - r) / (ro - ri) * ri / r;
+            break;
+        case TemperaturePerturbation::Sinusoidal:
+        {
+            value = (ro - r) / (ro - ri) * ri / r;
+
+            const double r_cylinder = sqrt(point[0]*point[0] + point[1]*point[1]);
+            Assert(r_cylinder >= 0.0, ExcLowerRangeType<double>(0.0, r_cylinder));
+
+            const double theta = atan2(r_cylinder, point[2]);
+            Assert(theta >= 0., ExcLowerRangeType<double>(theta, 0.));
+            Assert(theta <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+
+            const double phi = atan2(point[1], point[0]);
+            Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(phi, -numbers::PI));
+            Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, phi));
+
+            const double tol = 1e-12;
+            const double xi = (2.0 * r - ro - ri) / (ro - ri);
+            Assert(xi >= -1.0 - tol, ExcLowerRangeType<double>(xi, -1.0));
+            Assert(xi <= 1.0 + tol, ExcLowerRangeType<double>(1.0, xi));
+
+            double perturbation = 21. / sqrt(17920. * numbers::PI)
+                    * (1. - 3. * pow(xi, 2) + 3. * pow(xi, 4) - pow(xi, 6))
+                    * pow(sin(theta), 4) * cos(4.*phi);
+            value += perturbation;
+            break;
+        }
+        default:
+            break;
+    }
     return value;
 }
 

@@ -45,8 +45,8 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                 temperature_dof_handler,
                 temperature_constraints);
 
-        const Functions::ConstantFunction<dim> icb_temperature(0.5);
-        const Functions::ConstantFunction<dim> cmb_temperature(-0.5);
+        const Functions::ConstantFunction<dim>  icb_temperature(1.0);
+        const Functions::ConstantFunction<dim>  cmb_temperature(0.0);
 
         const std::map<typename types::boundary_id, const Function<dim>*>
         temperature_boundary_values = {{GridFactory::BoundaryIds::ICB, &icb_temperature},

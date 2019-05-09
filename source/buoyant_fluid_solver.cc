@@ -308,8 +308,6 @@ void BuoyantFluidSolver<dim>::run()
     const EquationData::TemperatureInitialValues<dim>
     initial_temperature(parameters.aspect_ratio,
                         1.0,
-                        0.5,
-                        -0.5,
                         parameters.temperature_perturbation);
     {
         LA::Vector  distributed_temperature(temperature_rhs);

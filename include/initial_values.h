@@ -34,8 +34,6 @@ class TemperatureInitialValues : public Function<dim>
 public:
     TemperatureInitialValues(const double inner_radius,
                              const double outer_radius,
-                             const double inner_temperature,
-                             const double outer_temperature,
                              const TemperaturePerturbation  perturbation_type = TemperaturePerturbation::None);
 
     virtual double value(const Point<dim>   &point,
@@ -44,12 +42,8 @@ public:
 private:
     const double ri;
     const double ro;
-    const double Ti;
-    const double To;
 
     const TemperaturePerturbation   perturbation_type;
-
-    const double relative_amplitude = 10.0;
 };
 
 template <int dim>
