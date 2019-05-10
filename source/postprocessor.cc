@@ -23,6 +23,7 @@ std::vector<std::string> PostProcessor<dim>::get_names() const
     solution_names.emplace_back("pressure");
     solution_names.emplace_back("temperature");
     solution_names.emplace_back("partition");
+    solution_names.emplace_back("markers");
 
     return solution_names;
 }
@@ -42,6 +43,7 @@ PostProcessor<dim>::get_data_component_interpretation() const
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
 
     return component_interpretation;
 }
@@ -49,23 +51,26 @@ PostProcessor<dim>::get_data_component_interpretation() const
 template <int dim>
 void PostProcessor<dim>::evaluate_vector_field(
         const DataPostprocessorInputs::Vector<dim> &inputs,
-        std::vector<Vector<double> >               &computed_quantities) const
+        std::vector<Vector<double>>                &computed_quantities) const
 {
     const unsigned int n_quadrature_points = inputs.solution_values.size();
     Assert(computed_quantities.size() == n_quadrature_points,
             ExcInternalError());
-    Assert(inputs.solution_values[0].size() == dim+2,
+    Assert(inputs.solution_values[0].size() == dim + 3,
             ExcInternalError());
     for (unsigned int q=0; q<n_quadrature_points; ++q)
     {
+        // velocity
         for (unsigned int d=0; d<dim; ++d)
             computed_quantities[q](d) = inputs.solution_values[q](d);
-        const double pressure = inputs.solution_values[q](dim);
-        computed_quantities[q](dim) = pressure;
-        const double temperature = inputs.solution_values[q](dim+1);
-        computed_quantities[q](dim+1) = temperature;
-
+        // pressure
+        computed_quantities[q](dim) = inputs.solution_values[q](dim);
+        // temperature
+        computed_quantities[q](dim+1) = inputs.solution_values[q](dim+1);
+        // mpi partition
         computed_quantities[q](dim+2) = partition;
+        // cell marker
+        computed_quantities[q](dim+1) = inputs.solution_values[q](dim+2);
     }
 }
 

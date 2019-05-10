@@ -47,7 +47,8 @@ enum MaterialIds
 {
     Fluid,
     Vacuum,
-    Solid
+    Solid,
+    BenchmarkSector
 };
 }  // namespace DomainIdentifiers
 

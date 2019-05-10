@@ -146,6 +146,8 @@ public:
 private:
     void make_grid();
 
+    void mark_sector_cells(const double radius, const double polar_angle = 0);
+
     void setup_dofs();
 
     void setup_temperature_matrix

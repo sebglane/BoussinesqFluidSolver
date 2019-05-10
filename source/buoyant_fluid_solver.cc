@@ -156,12 +156,12 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     }
 
     if (timestep_modified)
-        pcout << "      time step changed from "
+        pcout << "      Time step changed from "
               << std::setw(6) << std::scientific << old_timestep
               << " to "
               << std::setw(6) << std::scientific << timestep
               << std::fixed << std::endl
-              << "      new cfl number: " << current_cfl_number / old_timestep * timestep
+              << "      New cfl number: " << current_cfl_number / old_timestep * timestep
               << std::endl;
 }
 
@@ -181,18 +181,51 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 
     const FEValuesExtractors::Vector    velocities(0);
 
+    // error estimation based on temperature
+    Vector<float>   estimated_temperature_error(triangulation.n_active_cells());
+    KellyErrorEstimator<dim>::estimate(mapping,
+                                       temperature_dof_handler,
+                                       QGauss<dim-1>(parameters.temperature_degree + 1),
+                                       typename FunctionMap<dim>::type(),
+                                       temperature_solution,
+                                       estimated_temperature_error,
+                                       ComponentMask(),
+                                       nullptr,
+                                       0,
+                                       triangulation.locally_owned_subdomain());
+    const float max_temperature_error
+    = *std::max_element(estimated_temperature_error.begin(),
+                        estimated_temperature_error.end());
+    AssertIsFinite(max_temperature_error);
+    Assert(max_temperature_error > 0., ExcLowerRangeType<double>(max_temperature_error, 0.));
+
+    estimated_temperature_error /= max_temperature_error;
+
     // error estimation based on velocity
-    Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
+    Vector<float>   estimated_velocity_error(triangulation.n_active_cells());
     KellyErrorEstimator<dim>::estimate(mapping,
                                        navier_stokes_dof_handler,
                                        QGauss<dim-1>(parameters.velocity_degree + 1),
                                        typename FunctionMap<dim>::type(),
                                        navier_stokes_solution,
-                                       estimated_error_per_cell,
+                                       estimated_velocity_error,
                                        navier_stokes_fe.component_mask(velocities),
                                        nullptr,
                                        0,
                                        triangulation.locally_owned_subdomain());
+
+    const float max_velocity_error
+    = *std::max_element(estimated_velocity_error.begin(),
+                        estimated_velocity_error.end());
+    AssertIsFinite(max_velocity_error);
+    Assert(max_velocity_error > 0., ExcLowerRangeType<double>(max_velocity_error, 0.));
+
+    estimated_velocity_error /= max_velocity_error;
+
+    // error combined error estimate
+    Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
+    estimated_error_per_cell.add(0.5, estimated_temperature_error);
+    estimated_error_per_cell.add(0.5, estimated_velocity_error);
 
     // set refinement flags
     parallel::distributed::
@@ -465,10 +498,6 @@ void BuoyantFluidSolver<dim>::run()
         output_results();
 
     pcout << std::fixed;
-
-    computing_timer.print_summary();
-
-    pcout << std::endl;
 }
 
 }  // namespace BouyantFluid
