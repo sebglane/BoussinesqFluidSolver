@@ -199,11 +199,6 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                                         imex_coefficients.gamma(timestep/old_timestep):
                                         std::vector<double>({1.0,0.0,0.0}));
 
-    if (rebuild_navier_stokes_matrices)
-    {
-        assemble_navier_stokes_matrices();
-    }
-
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
     {
         navier_stokes_matrix.block(0,0) = 0;
@@ -234,6 +229,9 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
 
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
     {
+        if (rebuild_navier_stokes_matrices)
+            assemble_navier_stokes_matrices();
+
         // correct (0,0)-block of navier stokes system by add-operations
         navier_stokes_matrix.block(0,0).add(alpha[0] / timestep,
                                             navier_stokes_mass_matrix.block(0,0));
@@ -245,8 +243,14 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
-    else if (timestep_number == 0 || timestep_number == 1 || timestep_modified)
+    else if (timestep_number == 0 ||
+             timestep_number == 1 ||
+             timestep_modified ||
+             rebuild_navier_stokes_matrices)
     {
+        if (rebuild_navier_stokes_matrices)
+            assemble_navier_stokes_matrices();
+
         // correct (0,0)-block of navier stokes system by copy-operation
         navier_stokes_matrix.block(0,0).copy_from(navier_stokes_mass_matrix.block(0,0));
         navier_stokes_matrix.block(0,0) *= alpha[0] / timestep;
