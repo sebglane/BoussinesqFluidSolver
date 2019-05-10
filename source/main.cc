@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
         using namespace dealii;
         using namespace BuoyantFluid;
 
-        Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv);
+        Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 2);
 
         std::string parameter_filename;
         if (argc>=2)

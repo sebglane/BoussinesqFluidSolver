@@ -68,8 +68,7 @@ old_timestep(parameters.initial_timestep)
           << "The coefficients C1 to C4 depend on the normalization as follows.\n\n";
 
     // generate a nice table of the equation coefficients
-    pcout << "\n\n"
-          << "+-------------------+----------+---------------+----------+-------------------+\n"
+    pcout << "+-------------------+----------+---------------+----------+-------------------+\n"
           << "|       case        |    C1    |      C2       |    C3    |        C4         |\n"
           << "+-------------------+----------+---------------+----------+-------------------+\n"
           << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |\n"
@@ -133,26 +132,21 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     {
         timestep = 0.5 * (parameters.cfl_min + parameters.cfl_max)
                         * old_timestep / current_cfl_number;
-        if (timestep == old_timestep)
-            return;
-        else if (timestep > parameters.max_timestep
-                 && old_timestep == parameters.max_timestep)
-        {
-            timestep = parameters.max_timestep;
-            return;
-        }
-        else if (timestep > parameters.max_timestep
+        if (timestep > parameters.max_timestep
                  && old_timestep != parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
             timestep_modified = true;
-            return;
+        }
+        else if (timestep > parameters.max_timestep
+                 && old_timestep == parameters.max_timestep)
+        {
+            timestep = parameters.max_timestep;
         }
         else if (timestep < parameters.max_timestep
                  && timestep > parameters.min_timestep)
         {
             timestep_modified = true;
-            return;
         }
         else if (timestep < parameters.min_timestep)
         {
@@ -160,19 +154,21 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
                    ExcLowerRangeType<double>(timestep, parameters.min_timestep));
         }
     }
+
     if (timestep_modified)
-        std::cout << "      time step changed from "
-                  << std::setw(6) << std::setprecision(2) << std::scientific << old_timestep
-                  << " to "
-                  << std::setw(6) << std::setprecision(2) << std::scientific << timestep
-                  << std::endl;
+        pcout << "      time step changed from "
+              << std::setw(6) << std::scientific << old_timestep
+              << " to "
+              << std::setw(6) << std::scientific << timestep
+              << std::fixed << std::endl
+              << "      new cfl number: " << current_cfl_number / old_timestep * timestep
+              << std::endl;
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::refine_mesh()
 {
-    if (parameters.verbose)
-        pcout << "   Mesh refinement..." << std::endl;
+    pcout << "Mesh refinement..." << std::endl;
 
     parallel::distributed::SolutionTransfer<dim,LA::Vector>
     temperature_transfer(temperature_dof_handler);
@@ -182,17 +178,22 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 
     {
     TimerOutput::Scope timer_section(computing_timer, "refine mesh (part 1)");
-    // error estimation based on temperature
+
+    const FEValuesExtractors::Vector    velocities(0);
+
+    // error estimation based on velocity
     Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
-    KellyErrorEstimator<dim>::estimate(temperature_dof_handler,
-                                       QGauss<dim-1>(parameters.temperature_degree + 1),
+    KellyErrorEstimator<dim>::estimate(mapping,
+                                       navier_stokes_dof_handler,
+                                       QGauss<dim-1>(parameters.velocity_degree + 1),
                                        typename FunctionMap<dim>::type(),
-                                       temperature_solution,
+                                       navier_stokes_solution,
                                        estimated_error_per_cell,
-                                       ComponentMask(),
+                                       navier_stokes_fe.component_mask(velocities),
                                        nullptr,
                                        0,
                                        triangulation.locally_owned_subdomain());
+
     // set refinement flags
     parallel::distributed::
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
@@ -207,6 +208,20 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // clear coarsen flags if level decreases minimum
     for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_initial_refinements))
         cell->clear_coarsen_flag();
+
+    // count number of cells to be refined and coarsened
+    unsigned int local_cell_counts[2] = {0, 0};
+    for (auto cell: triangulation.active_cell_iterators())
+        if (cell->is_locally_owned() && cell->refine_flag_set ())
+            local_cell_counts[0] += 1;
+        else if (cell->is_locally_owned() && cell->coarsen_flag_set())
+            local_cell_counts[1] += 1;
+
+    unsigned int global_cell_counts[2];
+    Utilities::MPI::sum(local_cell_counts, mpi_communicator, global_cell_counts);
+
+    pcout << "   Number of cells refined: " << global_cell_counts[0] << std::endl
+          << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl;
 
     // preparing temperature solution transfer
     std::vector<const LA::Vector *> x_temperature(3);
@@ -336,7 +351,7 @@ void BuoyantFluidSolver<dim>::run()
 
     do
     {
-        pcout << "step: " << Utilities::int_to_string(timestep_number, 8) << ", "
+        pcout << "Step: " << Utilities::int_to_string(timestep_number, 8) << ", "
               << "time: " << time << ", "
               << "time step: " << timestep
               << std::endl;
@@ -346,39 +361,56 @@ void BuoyantFluidSolver<dim>::run()
 
         // evolve velocity and pressure
         navier_stokes_step();
+
+        // compute rms values
         if (timestep_number % parameters.rms_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
 
             const std::pair<double,double> rms_values = compute_rms_values();
 
-            pcout << "   velocity rms value: "
+            pcout << "   Velocity rms value: "
                   << rms_values.first
                   << std::endl
-                  << "   temperature rms value: "
+                  << "   Temperature rms value: "
                   << rms_values.second
                   << std::endl;
         }
 
+        // compute kinetic energy
+        if (timestep_number % parameters.energy_frequency == 0)
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute energies");
+
+            const double kinetic_energy = compute_kinetic_energy();
+
+            pcout << "   Kinetic energy: " << kinetic_energy << std::endl;
+        }
+
+        // compute Courant number
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
 
             cfl_number = compute_cfl_number();
 
             if (timestep_number % parameters.cfl_frequency == 0)
-                pcout << "   current cfl number: "
+                pcout << "   Current cfl number: "
                       << cfl_number
                       << std::endl;
         }
+
         if (timestep_number % parameters.vtk_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "output results");
             output_results();
         }
+
         // mesh refinement
-        if ((timestep_number > 0)
-                && (timestep_number % parameters.refinement_frequency == 0))
+        if ((timestep_number > 0
+                && (timestep_number % parameters.refinement_frequency == 0)) ||
+                timestep_number == 2)
             refine_mesh();
+
         // adjust time step
         if (parameters.adaptive_timestep && timestep_number > 1)
             update_timestep(cfl_number);
@@ -435,7 +467,6 @@ void BuoyantFluidSolver<dim>::run()
     pcout << std::fixed;
 
     computing_timer.print_summary();
-    computing_timer.reset();
 
     pcout << std::endl;
 }
