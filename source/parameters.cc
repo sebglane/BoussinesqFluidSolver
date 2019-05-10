@@ -20,6 +20,7 @@ t_final(1.0),
 vtk_frequency(10),
 rms_frequency(5),
 cfl_frequency(5),
+energy_frequency(5),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
@@ -125,6 +126,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "10",
                 Patterns::Integer(),
                 "Output frequency of current cfl number.");
+        prm.declare_entry("energy_freq",
+                "10",
+                Patterns::Integer(),
+                "Output frequency of current kinetic energy.");
         prm.declare_entry("verbose",
                 "false",
                 Patterns::Bool(),
@@ -316,6 +321,9 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         cfl_frequency = prm.get_integer("cfl_freq");
         Assert(cfl_frequency > 0, ExcLowerRange(0, cfl_frequency));
+
+        energy_frequency = prm.get_integer("energy_freq");
+        Assert(energy_frequency > 0, ExcLowerRange(0, energy_frequency));
 
         verbose = prm.get_bool("verbose");
     }

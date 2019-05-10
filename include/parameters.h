@@ -69,6 +69,7 @@ struct Parameters
     unsigned int    vtk_frequency;
     unsigned int    rms_frequency;
     unsigned int    cfl_frequency;
+    unsigned int    energy_frequency;
 
     bool            verbose;
 

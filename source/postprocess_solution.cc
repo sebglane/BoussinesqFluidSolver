@@ -20,6 +20,42 @@
 namespace BuoyantFluid {
 
 template<int dim>
+double BuoyantFluidSolver<dim>::compute_kinetic_energy() const
+{
+    const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
+
+    const unsigned int n_q_points = quadrature_formula.size();
+
+    FEValues<dim> stokes_fe_values(mapping,
+                                   navier_stokes_fe,
+                                   quadrature_formula,
+                                   update_values|update_JxW_values);
+
+    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
+
+    const FEValuesExtractors::Vector velocities (0);
+
+    double local_kinetic_energy = 0;
+
+    for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
+        if (cell->is_locally_owned())
+        {
+            stokes_fe_values.reinit(cell);
+
+            stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
+                    velocity_values);
+
+            for (unsigned int q=0; q<n_q_points; ++q)
+                local_kinetic_energy += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+        }
+
+    AssertIsFinite(local_kinetic_energy);
+    Assert(local_kinetic_energy >= 0, ExcLowerRangeType<double>(local_kinetic_energy, 0));
+
+    return Utilities::MPI::sum(local_kinetic_energy, mpi_communicator);
+}
+
+template<int dim>
 std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 {
     const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
@@ -244,6 +280,9 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 // explicit instantiation
 template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<2>::compute_rms_values() const;
 template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<3>::compute_rms_values() const;
+
+template double BuoyantFluid::BuoyantFluidSolver<2>::compute_kinetic_energy() const;
+template double BuoyantFluid::BuoyantFluidSolver<3>::compute_kinetic_energy() const;
 
 template double BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;
 template double BuoyantFluid::BuoyantFluidSolver<3>::compute_cfl_number() const;

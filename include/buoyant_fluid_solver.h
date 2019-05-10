@@ -178,6 +178,7 @@ private:
     void navier_stokes_step();
 
     std::pair<double,double>    compute_rms_values() const;
+    double                      compute_kinetic_energy() const;
     double                      compute_cfl_number() const;
 
     void update_timestep(const double current_cfl_number);
