@@ -109,6 +109,7 @@ namespace LA
 
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/index_set.h>
+#include <deal.II/base/table_handler.h>
 #include <deal.II/base/timer.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -211,9 +212,21 @@ private:
                                  const double   &theta,
                                  const double   &phi) const;
 
-    std::pair<Point<dim>,double>find_benchmark_point
-                                (const double       &tol = 1e-3,
+    /**
+     * Computes a zero of the radial velocity $v_r(r=r_\mathrm{m},\theta=0,
+     * \varphi)$ for a given initial guess $\varphi^*$. The solution is located
+     * on a circle of radius $r_\mathrm{m}$ in the equatorial plane. This
+     * function is using the boost::math::root::bracket_and_solve_root algorithm.
+     *
+     * This function requires that the gradient in azimuthal direction is positive
+     * for the intial guess, i.e. $\frac{\delta v_r}{\delta \varphi} > 0$.
+     */
+    double                      compute_zero_of_radial_velocity
+                                (const double       &phi_guess,
+                                 const double       &tol = 1e-3,
                                  const unsigned int &max_iter = 30) const;
+
+    void                        update_benchmark_point();
 
     void update_timestep(const double current_cfl_number);
 
@@ -309,6 +322,11 @@ private:
     double                          old_timestep;
     unsigned int                    timestep_number = 0;
     bool                            timestep_modified = false;
+
+    // benchmark variables
+    TableHandler                    benchmark_table;
+    Point<dim>                      benchmark_point;
+    double                          phi_benchmark;
 
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_navier_stokes_matrices = true,

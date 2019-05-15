@@ -55,7 +55,9 @@ computing_timer(mpi_communicator, pcout,
                 TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
 timestep(parameters.initial_timestep),
-old_timestep(parameters.initial_timestep)
+old_timestep(parameters.initial_timestep),
+// benchmarking
+phi_benchmark(-2.*numbers::PI)
 {
     pcout << "Boussinesq solver by S. Glane\n"
           << "This program solves the Navier-Stokes system with thermal convection.\n"
@@ -115,6 +117,12 @@ old_timestep(parameters.initial_timestep)
 
     pcout << std::endl << ss.str()
           << std::endl << std::fixed << std::flush;
+
+    benchmark_table.declare_column("time step");
+    benchmark_table.declare_column("time");
+    benchmark_table.declare_column("phi");
+    benchmark_table.declare_column("temperature");
+    benchmark_table.declare_column("azimuthal velocity");
 }
 
 template<int dim>
@@ -156,12 +164,13 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     }
 
     if (timestep_modified)
-        pcout << "      Time step changed from "
+        pcout << (parameters.verbose? "   ": "")
+              << "   Time step changed from "
               << std::setw(6) << std::scientific << old_timestep
               << " to "
               << std::setw(6) << std::scientific << timestep
               << std::fixed << std::endl
-              << "      New cfl number: " << current_cfl_number / old_timestep * timestep
+              << "   New cfl number: " << current_cfl_number / old_timestep * timestep
               << std::endl;
 }
 
@@ -254,7 +263,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     Utilities::MPI::sum(local_cell_counts, mpi_communicator, global_cell_counts);
 
     pcout << "   Number of cells refined: " << global_cell_counts[0] << std::endl
-          << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl;
+          << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl
+          << "   Number of levels: " << triangulation.n_global_levels() << std::endl;
 
     // preparing temperature solution transfer
     std::vector<const LA::Vector *> x_temperature(3);
@@ -352,25 +362,56 @@ void BuoyantFluidSolver<dim>::run()
 
     setup_dofs();
 
-    // initial condition for temperature
-    const EquationData::TemperatureInitialValues<dim>
-    initial_temperature(parameters.aspect_ratio,
-                        1.0,
-                        parameters.temperature_perturbation);
     {
-        LA::Vector  distributed_temperature(temperature_rhs);
+        TimerOutput::Scope  timer_section(computing_timer, "compute initialization");
 
-        VectorTools::interpolate(mapping,
-                                 temperature_dof_handler,
-                                 initial_temperature,
-                                 distributed_temperature);
-        temperature_constraints.distribute(distributed_temperature);
+        const EquationData::TemperatureInitialValues<dim>
+        initial_temperature(parameters.aspect_ratio,
+                            1.0,
+                            parameters.temperature_perturbation);
 
-        old_temperature_solution = distributed_temperature;
+        // initial condition for temperature
+        if (parameters.n_initial_refinements == 0)
+        {
+            LA::Vector  distributed_temperature(temperature_rhs);
+
+            VectorTools::interpolate(mapping,
+                                     temperature_dof_handler,
+                                     initial_temperature,
+                                     distributed_temperature);
+            temperature_constraints.distribute(distributed_temperature);
+
+            old_temperature_solution = distributed_temperature;
+        }
+        else
+        {
+            unsigned int cnt = 0;
+            while (cnt < parameters.n_initial_refinements)
+            {
+                LA::Vector  distributed_temperature(temperature_rhs);
+
+                VectorTools::interpolate(mapping,
+                                         temperature_dof_handler,
+                                         initial_temperature,
+                                         distributed_temperature);
+                temperature_constraints.distribute(distributed_temperature);
+
+                old_temperature_solution = distributed_temperature;
+
+                refine_mesh();
+
+                ++cnt;
+            }
+            pcout << "   Number of cells after "
+                  << parameters.n_initial_refinements
+                  << " refinements based on the initial condition: "
+                  << triangulation.n_global_active_cells()
+                  << std::endl;
+        }
+
+        // compute consistent initial pressure
+        compute_initial_pressure();
     }
-
-    // compute consistent initial pressure
-    compute_initial_pressure();
 
     // copy solution vectors for output
     temperature_solution = old_temperature_solution;
@@ -420,6 +461,27 @@ void BuoyantFluidSolver<dim>::run()
             pcout << "   Kinetic energy: " << kinetic_energy << std::endl;
         }
 
+        // compute benchmark results
+        if (timestep_number >= parameters.benchmark_start &&
+                timestep_number % parameters.benchmark_frequency)
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute benchmark requests");
+
+            update_benchmark_point();
+
+            std::pair<double,double> benchmark_results
+            = compute_benchmark_requests(0.5 * (1. + parameters.aspect_ratio),
+                                         0,
+                                         phi_benchmark);
+
+            // add values to table
+            benchmark_table.add_value("timestep", timestep_number);
+            benchmark_table.add_value("time", time);
+            benchmark_table.add_value("phi", phi_benchmark);
+            benchmark_table.add_value("temperature", benchmark_results.first);
+            benchmark_table.add_value("azimuthal velocity", benchmark_results.second);
+        }
+
         // compute Courant number
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
@@ -466,7 +528,7 @@ void BuoyantFluidSolver<dim>::run()
             temperature_solution = extrapolated_solution;
         }
 
-        // move stokes solution
+        // copy stokes solution
         old_old_navier_stokes_solution = old_navier_stokes_solution;
         old_navier_stokes_solution = navier_stokes_solution;
 
@@ -496,6 +558,13 @@ void BuoyantFluidSolver<dim>::run()
 
     if (parameters.n_steps % parameters.vtk_frequency != 0)
         output_results();
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    {
+        std::ofstream   out_file("number_table.txt");
+        benchmark_table.write_text(out_file);
+        out_file.close();
+    }
 
     pcout << std::fixed;
 }
