@@ -20,9 +20,9 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::setup_dofs()
 {
-    TimerOutput::Scope timer_section(computing_timer, "setup dofs");
-
     pcout << "Setup dofs..." << std::endl;
+
+    TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
     // temperature part
     locally_owned_temperature_dofs.clear();
@@ -212,8 +212,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     old_old_phi_pressure.reinit(navier_stokes_solution);
 
     // print info message
-    std::locale s = pcout.get_stream().getloc();
-    pcout.get_stream().imbue(std::locale(""));
     pcout << "   Number of active cells: "
           << triangulation.n_global_active_cells()
           << std::endl
@@ -229,7 +227,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
           << "   Number of temperature degrees of freedom: "
           << n_dofs_temperature
           << std::endl;
-    pcout.get_stream().imbue(s);
 }
 
 template<int dim>
