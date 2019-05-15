@@ -188,8 +188,6 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     {
     TimerOutput::Scope timer_section(computing_timer, "refine mesh (part 1)");
 
-    const FEValuesExtractors::Vector    velocities(0);
-
     // error estimation based on temperature
     Vector<float>   estimated_temperature_error(triangulation.n_active_cells());
     KellyErrorEstimator<dim>::estimate(mapping,
@@ -212,6 +210,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 
     // error estimation based on velocity
     Vector<float>   estimated_velocity_error(triangulation.n_active_cells());
+    const FEValuesExtractors::Vector    velocities(0);
     KellyErrorEstimator<dim>::estimate(mapping,
                                        navier_stokes_dof_handler,
                                        QGauss<dim-1>(parameters.velocity_degree + 1),
@@ -222,19 +221,24 @@ void BuoyantFluidSolver<dim>::refine_mesh()
                                        nullptr,
                                        0,
                                        triangulation.locally_owned_subdomain());
-
     const float max_velocity_error
     = *std::max_element(estimated_velocity_error.begin(),
                         estimated_velocity_error.end());
-    AssertIsFinite(max_velocity_error);
-    Assert(max_velocity_error > 0., ExcLowerRangeType<double>(max_velocity_error, 0.));
-
-    estimated_velocity_error /= max_velocity_error;
 
     // error combined error estimate
     Vector<float>   estimated_error_per_cell(triangulation.n_active_cells());
-    estimated_error_per_cell.add(0.5, estimated_temperature_error);
-    estimated_error_per_cell.add(0.5, estimated_velocity_error);
+    if (max_velocity_error > 0.)
+    {
+        AssertIsFinite(max_velocity_error);
+        estimated_velocity_error /= max_velocity_error;
+
+        estimated_error_per_cell.add(0.5, estimated_temperature_error);
+        estimated_error_per_cell.add(0.5, estimated_velocity_error);
+    }
+    else
+        estimated_error_per_cell = estimated_temperature_error;
+
+
 
     // set refinement flags
     parallel::distributed::
@@ -398,6 +402,9 @@ void BuoyantFluidSolver<dim>::run()
 
                 old_temperature_solution = distributed_temperature;
 
+                // copy solution vectors for mesh refinement
+                temperature_solution = old_temperature_solution;
+
                 refine_mesh();
 
                 ++cnt;
@@ -411,11 +418,9 @@ void BuoyantFluidSolver<dim>::run()
 
         // compute consistent initial pressure
         compute_initial_pressure();
+        // copy solution vectors for output
+        navier_stokes_solution = old_navier_stokes_solution;
     }
-
-    // copy solution vectors for output
-    temperature_solution = old_temperature_solution;
-    navier_stokes_solution = old_navier_stokes_solution;
 
     // output of the initial condition
     output_results(true);

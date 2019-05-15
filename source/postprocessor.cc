@@ -55,9 +55,12 @@ void PostProcessor<dim>::evaluate_vector_field(
     Assert(computed_quantities.size() == n_quadrature_points,
            ExcDimensionMismatch(computed_quantities.size(),
                                 n_quadrature_points));
-    Assert(inputs.solution_values[0].size() == dim + 3,
-           ExcDimensionMismatch(inputs.solution_values[0].size(),
+    Assert(computed_quantities[0].size() == dim + 3,
+           ExcDimensionMismatch(computed_quantities[0].size(),
                                 dim + 3));
+    Assert(inputs.solution_values[0].size() == dim + 2,
+           ExcDimensionMismatch(inputs.solution_values[0].size(),
+                                dim + 2));
     for (unsigned int q=0; q<n_quadrature_points; ++q)
     {
         // velocity
