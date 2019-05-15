@@ -29,6 +29,22 @@ enum TemperaturePerturbation
 using namespace dealii;
 
 template<int dim>
+class VelocityTestValues : public Function<dim>
+{
+public:
+    VelocityTestValues(const double inner_radius,
+                       const double outer_radius);
+
+    virtual void vector_value(const Point<dim>   &point,
+                              Vector<double> &values) const;
+
+private:
+    const double inner_radius;
+    const double outer_radius;
+};
+
+
+template<int dim>
 class TemperatureInitialValues : public Function<dim>
 {
 public:
