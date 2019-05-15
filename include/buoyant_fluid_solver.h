@@ -146,8 +146,6 @@ public:
 private:
     void make_grid();
 
-    void mark_sector_cells(const double radius, const double polar_angle = 0);
-
     void setup_dofs();
 
     void setup_temperature_matrix
@@ -182,6 +180,40 @@ private:
     std::pair<double,double>    compute_rms_values() const;
     double                      compute_kinetic_energy() const;
     double                      compute_cfl_number() const;
+
+    /*
+     * benchmarking methods
+     */
+    double                      compute_radial_velocity_locally
+                                (const double &radius,
+                                 const double &theta,
+                                 const double &phi) const;
+    double                      compute_radial_velocity
+                                (const double &radius,
+                                 const double &theta,
+                                 const double &phi) const;
+
+    double                      compute_azimuthal_gradient_of_radial_velocity_locally
+                                (const double &radius,
+                                 const double &theta,
+                                 const double &phi) const;
+    double                      compute_azimuthal_gradient_of_radial_velocity
+                                (const double &radius,
+                                 const double &theta,
+                                 const double &phi) const;
+
+    std::pair<double,double>    compute_benchmark_requests_locally
+                                (const double   &radius,
+                                 const double   &theta,
+                                 const double   &phi) const;
+    std::pair<double,double>    compute_benchmark_requests
+                                (const double   &radius,
+                                 const double   &theta,
+                                 const double   &phi) const;
+
+    std::pair<Point<dim>,double>find_benchmark_point
+                                (const double       &tol = 1e-3,
+                                 const unsigned int &max_iter = 30) const;
 
     void update_timestep(const double current_cfl_number);
 

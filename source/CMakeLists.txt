@@ -14,6 +14,7 @@ SET(TARGET_SRC
   parameters.cc
   postprocessor.cc
   postprocess_solution.cc
+  postprocess_benchmark.cc
   setup.cc
   solve_navier_stokes.cc
   solve_temperature.cc

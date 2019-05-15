@@ -6,12 +6,13 @@
  */
 
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/utilities.h>
 
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/fe_dgq.h>
+
+#include <deal.II/grid/grid_tools.h>
 
 #include <deal.II/numerics/data_out.h>
 
@@ -228,7 +229,6 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                 else
                     distributed_joint_solution(local_joint_dof_indices[i])
                     = (double)joint_cell->material_id();
-            std::cout << (double)joint_cell->material_id() << std::endl;
         }
     }
     distributed_joint_solution.compress(VectorOperation::insert);
@@ -275,13 +275,15 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                                 ".vtu");
         const std::string
         pvtu_master_filename = ("solution-" +
-                                Utilities::int_to_string (timestep_number, 5) +
+                                (initial_condition ? "initial":
+                                Utilities::int_to_string (timestep_number, 5)) +
                                 ".pvtu");
         std::ofstream pvtu_master(pvtu_master_filename.c_str());
         data_out.write_pvtu_record(pvtu_master, filenames);
         const std::string
         visit_master_filename = ("solution-" +
-                                 Utilities::int_to_string (timestep_number, 5) +
+                                 (initial_condition ? "initial":
+                                 Utilities::int_to_string (timestep_number, 5)) +
                                  ".visit");
         std::ofstream visit_master(visit_master_filename.c_str());
         DataOutBase::write_visit_record(visit_master, filenames);
@@ -290,14 +292,24 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 }  // namespace BuoyantFluid
 
 // explicit instantiation
-template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<2>::compute_rms_values() const;
-template std::pair<double,double> BuoyantFluid::BuoyantFluidSolver<3>::compute_rms_values() const;
+template std::pair<double,double>
+BuoyantFluid::BuoyantFluidSolver<2>::compute_rms_values() const;
+template std::pair<double,double>
+BuoyantFluid::BuoyantFluidSolver<3>::compute_rms_values() const;
 
-template double BuoyantFluid::BuoyantFluidSolver<2>::compute_kinetic_energy() const;
-template double BuoyantFluid::BuoyantFluidSolver<3>::compute_kinetic_energy() const;
+template double
+BuoyantFluid::BuoyantFluidSolver<2>::compute_kinetic_energy() const;
+template double
+BuoyantFluid::BuoyantFluidSolver<3>::compute_kinetic_energy() const;
 
-template double BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;
-template double BuoyantFluid::BuoyantFluidSolver<3>::compute_cfl_number() const;
+template double
+BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;
+template double
+BuoyantFluid::BuoyantFluidSolver<3>::compute_cfl_number() const;
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::output_results(const bool) const;
-template void BuoyantFluid::BuoyantFluidSolver<3>::output_results(const bool) const;
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::output_results
+(const bool) const;
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::output_results
+(const bool) const;
