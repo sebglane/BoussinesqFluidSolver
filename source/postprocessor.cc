@@ -23,7 +23,6 @@ std::vector<std::string> PostProcessor<dim>::get_names() const
     solution_names.emplace_back("pressure");
     solution_names.emplace_back("temperature");
     solution_names.emplace_back("partition");
-    solution_names.emplace_back("markers");
 
     return solution_names;
 }
@@ -43,7 +42,6 @@ PostProcessor<dim>::get_data_component_interpretation() const
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
     component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
 
     return component_interpretation;
 }
@@ -55,9 +53,11 @@ void PostProcessor<dim>::evaluate_vector_field(
 {
     const unsigned int n_quadrature_points = inputs.solution_values.size();
     Assert(computed_quantities.size() == n_quadrature_points,
-            ExcInternalError());
+           ExcDimensionMismatch(computed_quantities.size(),
+                                n_quadrature_points));
     Assert(inputs.solution_values[0].size() == dim + 3,
-            ExcInternalError());
+           ExcDimensionMismatch(inputs.solution_values[0].size(),
+                                dim + 3));
     for (unsigned int q=0; q<n_quadrature_points; ++q)
     {
         // velocity
@@ -69,8 +69,6 @@ void PostProcessor<dim>::evaluate_vector_field(
         computed_quantities[q](dim+1) = inputs.solution_values[q](dim+1);
         // mpi partition
         computed_quantities[q](dim+2) = partition;
-        // cell marker
-        computed_quantities[q](dim+1) = inputs.solution_values[q](dim+2);
     }
 }
 

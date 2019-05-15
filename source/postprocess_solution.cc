@@ -10,7 +10,6 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_values.h>
-#include <deal.II/fe/fe_dgq.h>
 
 #include <deal.II/grid/grid_tools.h>
 
@@ -170,22 +169,16 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
         pcout << "Output results..." << std::endl;
 
     // create joint finite element
-    const FE_DGQ<dim>   aux_fe(0);
     const FESystem<dim> joint_fe(navier_stokes_fe, 1,
-                                 temperature_fe, 1,
-                                 aux_fe, 1);
+                                 temperature_fe, 1);
 
     // create joint dof handler
     DoFHandler<dim>     joint_dof_handler(triangulation);
     joint_dof_handler.distribute_dofs(joint_fe);
 
-    DoFHandler<dim>     aux_dof_handler(triangulation);
-    aux_dof_handler.distribute_dofs(aux_fe);
-
     Assert(joint_dof_handler.n_dofs() ==
            navier_stokes_dof_handler.n_dofs() +
-           temperature_dof_handler.n_dofs() +
-           aux_dof_handler.n_dofs(),
+           temperature_dof_handler.n_dofs(),
            ExcInternalError());
 
     // create joint solution
@@ -226,9 +219,6 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
                     distributed_joint_solution(local_joint_dof_indices[i])
                     = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
                 }
-                else
-                    distributed_joint_solution(local_joint_dof_indices[i])
-                    = (double)joint_cell->material_id();
         }
     }
     distributed_joint_solution.compress(VectorOperation::insert);
