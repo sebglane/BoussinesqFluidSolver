@@ -258,7 +258,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // count number of cells to be refined and coarsened
     unsigned int local_cell_counts[2] = {0, 0};
     for (auto cell: triangulation.active_cell_iterators())
-        if (cell->is_locally_owned() && cell->refine_flag_set ())
+        if (cell->is_locally_owned() && cell->refine_flag_set())
             local_cell_counts[0] += 1;
         else if (cell->is_locally_owned() && cell->coarsen_flag_set())
             local_cell_counts[1] += 1;

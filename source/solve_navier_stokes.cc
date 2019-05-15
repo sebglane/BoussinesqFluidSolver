@@ -63,10 +63,14 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
     }
     else
     {
-        preconditioner_symmetric_diffusion.reset(new LA::PreconditionSSOR());
+        preconditioner_symmetric_diffusion.reset(new LA::PreconditionAMG());
 
-        LA::PreconditionSSOR::AdditionalData    data;
-        data.omega = 1.5;
+        LA::PreconditionAMG::AdditionalData    data;
+        data.higher_order_elements = true;
+        data.elliptic = true;
+        data.aggregation_threshold = 0.02;
+        data.smoother_sweeps = 2;
+
         preconditioner_symmetric_diffusion
         ->initialize(navier_stokes_matrix.block(0,0),
                      data);

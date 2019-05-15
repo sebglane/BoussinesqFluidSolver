@@ -298,7 +298,7 @@ private:
     std::shared_ptr<LA::PreconditionAMG>
     preconditioner_asymmetric_diffusion;
 
-    std::shared_ptr<LA::PreconditionSSOR>
+    std::shared_ptr<LA::PreconditionAMG>
     preconditioner_symmetric_diffusion;
 
     std::shared_ptr<LA::PreconditionAMG>
