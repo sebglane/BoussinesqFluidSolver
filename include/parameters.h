@@ -70,6 +70,8 @@ struct Parameters
     unsigned int    rms_frequency;
     unsigned int    cfl_frequency;
     unsigned int    energy_frequency;
+    unsigned int    benchmark_start;
+    unsigned int    benchmark_frequency;
 
     bool            verbose;
 

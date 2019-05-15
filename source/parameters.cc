@@ -21,6 +21,8 @@ vtk_frequency(10),
 rms_frequency(5),
 cfl_frequency(5),
 energy_frequency(5),
+benchmark_start(500),
+benchmark_frequency(5),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
@@ -35,7 +37,7 @@ n_max_iter(50),
 imex_scheme(TimeStepping::CNAB),
 initial_timestep(1e-3),
 min_timestep(1e-9),
-max_timestep(1e-1),
+max_timestep(1e-3),
 cfl_min(0.3),
 cfl_max(0.7),
 adaptive_timestep(true),
@@ -130,6 +132,14 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "10",
                 Patterns::Integer(),
                 "Output frequency of current kinetic energy.");
+        prm.declare_entry("benchmark_freq",
+                "5",
+                Patterns::Integer(),
+                "Output frequency of benchmark report.");
+        prm.declare_entry("benchmark_start",
+                "500",
+                Patterns::Integer(),
+                "Time step after which benchmark values are reported.");
         prm.declare_entry("verbose",
                 "false",
                 Patterns::Bool(),
@@ -228,12 +238,12 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Relative tolerance for the stokes solver.");
 
         prm.declare_entry("tol_abs",
-                "1e-12",
+                "1e-9",
                 Patterns::Double(),
                 "Absolute tolerance for the stokes solver.");
 
         prm.declare_entry("n_max_iter",
-                "100",
+                "50",
                 Patterns::Integer(0),
                 "Maximum number of iterations for the stokes solver.");
     }
@@ -242,7 +252,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
     prm.enter_subsection("Time stepping settings");
     {
         prm.declare_entry("dt_initial",
-                "1e-4",
+                "1e-6",
                 Patterns::Double(),
                 "Initial time step.");
 
@@ -252,7 +262,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Maximum time step.");
 
         prm.declare_entry("dt_max",
-                "1e-1",
+                "1e-3",
                 Patterns::Double(),
                 "Maximum time step.");
 
@@ -324,6 +334,12 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         energy_frequency = prm.get_integer("energy_freq");
         Assert(energy_frequency > 0, ExcLowerRange(0, energy_frequency));
+
+        benchmark_frequency = prm.get_integer("benchmark_freq");
+        Assert(benchmark_frequency > 0, ExcLowerRange(0, benchmark_frequency));
+
+        benchmark_start = prm.get_integer("benchmark_start");
+        Assert(benchmark_start > 0, ExcLowerRange(0, benchmark_start));
 
         verbose = prm.get_bool("verbose");
     }
