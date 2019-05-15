@@ -28,7 +28,7 @@ void BuoyantFluidSolver<dim>::make_grid()
         pcout << "   Number of cells after "
               << parameters.n_global_refinements
               << " global refinements: "
-              << triangulation.n_active_cells()
+              << triangulation.n_global_active_cells()
               << std::endl;
     }
 
@@ -45,7 +45,7 @@ void BuoyantFluidSolver<dim>::make_grid()
         pcout << "   Number of cells after "
               << parameters.n_boundary_refinements
               << " boundary refinements: "
-              << triangulation.n_active_cells()
+              << triangulation.n_global_active_cells()
               << std::endl;
     }
 }

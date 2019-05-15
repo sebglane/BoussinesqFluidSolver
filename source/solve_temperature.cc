@@ -59,17 +59,43 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
     LA::Vector  distributed_solution(temperature_rhs);
     distributed_solution = temperature_solution;
 
+    SolverControl solver_control(parameters.n_max_iter,
+                                 std::max(parameters.rel_tol * temperature_rhs.l2_norm(),
+                                          parameters.abs_tol));
+
     // solve linear system
-    SolverControl solver_control(parameters.n_max_iter, std::max(parameters.rel_tol * temperature_rhs.l2_norm(),
-                                 parameters.abs_tol));
+    try
+    {
+        LA::SolverCG    cg(solver_control);
 
-    LA::SolverCG    cg(solver_control);
-
-    cg.solve(temperature_matrix,
-            distributed_solution,
-             temperature_rhs,
-             *preconditioner_temperature);
-
+        cg.solve(temperature_matrix,
+                 distributed_solution,
+                 temperature_rhs,
+                 *preconditioner_temperature);
+    }
+    catch (std::exception &exc)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Exception in temperature solve: " << std::endl
+                << exc.what() << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::abort();
+    }
+    catch (...)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Unknown exception in temperature solve!" << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::abort();
+    }
     temperature_constraints.distribute(distributed_solution);
     temperature_solution = distributed_solution;
 

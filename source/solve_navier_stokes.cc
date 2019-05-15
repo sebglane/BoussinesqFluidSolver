@@ -139,12 +139,12 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
         }
         else
         {
-        LA::SolverCG    cg(solver_control);
+            LA::SolverCG    cg(solver_control);
 
-        cg.solve(navier_stokes_matrix.block(0,0),
-                 distributed_solution.block(0),
-                 navier_stokes_rhs.block(0),
-                 *preconditioner_symmetric_diffusion);
+            cg.solve(navier_stokes_matrix.block(0,0),
+                     distributed_solution.block(0),
+                     navier_stokes_rhs.block(0),
+                     *preconditioner_symmetric_diffusion);
         }
     }
     catch (std::exception &exc)
@@ -164,7 +164,7 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
         std::cerr << std::endl << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
-        std::cerr << "Unknown exception diffusion solve!" << std::endl
+        std::cerr << "Unknown exception in diffusion solve!" << std::endl
                 << "Aborting!" << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
@@ -225,7 +225,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         std::cerr << std::endl << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
-        std::cerr << "Unknown exception projection solve!" << std::endl
+        std::cerr << "Unknown exception in projection solve!" << std::endl
                 << "Aborting!" << std::endl
                 << "----------------------------------------------------"
                 << std::endl;
@@ -309,7 +309,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
             std::cerr << std::endl << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
-            std::cerr << "Unknown exception pressure mass matrix solve!" << std::endl
+            std::cerr << "Unknown exception in pressure mass matrix solve!" << std::endl
                     << "Aborting!" << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
@@ -342,6 +342,8 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
 {
     if (parameters.verbose)
         pcout << "Computing initial pressure..." << std::endl;
+
+
 
     assemble_navier_stokes_matrices();
 
