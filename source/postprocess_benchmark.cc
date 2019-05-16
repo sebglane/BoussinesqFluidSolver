@@ -16,12 +16,6 @@
 #include "buoyant_fluid_solver.h"
 #include "postprocessor.h"
 
-DeclException1(ExcNoBenchmarkPointFound,
-               int,
-               << "The algorithm did not found a benchmark "
-               << "using " << arg1
-               << " trial points in [0,2*pi).");
-
 DeclException0(ExcBoostNoConvergence);
 
 namespace BuoyantFluid {
@@ -681,6 +675,7 @@ std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests
 template<int dim>
 double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
 (const double        &phi_guess,
+ const bool           local_slope,
  const double        &tol,
  const unsigned int  &max_iter) const
 {
@@ -710,15 +705,15 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
         = bracket_and_solve_root(
                 function,
                 phi_guess,
-                2.0,
-                true,
+                1.2,
+                local_slope,
                 tolerance_criterion,
                 boost_max_iter);
         phi = 0.5 * (phi_interval.first + phi_interval.second);
     }
     catch (std::exception &exc)
     {
-        AssertThrow(false, ExcBoostNoConvergence());
+        throw ExcBoostNoConvergence();
     }
     catch (...)
     {
@@ -733,122 +728,129 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
     }
 
     if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-
+        phi += 2. * numbers::PI;
+    else if (phi > 2. * numbers::PI)
+        phi -= 2. * numbers::PI;
     return phi;
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::update_benchmark_point()
 {
+    if (parameters.verbose)
+        pcout << "Updating benchmark point..." << std::endl;
+
     const double radius = 0.5 * (1. + parameters.aspect_ratio);
 
-    pcout << "Updating benchmark point..." << std::endl;
-
-    if (phi_benchmark < numbers::PI)
-    {
-        /**
-         * A valid initial has not been computed yet. We try to find a benchmark
-         * point from a set of trial points.
-         */
-
-        // initialize trial points
-        const unsigned int n_trial_points = 16;
-        std::vector<double> trial_points;
-        for (unsigned int i=0; i<n_trial_points; ++i)
-            trial_points.push_back(i * 2. * numbers::PI);
-
-        bool            point_found = false;
-        unsigned int    cnt = 0;
-        while(cnt < n_trial_points && point_found == false)
-        {
-
-            pcout << "cnt: " << cnt
-                  << ", phi: " << trial_points[cnt];
-
-            const double gradient_at_trial_point
-            = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
-
-            if (gradient_at_trial_point < 0.)
-            {
-                pcout << ", wrong slope!" << std::endl;
-                ++cnt;
-                continue;
-            }
-
-            try
-            {
-                const double phi = compute_zero_of_radial_velocity(trial_points[cnt]);
-
-                pcout << ", zero located at: " << phi << std::endl;
-
-                const double gradients_at_zero
-                = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
-
-                if (gradients_at_zero > 0.)
-                {
-                    pcout << ", slope is correct done!" << std::endl;
-                    point_found = true;
-                    phi_benchmark = phi;
-                }
-                ++cnt;
-            }
-            catch(ExcBoostNoConvergence &exc)
-            {
-                ++cnt;
-                continue;
-            }
-            catch (std::exception &exc)
-            {
-                std::cerr << std::endl << std::endl
-                          << "----------------------------------------------------"
-                          << std::endl;
-                std::cerr << "Exception on processing: " << std::endl
-                          << exc.what() << std::endl
-                          << "Aborting!" << std::endl
-                          << "----------------------------------------------------"
-                          << std::endl;
-                std::abort();
-            }
-            catch (...)
-            {
-                std::cerr << std::endl << std::endl
-                          << "----------------------------------------------------"
-                          << std::endl;
-                std::cerr << "Unknown exception!" << std::endl
-                          << "Aborting!" << std::endl
-                          << "----------------------------------------------------"
-                          << std::endl;
-                std::abort();
-            }
-        }
-        Assert(point_found, ExcNoBenchmarkPointFound(n_trial_points));
-    }
-    else
+    if (phi_benchmark > 0.)
     {
         const double gradient_at_trial_point
         = compute_azimuthal_gradient_of_radial_velocity(radius, 0, phi_benchmark);
 
-        Assert(gradient_at_trial_point > 0,
-               ExcLowerRangeType<double>(0, gradient_at_trial_point));
-
-        const double phi = compute_zero_of_radial_velocity(phi_benchmark);
+        const double phi
+        = compute_zero_of_radial_velocity(phi_benchmark,
+                                          gradient_at_trial_point > 0.);
 
         const double gradient_at_zero
         = compute_azimuthal_gradient_of_radial_velocity(radius, 0, phi);
 
-        Assert(gradient_at_zero > 0,
-               ExcLowerRangeType<double>(0, gradient_at_zero));
+        if(gradient_at_zero > 0
+                && phi_benchmark >= 0.
+                && phi_benchmark <= 2. * numbers::PI)
+        {
+            phi_benchmark = phi;
+            return;
+        }
+    }
 
-        phi_benchmark = phi;
+    /**
+     * A valid initial guess has not been computed yet or was not good enough.
+     * We try to find a benchmark point from a set of trial points.
+     */
+
+    // initialize trial points
+    const unsigned int n_trial_points = 16;
+    std::vector<double> trial_points;
+    for (unsigned int i=0; i<n_trial_points; ++i)
+        trial_points.push_back(i * 2. * numbers::PI / static_cast<double>(n_trial_points));
+
+    bool            point_found = false;
+    unsigned int    cnt = 0;
+    while(cnt < n_trial_points && point_found == false)
+    {
+        const double gradient_at_trial_point
+        = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
+
+        try
+        {
+            const double phi = compute_zero_of_radial_velocity(trial_points[cnt],
+                                                               gradient_at_trial_point > 0.);
+
+            const double gradients_at_zero
+            = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
+
+            if (gradients_at_zero > 0.)
+            {
+                point_found = true;
+                phi_benchmark = phi;
+            }
+            ++cnt;
+        }
+        catch(ExcBoostNoConvergence &exc)
+        {
+            ++cnt;
+            continue;
+        }
+        catch (std::exception &exc)
+        {
+            std::cerr << std::endl << std::endl
+                      << "----------------------------------------------------"
+                      << std::endl;
+            std::cerr << "Exception on processing: " << std::endl
+                      << exc.what() << std::endl
+                      << "Aborting!" << std::endl
+                      << "----------------------------------------------------"
+                      << std::endl;
+            std::abort();
+        }
+        catch (...)
+        {
+            std::cerr << std::endl << std::endl
+                      << "----------------------------------------------------"
+                      << std::endl;
+            std::cerr << "Unknown exception!" << std::endl
+                      << "Aborting!" << std::endl
+                      << "----------------------------------------------------"
+                      << std::endl;
+            std::abort();
+        }
+    }
+    if (!point_found)
+    {
+        std::cerr << std::endl << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Exception on update_benchmark_point!" << std::endl
+                  << "The algorithm did not find a benchmark point using "
+                  << n_trial_points << " trial points in [0,2*pi)."
+                  << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::abort();
+    }
+    if (phi_benchmark < 0. || phi_benchmark > 2. * numbers::PI)
+    {
+        std::cerr << std::endl << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Exception on update_benchmark_point!" << std::endl
+                  << "The algorithm did not find a benchmark point in [0,2*pi)."
+                  << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::abort();
     }
 }
 
@@ -923,11 +925,13 @@ BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests
 template double
 BuoyantFluid::BuoyantFluidSolver<2>::compute_zero_of_radial_velocity
 (const double        &,
+ const bool           ,
  const double        &,
  const unsigned int  &) const;
 template double
 BuoyantFluid::BuoyantFluidSolver<3>::compute_zero_of_radial_velocity
 (const double        &,
+ const bool           ,
  const double        &,
  const unsigned int  &) const;
 

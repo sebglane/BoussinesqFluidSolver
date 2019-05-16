@@ -59,9 +59,10 @@ old_timestep(parameters.initial_timestep),
 // benchmarking
 phi_benchmark(-2.*numbers::PI)
 {
-    pcout << "Boussinesq solver by S. Glane\n"
+    pcout << "Boussinesq solver written by Sebastian Glane\n"
           << "This program solves the Navier-Stokes system with thermal convection.\n"
-          << "The stable Taylor-Hood (P2-P1) element and an approximative Schur complement solver is used.\n\n"
+          << "The stable Taylor-Hood (P2-P1) element and a pressure projection scheme is applied.\n"
+          << "For time discretization an adaptive IMEX time stepping is used.\n\n"
           << "The governing equations are\n\n"
           << "\t-- Incompressibility constraint:\n\t\t div(v) = 0,\n\n"
           << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega .times. v\n"
@@ -468,19 +469,20 @@ void BuoyantFluidSolver<dim>::run()
 
         // compute benchmark results
         if (timestep_number >= parameters.benchmark_start &&
-                timestep_number % parameters.benchmark_frequency)
+                timestep_number % parameters.benchmark_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute benchmark requests");
 
             update_benchmark_point();
 
+            pcout << "   Benchmark point is at phi: " << phi_benchmark << std::endl;
+
             std::pair<double,double> benchmark_results
             = compute_benchmark_requests(0.5 * (1. + parameters.aspect_ratio),
                                          0,
                                          phi_benchmark);
-
             // add values to table
-            benchmark_table.add_value("timestep", timestep_number);
+            benchmark_table.add_value("time step", timestep_number);
             benchmark_table.add_value("time", time);
             benchmark_table.add_value("phi", phi_benchmark);
             benchmark_table.add_value("temperature", benchmark_results.first);

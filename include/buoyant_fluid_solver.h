@@ -226,6 +226,7 @@ private:
      */
     double                      compute_zero_of_radial_velocity
                                 (const double       &phi_guess,
+                                 const bool          local_slope,
                                  const double       &tol = 1e-3,
                                  const unsigned int &max_iter = 30) const;
 
