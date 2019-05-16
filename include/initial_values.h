@@ -13,6 +13,8 @@
 #include <deal.II/base/point.h>
 #include <deal.II/lac/vector.h>
 
+#include "exceptions.h"
+
 namespace EquationData {
 
 /*
@@ -27,6 +29,8 @@ enum TemperaturePerturbation
 };
 
 using namespace dealii;
+
+using namespace GeometryExceptions;
 
 template<int dim>
 class VelocityTestValues : public Function<dim>
@@ -56,8 +60,8 @@ public:
                          const unsigned int component = 0) const;
 
 private:
-    const double ri;
-    const double ro;
+    const double inner_radius;
+    const double outer_radius;
 
     const TemperaturePerturbation   perturbation_type;
 };

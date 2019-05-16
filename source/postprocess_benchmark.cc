@@ -16,21 +16,6 @@
 #include "buoyant_fluid_solver.h"
 #include "postprocessor.h"
 
-DeclException1(ExcPostiveRadius,
-               double,
-               << "The radius, r = " << arg1
-               << ", is not positive.");
-
-DeclException1(ExcPolarAngleRange,
-               double,
-               << "The polar angle theta = " << arg1
-               << ", is not in the half-open range [0,pi).");
-
-DeclException1(ExcAzimuthalAngleRange,
-               double,
-               << "The azimuthal angle, phi =  " << arg1
-               << ", is not in the half-open range [0,2*pi).");
-
 DeclException1(ExcNoBenchmarkPointFound,
                int,
                << "The algorithm did not found a benchmark "
@@ -48,18 +33,12 @@ double BuoyantFluidSolver<2>::compute_radial_velocity_locally(
 {
     const unsigned dim = 2;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
+    Assert((phi < 0.?
+           (phi >= -numbers::PI && phi <= numbers::PI):
+           (phi >= 0. && phi <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi));
 
     const Point<dim>    x(radius * cos(phi), radius * sin(phi));
 
@@ -114,7 +93,7 @@ double BuoyantFluidSolver<3>::compute_radial_velocity_locally
 {
     const unsigned dim = 3;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
     Assert(theta >= 0. && theta <= numbers::PI,
            ExcPolarAngleRange(theta));
@@ -250,18 +229,12 @@ double  BuoyantFluidSolver<2>::compute_azimuthal_gradient_of_radial_velocity_loc
 {
     const unsigned dim = 2;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
+    Assert((phi < 0.?
+           (phi >= -numbers::PI && phi <= numbers::PI):
+           (phi >= 0. && phi <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi));
 
     const Point<dim>    x(radius * cos(phi), radius * sin(phi));
 
@@ -339,21 +312,15 @@ double BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_velocity_loca
 {
     const unsigned dim = 3;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
     Assert(theta >= 0. && theta <= numbers::PI,
            ExcPolarAngleRange(theta));
 
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
+    Assert((phi < 0.?
+           (phi >= -numbers::PI && phi <= numbers::PI):
+           (phi >= 0. && phi <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi));
 
     const Point<dim>    x(radius * cos(phi) * sin(theta),
                           radius * sin(phi) * sin(theta),
@@ -495,18 +462,12 @@ std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_local
 {
     const unsigned int dim = 2;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
+    Assert((phi < 0.?
+           (phi >= -numbers::PI && phi <= numbers::PI):
+           (phi >= 0. && phi <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi));
 
     const Point<dim>    x(radius * cos(phi),
                           radius * sin(phi));
@@ -576,21 +537,15 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
 {
     const unsigned int dim = 3;
 
-    Assert(radius > 0.0, ExcPostiveRadius(radius));
+    Assert(radius > 0.0, ExcNegativeRadius(radius));
 
     Assert(theta >= 0. && theta <= numbers::PI,
            ExcPolarAngleRange(theta));
 
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
+    Assert((phi < 0.?
+           (phi >= -numbers::PI && phi <= numbers::PI):
+           (phi >= 0. && phi <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi));
 
     const Point<dim>    x(radius * cos(phi) * sin(theta),
                           radius * sin(phi) * sin(theta),
@@ -734,16 +689,10 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
     Assert(tol > 0.0, ExcLowerRangeType<double>(tol, 0));
     Assert(max_iter > 0, ExcLowerRange(max_iter, 0));
 
-    if (phi_guess < 0.)
-    {
-        Assert((phi_guess >= -numbers::PI) && (phi_guess <= numbers::PI),
-               ExcAzimuthalAngleRange(phi_guess));
-    }
-    else
-    {
-        Assert((phi_guess >= 0.) && (phi_guess <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi_guess));
-    }
+    Assert((phi_guess < 0.?
+           (phi_guess >= -numbers::PI && phi_guess <= numbers::PI):
+           (phi_guess >= 0. && phi_guess <= 2. * numbers::PI)),
+           ExcAzimuthalAngleRange(phi_guess));
 
     const double radius = 0.5 * (1. + parameters.aspect_ratio);
     const double theta = numbers::PI / 2.;
@@ -802,6 +751,8 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
 {
     const double radius = 0.5 * (1. + parameters.aspect_ratio);
 
+    pcout << "Updating benchmark point..." << std::endl;
+
     if (phi_benchmark < numbers::PI)
     {
         /**
@@ -819,23 +770,32 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
         unsigned int    cnt = 0;
         while(cnt < n_trial_points && point_found == false)
         {
+
+            pcout << "cnt: " << cnt
+                  << ", phi: " << trial_points[cnt];
+
             const double gradient_at_trial_point
             = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
 
             if (gradient_at_trial_point < 0.)
+            {
+                pcout << ", wrong slope!" << std::endl;
+                ++cnt;
                 continue;
+            }
 
             try
             {
                 const double phi = compute_zero_of_radial_velocity(trial_points[cnt]);
 
-                pcout << "Anticipated benchmark location: " << phi << std::endl;
+                pcout << ", zero located at: " << phi << std::endl;
 
                 const double gradients_at_zero
                 = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
 
                 if (gradients_at_zero > 0.)
                 {
+                    pcout << ", slope is correct done!" << std::endl;
                     point_found = true;
                     phi_benchmark = phi;
                 }

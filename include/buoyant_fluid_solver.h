@@ -123,12 +123,15 @@ namespace LA
 #include <memory>
 
 #include "assembly_data.h"
+#include "exceptions.h"
 #include "parameters.h"
 #include "timestepping.h"
 
 namespace BuoyantFluid {
 
 using namespace dealii;
+
+using namespace GeometryExceptions;
 
 /*
  *

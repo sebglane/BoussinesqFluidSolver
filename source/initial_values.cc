@@ -17,8 +17,9 @@ Function<dim>(dim+1),
 inner_radius(inner_radius),
 outer_radius(outer_radius)
 {
+    Assert(inner_radius > 0.0, ExcNegativeRadius(inner_radius));
+    Assert(outer_radius > 0.0, ExcNegativeRadius(outer_radius));
     Assert(inner_radius < outer_radius, ExcLowerRangeType<double>(inner_radius, outer_radius));
-    Assert(0 < inner_radius, ExcLowerRangeType<double>(0, inner_radius));
 }
 
 template<>
@@ -31,11 +32,11 @@ void VelocityTestValues<2>::vector_value(
     AssertDimension(value.size(), dim + 1);
 
     const double radius = point.distance(Point<dim>());
-    Assert(radius> 0., ExcLowerRangeType<double>(radius, 0.));
+    Assert(radius> 0., ExcNegativeRadius(radius));
 
     const double phi = atan2(point[1], point[0]);
-    Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(phi, -numbers::PI));
-    Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, phi));
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
 
     const double tol = 1e-12;
     const double xi = (2.0 * radius - outer_radius - inner_radius)
@@ -66,17 +67,18 @@ void VelocityTestValues<3>::vector_value(
     AssertDimension(value.size(), dim + 1);
 
     const double radius = point.distance(Point<dim>());
-    Assert(radius> 0., ExcLowerRangeType<double>(radius, 0.));
+    Assert(radius> 0., ExcNegativeRadius(radius));
 
     const double cylinder_radius = sqrt(point[0]*point[0] + point[1]*point[1]);
 
     const double theta = atan2(cylinder_radius, point[2]);
-    Assert(theta >= 0., ExcLowerRangeType<double>(theta, 0.));
-    Assert(theta <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+    Assert(theta >= 0. && theta <= numbers::PI,
+           ExcPolarAngleRange(theta));
 
     const double phi = atan2(point[1], point[0]);
-    Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(theta, -numbers::PI));
-    Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
+
 
     const double tol = 1e-12;
     const double xi = (2.0 * radius - outer_radius - inner_radius)
@@ -110,13 +112,14 @@ TemperatureInitialValues<dim>::TemperatureInitialValues(
         const TemperaturePerturbation   perturbation_type_)
 :
 Function<dim>(1),
-ri(inner_radius),
-ro(outer_radius),
+inner_radius(inner_radius),
+outer_radius(outer_radius),
 perturbation_type(perturbation_type_)
 {
-    Assert(ri > 0.0, ExcLowerRangeType<double>(0, ri));
-    Assert(ro > 0.0, ExcLowerRangeType<double>(0, ro));
-    Assert(ri < ro, ExcLowerRangeType<double>(ri, ro));
+    Assert(inner_radius > 0.0, ExcNegativeRadius(inner_radius));
+    Assert(outer_radius > 0.0, ExcNegativeRadius(outer_radius));
+    Assert(inner_radius < outer_radius,
+           ExcLowerRangeType<double>(inner_radius, outer_radius));
 }
 
 template<>
@@ -125,12 +128,12 @@ double TemperatureInitialValues<2>::value(
         const unsigned int  /* component */) const
 {
     const double r = point.distance(Point<2>());
-    Assert(r > 0.0, ExcLowerRangeType<double>(0, r));
+    Assert(r > 0.0, ExcNegativeRadius(r));
 
     const double log_r = log(r);
     AssertIsFinite(log_r);
 
-    const double log_ro = log(ro), log_ri = log(ri);
+    const double log_ro = log(outer_radius), log_ri = log(inner_radius);
     AssertIsFinite(log_ro);
     AssertIsFinite(log_ri);
 
@@ -146,11 +149,12 @@ double TemperatureInitialValues<2>::value(
             value = (log_ro - log_r) / (log_ro - log_ri);;
 
             const double phi = atan2(point[1], point[0]);
-            Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(phi, -numbers::PI));
-            Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, phi));
+            Assert(phi >= -numbers::PI && phi <= numbers::PI,
+                   ExcAzimuthalAngleRange(phi));
+
 
             const double tol = 1e-12;
-            const double xi = (2.0 * r - ro - ri)/(ro - ri);
+            const double xi = (2.0 * r - outer_radius - inner_radius)/(outer_radius - inner_radius);
             Assert(xi >= -1.0 - tol, ExcLowerRangeType<double>(xi, -1.0));
             Assert(xi <= 1.0 + tol, ExcLowerRangeType<double>(1.0, xi));
 
@@ -172,32 +176,31 @@ double TemperatureInitialValues<3>::value(
         const unsigned int  /* component */) const
 {
     const double r = point.distance(Point<3>());
-    Assert(r > 0.0, ExcLowerRangeType<double>(0, r));
+    Assert(r > 0.0, ExcNegativeRadius(r));
 
     double value = 0.;
 
     switch (perturbation_type)
     {
         case TemperaturePerturbation::None:
-            value = (ro - r) / (ro - ri) * ri / r;
+            value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
             break;
         case TemperaturePerturbation::Sinusoidal:
         {
-            value = (ro - r) / (ro - ri) * ri / r;
+            value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
 
             const double r_cylinder = sqrt(point[0]*point[0] + point[1]*point[1]);
-            Assert(r_cylinder >= 0.0, ExcLowerRangeType<double>(0.0, r_cylinder));
+            Assert(r_cylinder >= 0.0, ExcNegativeRadius(r_cylinder));
 
             const double theta = atan2(r_cylinder, point[2]);
-            Assert(theta >= 0., ExcLowerRangeType<double>(theta, 0.));
-            Assert(theta <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+            Assert(theta >= 0. && theta <= numbers::PI,
+                   ExcPolarAngleRange(theta));
 
             const double phi = atan2(point[1], point[0]);
-            Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(phi, -numbers::PI));
-            Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, phi));
-
+            Assert(phi >= -numbers::PI && phi <= numbers::PI,
+                   ExcAzimuthalAngleRange(phi));
             const double tol = 1e-12;
-            const double xi = (2.0 * r - ro - ri) / (ro - ri);
+            const double xi = (2.0 * r - outer_radius - inner_radius) / (outer_radius - inner_radius);
             Assert(xi >= -1.0 - tol, ExcLowerRangeType<double>(xi, -1.0));
             Assert(xi <= 1.0 + tol, ExcLowerRangeType<double>(1.0, xi));
 
@@ -224,7 +227,7 @@ template<int dim>
 Tensor<1,dim> GravityFunction<dim>::value(const Point<dim> &point) const
 {
     const double r = point.norm();
-    Assert(r > 0, StandardExceptions::ExcDivideByZero());
+    Assert(r > 0, ExcNegativeRadius(r));
     return -point/r;
 }
 
