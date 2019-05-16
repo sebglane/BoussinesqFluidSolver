@@ -41,7 +41,10 @@ old_velocity_values(temperature_quadrature.size()),
 old_old_velocity_values(temperature_quadrature.size()),
 alpha(alpha),
 beta(beta),
-gamma(gamma)
+gamma(gamma),
+dofs_per_cell(temperature_fe.dofs_per_cell),
+n_q_points(temperature_quadrature.size()),
+velocity(0)
 {}
 
 template<int dim>
@@ -66,7 +69,10 @@ old_velocity_values(scratch.old_velocity_values),
 old_old_velocity_values(scratch.old_old_velocity_values),
 alpha(scratch.alpha),
 beta(scratch.beta),
-gamma(scratch.gamma)
+gamma(scratch.gamma),
+dofs_per_cell(scratch.dofs_per_cell),
+n_q_points(scratch.n_q_points),
+velocity(0)
 {}
 
 template <int dim>

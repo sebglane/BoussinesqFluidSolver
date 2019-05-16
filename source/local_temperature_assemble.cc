@@ -71,11 +71,6 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
         TemperatureAssembly::Scratch::RightHandSide<dim>        &scratch,
         TemperatureAssembly::CopyData::RightHandSide<dim>       &data)
 {
-    const FEValuesExtractors::Vector    velocity(0);
-
-    const unsigned int dofs_per_cell = scratch.temperature_fe_values.get_fe().dofs_per_cell;
-    const unsigned int n_q_points    = scratch.temperature_fe_values.n_quadrature_points;
-
     data.matrix_for_bc = 0;
     data.local_rhs = 0;
 
@@ -99,15 +94,14 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
     scratch.temperature_fe_values.get_function_gradients(old_old_temperature_solution,
                                                          scratch.old_old_temperature_gradients);
 
-    scratch.stokes_fe_values[velocity].get_function_values(old_navier_stokes_solution,
+    scratch.stokes_fe_values[scratch.velocity].get_function_values(old_navier_stokes_solution,
                                                            scratch.old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_values(old_old_navier_stokes_solution,
+    scratch.stokes_fe_values[scratch.velocity].get_function_values(old_old_navier_stokes_solution,
                                                            scratch.old_old_velocity_values);
 
-
-    for (unsigned int q=0; q<n_q_points; ++q)
+    for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
-        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
         {
             scratch.phi_temperature[i]      = scratch.temperature_fe_values.shape_value(i, q);
             scratch.grad_phi_temperature[i] = scratch.temperature_fe_values.shape_grad(i, q);
@@ -125,7 +119,7 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
                 scratch.gamma[1] * scratch.old_temperature_gradients[q]
                     + scratch.gamma[2] * scratch.old_old_temperature_gradients[q];
 
-        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
         {
             data.local_rhs(i) += (
                     - time_derivative_temperature * scratch.phi_temperature[i]
@@ -134,14 +128,13 @@ void BuoyantFluidSolver<dim>::local_assemble_temperature_rhs(
                     ) * scratch.temperature_fe_values.JxW(q);
 
             if (temperature_constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
-                for (unsigned int j=0; j<dofs_per_cell; ++j)
+                for (unsigned int j=0; j<scratch.dofs_per_cell; ++j)
                     data.matrix_for_bc(j,i) += (
                                   scratch.alpha[0] / timestep *
                                   scratch.phi_temperature[i] * scratch.phi_temperature[j]
                                 + scratch.gamma[0] * equation_coefficients[3]
                                   * scratch.grad_phi_temperature[i] * scratch.grad_phi_temperature[j]
                                 ) * scratch.temperature_fe_values.JxW(q);
-
         }
 
     }

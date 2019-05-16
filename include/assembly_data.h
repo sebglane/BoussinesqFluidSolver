@@ -58,6 +58,11 @@ struct RightHandSide
     const std::vector<double>   alpha;
     const std::vector<double>   beta;
     const std::vector<double>   gamma;
+
+    const unsigned int          dofs_per_cell;
+    const unsigned int          n_q_points;
+
+    const FEValuesExtractors::Vector    velocity;
 };
 
 template<int dim>
