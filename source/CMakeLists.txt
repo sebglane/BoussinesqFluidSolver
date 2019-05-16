@@ -5,12 +5,12 @@ SET(TARGET_SRC
   main.cc
   grid_factory.cc
   timestepping.cc
-  conducting_fluid/assemble_system.cc
-  conducting_fluid/conducting_fluid_solver.cc
-  conducting_fluid/initial_values.cc
-  conducting_fluid/make_grid.cc
-  conducting_fluid/setup.cc
-  conducting_fluid/solve_magnetic.cc
+  assemble_system.cc
+  conducting_fluid_solver.cc
+  initial_values.cc
+  make_grid.cc
+  setup.cc
+  solve_magnetic.cc
   # You can specify additional files here!
 )
 
