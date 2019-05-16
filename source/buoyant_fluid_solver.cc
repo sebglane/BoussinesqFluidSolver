@@ -506,9 +506,9 @@ void BuoyantFluidSolver<dim>::run()
         }
 
         // mesh refinement
-        if ((timestep_number > 0
-                && (timestep_number % parameters.refinement_frequency == 0)) ||
-                timestep_number == 2)
+        if (timestep_number > 0
+                && timestep_number % parameters.refinement_frequency == 0
+                && parameters.adaptive_refinement)
             refine_mesh();
 
         // adjust time step

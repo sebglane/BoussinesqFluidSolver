@@ -16,6 +16,7 @@ dim(2),
 n_steps(100),
 refinement_frequency(30),
 t_final(1.0),
+adaptive_refinement(true),
 // logging parameters
 vtk_frequency(10),
 rms_frequency(5),
@@ -102,6 +103,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "100",
                 Patterns::Integer(),
                 "Refinement frequency.");
+        prm.declare_entry("adaptive_refinement",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate adaptive mesh refinement.");
     }
     prm.leave_subsection();
 
@@ -304,6 +309,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         t_final = prm.get_double("t_final");
         Assert(t_final > 0.0, ExcLowerRangeType<double>(t_final, 0.0));
+
+        adaptive_refinement = prm.get_bool("adaptive_refinement");
     }
     prm.leave_subsection();
 
@@ -401,6 +408,11 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         prm.enter_subsection("Refinement parameters");
         {
+            n_global_refinements = prm.get_integer("n_global_refinements");
+            n_initial_refinements = prm.get_integer("n_initial_refinements");
+            n_boundary_refinements = prm.get_integer("n_boundary_refinements");
+
+            n_max_levels = prm.get_integer("n_max_levels");
 
             if (n_max_levels < n_global_refinements + n_boundary_refinements + n_initial_refinements)
             {
@@ -418,12 +430,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
                 AssertThrow(false, ExcMessage(message.str().c_str()));
             }
-
-            n_global_refinements = prm.get_integer("n_global_refinements");
-            n_initial_refinements = prm.get_integer("n_initial_refinements");
-            n_boundary_refinements = prm.get_integer("n_boundary_refinements");
-
-            n_max_levels = prm.get_integer("n_max_levels");
         }
         prm.leave_subsection();
     }

@@ -63,10 +63,10 @@ private:
 };
 
 template <int dim>
-class GravityVector : public TensorFunction<1,dim>
+class GravityFunction : public TensorFunction<1,dim>
 {
 public:
-    GravityVector();
+    GravityFunction();
 
     virtual Tensor<1,dim>   value(const Point<dim> &p) const;
 

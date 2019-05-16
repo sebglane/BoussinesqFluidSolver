@@ -215,13 +215,13 @@ double TemperatureInitialValues<3>::value(
 
 
 template<int dim>
-GravityVector<dim>::GravityVector()
+GravityFunction<dim>::GravityFunction()
 :
 TensorFunction<1,dim>()
 {}
 
 template<int dim>
-Tensor<1,dim> GravityVector<dim>::value(const Point<dim> &point) const
+Tensor<1,dim> GravityFunction<dim>::value(const Point<dim> &point) const
 {
     const double r = point.norm();
     Assert(r > 0, StandardExceptions::ExcDivideByZero());
@@ -229,7 +229,7 @@ Tensor<1,dim> GravityVector<dim>::value(const Point<dim> &point) const
 }
 
 template<int dim>
-void GravityVector<dim>::value_list(const std::vector<Point<dim>>    &points,
+void GravityFunction<dim>::value_list(const std::vector<Point<dim>>    &points,
                                     std::vector<Tensor<1,dim>> &values) const
 {
     Assert(points.size() == values.size(),
@@ -247,6 +247,6 @@ template class EquationData::VelocityTestValues<3>;
 template class EquationData::TemperatureInitialValues<2>;
 template class EquationData::TemperatureInitialValues<3>;
 
-template class EquationData::GravityVector<1>;
-template class EquationData::GravityVector<2>;
-template class EquationData::GravityVector<3>;
+template class EquationData::GravityFunction<1>;
+template class EquationData::GravityFunction<2>;
+template class EquationData::GravityFunction<3>;

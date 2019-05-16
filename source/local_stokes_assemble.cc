@@ -244,7 +244,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
-        const Tensor<1,dim> gravity_vector = EquationData::GravityVector<dim>().value(scratch.stokes_fe_values.quadrature_point(q));
+        const Tensor<1,dim> gravity_vector = EquationData::GravityFunction<dim>().value(scratch.stokes_fe_values.quadrature_point(q));
 
         Tensor<1,dim>   coriolis_term;
         if (parameters.rotation)

@@ -64,6 +64,7 @@ struct Parameters
     unsigned int    refinement_frequency;
 
     double          t_final;
+    bool            adaptive_refinement;
 
     // logging parameters
     unsigned int    vtk_frequency;

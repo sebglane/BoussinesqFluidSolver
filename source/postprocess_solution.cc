@@ -15,6 +15,9 @@
 
 #include <deal.II/numerics/data_out.h>
 
+// Sadly this include file is not found
+// #include <boost/filesystem.hpp>
+
 #include "buoyant_fluid_solver.h"
 #include "postprocessor.h"
 
@@ -241,6 +244,53 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
     data_out.attach_dof_handler(joint_dof_handler);
     data_out.add_data_vector(joint_solution, postprocessor);
     data_out.build_patches();
+
+    /*
+     *
+    // create results directory
+    {
+        // verify that the output directory actually exists. if it doesn't, create
+        // it on processor zero
+        bool success;
+
+        if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+            using namespace boost::filesystem;
+
+            const path  results_path("results");
+
+            if (!is_directory(results_path))
+            {
+                pcout << "----------------------------------------------------"
+                      << std::endl
+                      << "The output directory appears not to exist\n"
+                      << "and will be created for you.\n"
+                      << "----------------------------------------------------"
+                      << std::endl;
+
+                success = create_directory(results_path);
+
+            }
+            else
+            {
+                success = true;
+            }
+            // Broadcast error code
+            MPI_Bcast(&success, 1, MPIU_BOOL, 0, mpi_communicator);
+            AssertThrow(success == false,
+                        ExcMessage(std::string("Can't create the output directory.")));
+        }
+        else
+        {
+            // Wait to receive error code, and throw ExcInternalError if directory
+            // creation has failed
+            MPI_Bcast (&success, 1, MPIU_BOOL, 0, mpi_communicator);
+            if (success == false)
+                throw ExcInternalError();
+        }
+    }
+     *
+     */
 
     // write output to disk
     const std::string filename = ("solution-" +

@@ -404,7 +404,7 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
             for (unsigned int k=0; k<dofs_per_cell; ++k)
                 phi_pressure_gradients[k] = stokes_fe_values[pressure].gradient(k, q);
 
-            const Tensor<1,dim> gravity_vector = EquationData::GravityVector<dim>().value(stokes_fe_values.quadrature_point(q));
+            const Tensor<1,dim> gravity_vector = EquationData::GravityFunction<dim>().value(stokes_fe_values.quadrature_point(q));
 
             for (unsigned int i=0; i<dofs_per_cell; ++i)
                 local_rhs(i)
