@@ -185,17 +185,12 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_convection_matrix
 }
 
 
-template <int dim>
-void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
+template<int dim>
+void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit(
         const typename DoFHandler<dim>::active_cell_iterator &cell,
         NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
         NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
-    const unsigned int dofs_per_cell = scratch.stokes_fe_values.get_fe().dofs_per_cell;
-    const unsigned int n_q_points    = scratch.stokes_fe_values.n_quadrature_points;
-
-    const FEValuesExtractors::Vector    velocity(0);
-
     scratch.stokes_fe_values.reinit(cell);
     cell->get_dof_indices(data.local_dof_indices);
 
@@ -208,26 +203,33 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
 
     data.local_rhs = 0;
 
-    scratch.stokes_fe_values[velocity].get_function_values(old_navier_stokes_solution,
-                                                           scratch.old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_values(old_old_navier_stokes_solution,
-                                                           scratch.old_old_velocity_values);
-    scratch.stokes_fe_values[velocity].get_function_gradients(old_navier_stokes_solution,
-                                                              scratch.old_velocity_gradients);
-    scratch.stokes_fe_values[velocity].get_function_gradients(old_old_navier_stokes_solution,
-                                                              scratch.old_old_velocity_gradients);
+    scratch.stokes_fe_values[scratch.velocity].get_function_values
+    (old_navier_stokes_solution,
+     scratch.old_velocity_values);
+    scratch.stokes_fe_values[scratch.velocity].get_function_values
+    (old_old_navier_stokes_solution,
+     scratch.old_old_velocity_values);
+    scratch.stokes_fe_values[scratch.velocity].get_function_gradients
+    (old_navier_stokes_solution,
+     scratch.old_velocity_gradients);
+    scratch.stokes_fe_values[scratch.velocity].get_function_gradients
+    (old_old_navier_stokes_solution,
+     scratch.old_old_velocity_gradients);
 
     scratch.temperature_fe_values.get_function_values(old_temperature_solution,
                                                       scratch.old_temperature_values);
     scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
                                                       scratch.old_old_temperature_values);
 
-    for (unsigned int q=0; q<n_q_points; ++q)
+    scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
+                                        scratch.gravity_vectors);
+
+    for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
-        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        for (unsigned int k=0; k<scratch.dofs_per_cell; ++k)
         {
-            scratch.phi_velocity[k]     = scratch.stokes_fe_values[velocity].value(k, q);
-            scratch.grad_phi_velocity[k]= scratch.stokes_fe_values[velocity].gradient(k, q);
+            scratch.phi_velocity[k]     = scratch.stokes_fe_values[scratch.velocity].value(k, q);
+            scratch.grad_phi_velocity[k]= scratch.stokes_fe_values[scratch.velocity].gradient(k, q);
         }
 
         const Tensor<1,dim> time_derivative_velocity
@@ -244,29 +246,12 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
-        const Tensor<1,dim> gravity_vector = EquationData::GravityFunction<dim>().value(scratch.stokes_fe_values.quadrature_point(q));
+        const Tensor<1,dim> extrapolated_velocity
+        = (timestep != 0 ?
+                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                        : scratch.old_velocity_values[q]);
 
-        Tensor<1,dim>   coriolis_term;
-        if (parameters.rotation)
-        {
-            const Tensor<1,dim> extrapolated_velocity
-            = (timestep != 0 ?
-                    (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
-                            - scratch.old_old_velocity_values[q] * timestep/old_timestep)
-                            : scratch.old_velocity_values[q]);
-            if (dim == 2)
-                coriolis_term = cross_product_2d(extrapolated_velocity);
-            else if (dim == 3)
-                coriolis_term = cross_product_3d(rotation_vector,
-                                                 extrapolated_velocity);
-            else
-            {
-                Assert(false, ExcInternalError());
-            }
-        }
-
-        if (parameters.convective_scheme == ConvectiveDiscretizationType::Explicit)
-        {
         Tensor<1,dim> nonlinear_term_velocity;
         bool skew = false;
         switch (parameters.convective_weak_form)
@@ -294,7 +279,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
             break;
         }
 
-        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
             data.local_rhs(i)
                 += (
                     - time_derivative_velocity * scratch.phi_velocity[i]
@@ -303,23 +288,97 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs(
                             + 0.5 * scratch.beta[1] * (scratch.grad_phi_velocity[i] * scratch.old_old_velocity_values[q]) * scratch.old_old_velocity_values[q]
                             : 0.0)
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
-                    - (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)
-                    - equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_velocity[i]
+                    - (parameters.rotation ? equation_coefficients[0] *
+                            (dim == 2? cross_product_2d(extrapolated_velocity)
+                                    : cross_product_3d(rotation_vector, extrapolated_velocity))
+                            * scratch.phi_velocity[i]: 0)
+                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_vectors[q] * scratch.phi_velocity[i]
                     ) * scratch.stokes_fe_values.JxW(q);
-        }
-        else
-        {
-            for (unsigned int i=0; i<dofs_per_cell; ++i)
-                data.local_rhs(i)
-                    += (
-                        - time_derivative_velocity * scratch.phi_velocity[i]
-                        - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
-                        - (parameters.rotation ? equation_coefficients[0] * coriolis_term * scratch.phi_velocity[i]: 0)
-                        - equation_coefficients[2] * extrapolated_temperature * gravity_vector * scratch.phi_velocity[i]
-                        ) * scratch.stokes_fe_values.JxW(q);
-        }
     }
 }
+
+
+template<int dim>
+void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
+        const typename DoFHandler<dim>::active_cell_iterator &cell,
+        NavierStokesAssembly::Scratch::RightHandSide<dim> &scratch,
+        NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
+{
+    scratch.stokes_fe_values.reinit(cell);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    typename DoFHandler<dim>::active_cell_iterator
+    temperature_cell(&triangulation,
+                     cell->level(),
+                     cell->index(),
+                     &temperature_dof_handler);
+    scratch.temperature_fe_values.reinit(temperature_cell);
+
+    data.local_rhs = 0;
+
+    scratch.stokes_fe_values[scratch.velocity].get_function_values
+    (old_navier_stokes_solution,
+     scratch.old_velocity_values);
+    scratch.stokes_fe_values[scratch.velocity].get_function_values
+    (old_old_navier_stokes_solution,
+     scratch.old_old_velocity_values);
+    scratch.stokes_fe_values[scratch.velocity].get_function_gradients
+    (old_navier_stokes_solution,
+     scratch.old_velocity_gradients);
+    scratch.stokes_fe_values[scratch.velocity].get_function_gradients
+    (old_old_navier_stokes_solution,
+     scratch.old_old_velocity_gradients);
+
+    scratch.temperature_fe_values.get_function_values(old_temperature_solution,
+                                                      scratch.old_temperature_values);
+    scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                      scratch.old_old_temperature_values);
+
+    scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
+                                        scratch.gravity_vectors);
+
+    for (unsigned int q=0; q<scratch.n_q_points; ++q)
+    {
+        for (unsigned int k=0; k<scratch.dofs_per_cell; ++k)
+        {
+            scratch.phi_velocity[k]     = scratch.stokes_fe_values[scratch.velocity].value(k, q);
+            scratch.grad_phi_velocity[k]= scratch.stokes_fe_values[scratch.velocity].gradient(k, q);
+        }
+
+        const Tensor<1,dim> time_derivative_velocity
+            = scratch.alpha[1] / timestep * scratch.old_velocity_values[q]
+                + scratch.alpha[2] / timestep * scratch.old_old_velocity_values[q];
+
+        const Tensor<2,dim> linear_term_velocity
+            = scratch.gamma[1] * scratch.old_velocity_gradients[q]
+                + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
+
+        const double extrapolated_temperature
+            = (timestep != 0 ?
+                (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
+                        - scratch.old_old_temperature_values[q] * timestep/old_timestep)
+                        : scratch.old_temperature_values[q]);
+
+        const Tensor<1,dim> extrapolated_velocity
+        = (timestep != 0 ?
+                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                        : scratch.old_velocity_values[q]);
+
+        for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
+            data.local_rhs(i)
+                += (
+                    - time_derivative_velocity * scratch.phi_velocity[i]
+                    - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
+                    - (parameters.rotation ? equation_coefficients[0] *
+                            (dim == 2? cross_product_2d(extrapolated_velocity)
+                                    : cross_product_3d(rotation_vector, extrapolated_velocity))
+                            * scratch.phi_velocity[i]: 0)
+                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_vectors[q] * scratch.phi_velocity[i]
+                    ) * scratch.stokes_fe_values.JxW(q);
+    }
+}
+
 
 template<int dim>
 void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
@@ -332,45 +391,67 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs(
 }
 }  // namespace BuoyantFluid
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix(
-        const typename DoFHandler<2>::active_cell_iterator &cell,
-        NavierStokesAssembly::Scratch::Matrix<2> &scratch,
-        NavierStokesAssembly::CopyData::Matrix<2> &data);
-template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_matrix(
-        const typename DoFHandler<3>::active_cell_iterator &cell,
-        NavierStokesAssembly::Scratch::Matrix<3> &scratch,
-        NavierStokesAssembly::CopyData::Matrix<3> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_matrix
+(const typename DoFHandler<2>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::Matrix<2> &scratch,
+ NavierStokesAssembly::CopyData::Matrix<2> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_matrix
+(const typename DoFHandler<3>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::Matrix<3> &scratch,
+ NavierStokesAssembly::CopyData::Matrix<3> &data);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_matrix(
-        const NavierStokesAssembly::CopyData::Matrix<2> &data);
-template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_matrix(
-        const NavierStokesAssembly::CopyData::Matrix<3> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_matrix
+(const NavierStokesAssembly::CopyData::Matrix<2> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_matrix
+(const NavierStokesAssembly::CopyData::Matrix<3> &data);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_convection_matrix(
-        const typename DoFHandler<2>::active_cell_iterator  &,
-        NavierStokesAssembly::Scratch::ConvectionMatrix<2>  &,
-        NavierStokesAssembly::CopyData::ConvectionMatrix<2> &);
-template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_convection_matrix(
-        const typename DoFHandler<3>::active_cell_iterator  &,
-        NavierStokesAssembly::Scratch::ConvectionMatrix<3>  &,
-        NavierStokesAssembly::CopyData::ConvectionMatrix<3> &);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_convection_matrix
+(const typename DoFHandler<2>::active_cell_iterator  &,
+ NavierStokesAssembly::Scratch::ConvectionMatrix<2>  &,
+ NavierStokesAssembly::CopyData::ConvectionMatrix<2> &);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_convection_matrix
+(const typename DoFHandler<3>::active_cell_iterator  &,
+ NavierStokesAssembly::Scratch::ConvectionMatrix<3>  &,
+ NavierStokesAssembly::CopyData::ConvectionMatrix<3> &);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_convection_matrix(
-        const NavierStokesAssembly::CopyData::ConvectionMatrix<2>   &);
-template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_convection_matrix(
-        const NavierStokesAssembly::CopyData::ConvectionMatrix<3>   &);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_convection_matrix
+(const NavierStokesAssembly::CopyData::ConvectionMatrix<2>   &);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_convection_matrix
+(const NavierStokesAssembly::CopyData::ConvectionMatrix<3>   &);
 
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_rhs_explicit
+(const typename DoFHandler<2>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::RightHandSide<2> &scratch,
+ NavierStokesAssembly::CopyData::RightHandSide<2> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_rhs_explicit
+(const typename DoFHandler<3>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::RightHandSide<3> &scratch,
+ NavierStokesAssembly::CopyData::RightHandSide<3> &data);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_rhs(
-        const typename DoFHandler<2>::active_cell_iterator &cell,
-        NavierStokesAssembly::Scratch::RightHandSide<2> &scratch,
-        NavierStokesAssembly::CopyData::RightHandSide<2> &data);
-template void BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_rhs(
-        const typename DoFHandler<3>::active_cell_iterator &cell,
-        NavierStokesAssembly::Scratch::RightHandSide<3> &scratch,
-        NavierStokesAssembly::CopyData::RightHandSide<3> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_stokes_rhs_implicit
+(const typename DoFHandler<2>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::RightHandSide<2> &scratch,
+ NavierStokesAssembly::CopyData::RightHandSide<2> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_stokes_rhs_implicit
+(const typename DoFHandler<3>::active_cell_iterator &cell,
+ NavierStokesAssembly::Scratch::RightHandSide<3> &scratch,
+ NavierStokesAssembly::CopyData::RightHandSide<3> &data);
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_rhs(
-        const NavierStokesAssembly::CopyData::RightHandSide<2> &data);
-template void BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_rhs(
-        const NavierStokesAssembly::CopyData::RightHandSide<3> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_stokes_rhs
+(const NavierStokesAssembly::CopyData::RightHandSide<2> &data);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_stokes_rhs
+(const NavierStokesAssembly::CopyData::RightHandSide<3> &data);

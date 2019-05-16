@@ -243,7 +243,11 @@ old_temperature_values(stokes_quadrature.size()),
 old_old_temperature_values(stokes_quadrature.size()),
 alpha(alpha),
 beta(beta),
-gamma(gamma)
+gamma(gamma),
+gravity_vectors(stokes_quadrature.size()),
+dofs_per_cell(stokes_fe.dofs_per_cell),
+n_q_points(stokes_quadrature.size()),
+velocity(0)
 {}
 
 template <int dim>
@@ -267,7 +271,11 @@ old_temperature_values(scratch.old_temperature_values),
 old_old_temperature_values(scratch.old_old_temperature_values),
 alpha(scratch.alpha),
 beta(scratch.beta),
-gamma(scratch.gamma)
+gamma(scratch.gamma),
+gravity_vectors(scratch.gravity_vectors),
+dofs_per_cell(scratch.dofs_per_cell),
+n_q_points(scratch.n_q_points),
+velocity(0)
 {}
 
 }  // namespace Scratch

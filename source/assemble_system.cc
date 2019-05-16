@@ -182,8 +182,6 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     if (parameters.verbose)
         pcout << "      Assembling diffusion system..." << std::endl;
 
-    TimerOutput::Scope timer_section(computing_timer, "assemble diffusion system");
-
     typedef
     FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
     CellFilter;
@@ -198,6 +196,9 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     const std::vector<double> gamma = (timestep_number != 0?
                                         imex_coefficients.gamma(timestep/old_timestep):
                                         std::vector<double>({1.0,0.0,0.0}));
+
+    {
+    TimerOutput::Scope timer_section(computing_timer, "assemble diff. sys., part 1");
 
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
     {
@@ -262,7 +263,9 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
-
+    }
+    {
+    TimerOutput::Scope timer_section(computing_timer, "assemble diff. sys., part 2");
     // reset all entries
     navier_stokes_rhs = 0;
 
@@ -291,37 +294,71 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                                           extrapolated_pressure);
 
     // assemble right-hand side function
-    WorkStream::run(
-            CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       navier_stokes_dof_handler.begin_active()),
-            CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       navier_stokes_dof_handler.end()),
-            std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs,
-                      this,
-                      std::placeholders::_1,
-                      std::placeholders::_2,
-                      std::placeholders::_3),
-            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
-                      this,
-                      std::placeholders::_1),
-            NavierStokesAssembly::Scratch::RightHandSide<dim>(
-                    navier_stokes_fe,
-                    mapping,
-                    quadrature_formula,
-                    update_values|
-                    update_quadrature_points|
-                    update_JxW_values|
-                    update_gradients,
-                    temperature_fe,
-                    update_values,
-                    alpha,
-                    (timestep_number != 0?
-                            imex_coefficients.beta(timestep/old_timestep):
-                            std::vector<double>({1.0,0.0})),
-                    gamma),
-            NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+    if (parameters.convective_scheme == ConvectiveDiscretizationType::Explicit)
+        WorkStream::run(
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.begin_active()),
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.end()),
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit,
+                          this,
+                          std::placeholders::_1,
+                          std::placeholders::_2,
+                          std::placeholders::_3),
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
+                          this,
+                          std::placeholders::_1),
+                NavierStokesAssembly::Scratch::RightHandSide<dim>(
+                        navier_stokes_fe,
+                        mapping,
+                        quadrature_formula,
+                        update_values|
+                        update_quadrature_points|
+                        update_JxW_values|
+                        update_gradients,
+                        temperature_fe,
+                        update_values,
+                        alpha,
+                        (timestep_number != 0?
+                                imex_coefficients.beta(timestep/old_timestep):
+                                std::vector<double>({1.0,0.0})),
+                        gamma),
+                NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+    else if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
+        WorkStream::run(
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.begin_active()),
+                CellFilter(IteratorFilters::LocallyOwnedCell(),
+                           navier_stokes_dof_handler.end()),
+                std::bind(&BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit,
+                          this,
+                          std::placeholders::_1,
+                          std::placeholders::_2,
+                          std::placeholders::_3),
+                std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_stokes_rhs,
+                          this,
+                          std::placeholders::_1),
+                NavierStokesAssembly::Scratch::RightHandSide<dim>(
+                        navier_stokes_fe,
+                        mapping,
+                        quadrature_formula,
+                        update_values|
+                        update_quadrature_points|
+                        update_JxW_values|
+                        update_gradients,
+                        temperature_fe,
+                        update_values,
+                        alpha,
+                        (timestep_number != 0?
+                                imex_coefficients.beta(timestep/old_timestep):
+                                std::vector<double>({1.0,0.0})),
+                        gamma),
+                NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
+    else
+        throw   ExcInternalError();
 
     navier_stokes_rhs.compress(VectorOperation::add);
+    }
 }
 
 template<int dim>

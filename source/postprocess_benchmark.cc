@@ -882,11 +882,11 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
 
         const double phi = compute_zero_of_radial_velocity(phi_benchmark);
 
-        const double gradients_at_zero
+        const double gradient_at_zero
         = compute_azimuthal_gradient_of_radial_velocity(radius, 0, phi);
 
-        Assert(gradients_at_zero > 0,
-               ExcLowerRangeType<double>(0, gradients_at_zero));
+        Assert(gradient_at_zero > 0,
+               ExcLowerRangeType<double>(0, gradient_at_zero));
 
         phi_benchmark = phi;
     }

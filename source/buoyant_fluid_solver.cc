@@ -566,7 +566,7 @@ void BuoyantFluidSolver<dim>::run()
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
     {
-        std::ofstream   out_file("number_table.txt");
+        std::ofstream   out_file("benchmark_report.txt");
         benchmark_table.write_text(out_file);
         out_file.close();
     }
