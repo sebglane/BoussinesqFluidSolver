@@ -10,9 +10,13 @@
 
 #include <deal.II/numerics/data_postprocessor.h>
 
+#include "exceptions.h"
+
 namespace BuoyantFluid {
 
 using namespace dealii;
+
+using namespace GeometryExceptions;
 
 template<int dim>
 class PostProcessor : public DataPostprocessor<dim>
