@@ -5,6 +5,11 @@
  *      Author: sg
  */
 
+#include <boost/math/special_functions/spherical_harmonic.hpp>
+
+#include <complex>
+
+#include "exceptions.h"
 #include "grid_factory.h"
 
 namespace GridFactory {
@@ -47,6 +52,94 @@ Point<dim> SinusoidalManifold<dim>::push_forward(const Point<dim-1> &chart_point
     return space_point;
 }
 
+
+template<int dim>
+SphericalHarmonicPerturbationManifold<dim>::SphericalHarmonicPerturbationManifold
+(const unsigned int l,
+ const unsigned int m,
+ const double       relative_perturbation,
+ const double       radius,
+ const bool         use_sinus)
+:
+ChartManifold<dim,dim,dim-1>(),
+l(l),
+m(m),
+relative_perturbation(relative_perturbation),
+radius(radius),
+use_sinus(use_sinus)
+{
+    using namespace GeometryExceptions;
+    Assert(l > 0, ExcLowerRange(l, 0));
+    Assert(m >= 0, ExcLowerRange(m, 0));
+    Assert(m <= l, ExcLowerRange(l, m));
+    Assert(radius > 0., ExcNegativeRadius(radius));
+    Assert(relative_perturbation > 0.0,
+           ExcLowerRangeType<double>(relative_perturbation, 0));
+    Assert(relative_perturbation < 0.5,
+           ExcLowerRangeType<double>(0.5, relative_perturbation));
+}
+
+template <int dim>
+std::unique_ptr<Manifold<dim,dim>> SphericalHarmonicPerturbationManifold<dim>::clone() const
+{
+  return std::make_unique
+          <SphericalHarmonicPerturbationManifold<dim>>
+          (l,m,relative_perturbation,radius,use_sinus);
+}
+
+template<>
+Point<2> SphericalHarmonicPerturbationManifold<3>::pull_back
+(const Point<3> &space_point) const
+{
+    const unsigned dim = 3;
+
+    using namespace GeometryExceptions;
+
+    Point<dim-1>    chart_point;
+
+    const double cylinder_radius = sqrt(space_point[0]*space_point[0] + space_point[1]*space_point[1]);
+
+    const double theta = atan2(cylinder_radius, space_point[2]);
+    Assert(theta >= 0. && theta <= numbers::PI,
+           ExcPolarAngleRange(theta));
+    chart_point[0] = theta;
+
+    const double phi = atan2(space_point[1], space_point[0]);
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
+    chart_point[1] = phi;
+
+    return chart_point;
+}
+
+template<>
+Point<3> SphericalHarmonicPerturbationManifold<3>::push_forward
+(const Point<2> &chart_point) const
+{
+    const unsigned int dim = 3;
+
+    const double theta = chart_point[0];
+    const double phi = chart_point[1];
+
+    using namespace boost::math;
+    const std::complex<double>    complex_perturbation
+    = relative_perturbation * spherical_harmonic(l, m, theta, phi);
+
+    double real_perturbation;
+    if (use_sinus)
+        real_perturbation = imag(complex_perturbation);
+    else
+        real_perturbation = real(complex_perturbation);
+
+    std::cout << "real perturbation: " << real_perturbation << std::endl;
+
+    Point<dim> space_point(
+            radius * (1. +  real_perturbation) * cos(phi) * sin(theta),
+            radius * (1. +  real_perturbation) * sin(phi) * sin(theta),
+            radius * (1. +  real_perturbation) * cos(theta));
+
+    return space_point;
+}
 
 template<int dim>
 SphericalShell<dim>::SphericalShell(
@@ -809,11 +902,71 @@ void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
     else
         Assert(false, ExcInternalError());
 }
+
+template<int dim>
+SphericalShellWithTopography<dim>::SphericalShellWithTopography
+(unsigned int   l,
+ unsigned int   m,
+ const double   relative_perturbation,
+ const double   aspect_ratio,
+ const bool     use_sinus)
+:
+aspect_ratio(aspect_ratio),
+perturbation_manifold(l,m,relative_perturbation,1.0,use_sinus)
+{
+    Assert(aspect_ratio > 0.0, ExcLowerRangeType<double>(0.,aspect_ratio));
+    Assert(aspect_ratio < 1.0, ExcLowerRangeType<double>(aspect_ratio,1.0));
+}
+
+
+template<int dim>
+void SphericalShellWithTopography<dim>::create_coarse_mesh
+(Triangulation<dim> &coarse_grid)
+{
+    const Point<dim>    center;
+
+    GridGenerator::hyper_shell(coarse_grid,
+                               center,
+                               aspect_ratio,
+                               1.);
+    coarse_grid.refine_global(1);
+
+//    coarse_grid.set_all_manifold_ids(0);
+//    coarse_grid.set_all_manifold_ids_on_boundary(0);
+
+    for (auto cell: coarse_grid.active_cell_iterators())
+        if (cell->at_boundary())
+            for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                if (cell->face(f)->at_boundary())
+                {
+                    std::vector<double> coord(GeometryInfo<dim>::vertices_per_face);
+                    for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                        coord[v] = cell->face(f)->vertex(v).distance(center);
+                    if (std::all_of(coord.begin(), coord.end(),
+                            [&](double d)->bool{return std::abs(d - 1.0) < tol;}))
+                    {
+                        std::cout << "face " << cell->face(f)->index()
+                                  << " is on boundary." << std::endl;
+                        cell->face(f)->set_manifold_id(1);
+                        break;
+                    }
+                }
+//    interpolation_manifold.initialize(coarse_grid);
+//    coarse_grid.set_manifold(0, interpolation_manifold);
+    coarse_grid.set_manifold(1, perturbation_manifold);
+}
+
 }  // namespace GridFactory
 
 template class GridFactory::SphericalShell<2>;
 template class GridFactory::SphericalShell<3>;
+
 template class GridFactory::TopographyBox<2>;
 template class GridFactory::TopographyBox<3>;
+
 template class GridFactory::SinusoidalManifold<2>;
 template class GridFactory::SinusoidalManifold<3>;
+
+template class GridFactory::SphericalHarmonicPerturbationManifold<3>;
+
+template class GridFactory::SphericalShellWithTopography<3>;

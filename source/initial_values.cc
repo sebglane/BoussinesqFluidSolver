@@ -5,10 +5,14 @@
  *      Author: sg
  */
 
+#include "exceptions.h"
+
 #include "initial_values.h"
 
 namespace EquationData
 {
+
+using namespace GeometryExceptions;
 
 template <int dim>
 InitialField<dim>::InitialField(const double inner_radius, const double outer_radius)
@@ -31,17 +35,18 @@ void InitialField<3>::vector_value(
     AssertDimension(value.size(), dim + 1);
 
     const double radius = point.distance(Point<dim>());
-    Assert(radius> 0., ExcLowerRangeType<double>(radius, 0.));
+    Assert(radius > 0.,
+           ExcNegativeRadius(radius));
 
     const double cylinder_radius = sqrt(point[0]*point[0] + point[1]*point[1]);
 
     const double theta = atan2(cylinder_radius, point[2]);
-    Assert(theta >= 0., ExcLowerRangeType<double>(theta, 0.));
-    Assert(theta <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+    Assert(theta >= 0. && theta <= numbers::PI,
+           ExcPolarAngleRange(theta));
 
     const double phi = atan2(point[1], point[0]);
-    Assert(phi >= -numbers::PI, ExcLowerRangeType<double>(theta, -numbers::PI));
-    Assert(phi <= numbers::PI, ExcLowerRangeType<double>(numbers::PI, theta));
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
 
     const double b_r = 5./(8. * sqrt(2.)) *
             (

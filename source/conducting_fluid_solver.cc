@@ -215,6 +215,9 @@ void ConductingFluidSolver<dim>::run()
 
     output_results(true);
 
+    /*
+     *
+
     double time = 0;
 
     do
@@ -263,6 +266,8 @@ void ConductingFluidSolver<dim>::run()
 
     if (n_steps % vtk_frequency != 0)
         output_results();
+     *
+     */
 
     std::cout << std::fixed;
 

@@ -78,6 +78,36 @@ private:
 };
 
 template<int dim>
+class SphericalHarmonicPerturbationManifold: public ChartManifold<dim,dim,dim-1>
+{
+public:
+
+    SphericalHarmonicPerturbationManifold
+    (const unsigned int l,
+     const unsigned int m,
+     const double       relative_perturbation = 0.01,
+     const double       radius = 1.,
+     const bool         use_sinus = false);
+
+    virtual std::unique_ptr<Manifold<dim,dim>> clone() const;
+
+    virtual Point<dim-1>    pull_back(const Point<dim>      &space_point) const;
+
+    virtual Point<dim>      push_forward(const Point<dim-1> &chart_point) const;
+
+private:
+    const unsigned int  l;
+    const unsigned int  m;
+
+    const double    relative_perturbation;
+    const double    radius;
+    const bool      use_sinus;
+
+    const double    tol = 1e-12;
+};
+
+
+template<int dim>
 class SphericalShell
 {
 public:
@@ -120,6 +150,29 @@ private:
     SinusoidalManifold<dim>  sinus_manifold;
 
     TransfiniteInterpolationManifold<dim> interpolation_manifold;
+
+    const double    tol = 1e-12;
+};
+
+template<int dim>
+class SphericalShellWithTopography
+{
+public:
+    SphericalShellWithTopography
+    (unsigned int   l,
+     unsigned int   m,
+     const double   relative_perturbation = 0.01,
+     const double   aspect_ratio = 0.35,
+     const bool     use_sinus = false);
+
+    void create_coarse_mesh(Triangulation<dim> &coarse_grid);
+
+private:
+    const double    aspect_ratio;
+
+    SphericalHarmonicPerturbationManifold<dim>  perturbation_manifold;
+
+    TransfiniteInterpolationManifold<dim>       interpolation_manifold;
 
     const double    tol = 1e-12;
 };

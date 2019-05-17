@@ -17,7 +17,11 @@ void ConductingFluidSolver<dim>::make_grid()
 
     std::cout << "   Making grid..." << std::endl;
 
-    GridFactory::SphericalShell<dim> spherical_shell(aspect_ratio);
+    GridFactory::SphericalShellWithTopography<dim>
+    spherical_shell(2,
+                    2,
+                    0.01,
+                    0.35);
     spherical_shell.create_coarse_mesh(triangulation);
 
     const Point<dim> center;
@@ -42,11 +46,9 @@ void ConductingFluidSolver<dim>::make_grid()
         for (unsigned int step=0; step<n_interface_refinements; ++step)
         {
             for (auto cell: triangulation.active_cell_iterators())
-                if (cell->at_boundary() &&
-                        cell->material_id() == DomainIdentifiers::MaterialIds::Fluid)
-                    for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
-                        if (cell->face(f)->at_boundary())
-                            cell->set_refine_flag();
+                for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (cell->face(f)->at_boundary())
+                        cell->set_refine_flag();
             triangulation.execute_coarsening_and_refinement();
         }
         std::cout << "      Number of cells after "
