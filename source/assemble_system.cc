@@ -6,14 +6,14 @@
  */
 
 #include <deal.II/base/exceptions.h>
+#include <magnetic_diffusion_solver.h>
 
-#include "conducting_fluid_solver.h"
 #include "grid_factory.h"
 
 namespace ConductingFluid {
 
 template<int dim>
-void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
+void MagneticDiffusionSolver<dim>::assemble_magnetic_matrices()
 {
     TimerOutput::Scope timer_section(computing_timer, "assemble magnetic system");
 
@@ -154,7 +154,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_matrices()
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::assemble_magnetic_rhs()
+void MagneticDiffusionSolver<dim>::assemble_magnetic_rhs()
 {
     std::cout << "      Assembling magnetic rhs..." << std::endl;
 
@@ -250,7 +250,7 @@ void ConductingFluidSolver<dim>::assemble_magnetic_rhs()
 
 
 template<int dim>
-void ConductingFluidSolver<dim>::assemble_diffusion_system()
+void MagneticDiffusionSolver<dim>::assemble_diffusion_system()
 {
     std::cout << "      Assembling diffusion system..." << std::endl;
 
@@ -319,7 +319,7 @@ void ConductingFluidSolver<dim>::assemble_diffusion_system()
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::assemble_projection_system()
+void MagneticDiffusionSolver<dim>::assemble_projection_system()
 {
     std::cout << "      Assembling projection system..." << std::endl;
 
@@ -357,7 +357,7 @@ void ConductingFluidSolver<dim>::assemble_projection_system()
 }  // namespace ConductingFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<3>::assemble_magnetic_matrices();
-template void ConductingFluid::ConductingFluidSolver<3>::assemble_magnetic_rhs();
-template void ConductingFluid::ConductingFluidSolver<3>::assemble_diffusion_system();
-template void ConductingFluid::ConductingFluidSolver<3>::assemble_projection_system();
+template void ConductingFluid::MagneticDiffusionSolver<3>::assemble_magnetic_matrices();
+template void ConductingFluid::MagneticDiffusionSolver<3>::assemble_magnetic_rhs();
+template void ConductingFluid::MagneticDiffusionSolver<3>::assemble_diffusion_system();
+template void ConductingFluid::MagneticDiffusionSolver<3>::assemble_projection_system();

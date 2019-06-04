@@ -10,12 +10,12 @@
 #include <deal.II/lac/sparse_ilu.h>
 #include <deal.II/lac/sparse_direct.h>
 
-#include "conducting_fluid_solver.h"
+#include <magnetic_diffusion_solver.h>
 
 namespace ConductingFluid {
 
 template<int dim>
-void ConductingFluidSolver<dim>::magnetic_step()
+void MagneticDiffusionSolver<dim>::magnetic_step()
 {
     std::cout << "   Magnetic step..." << std::endl;
 
@@ -33,7 +33,7 @@ void ConductingFluidSolver<dim>::magnetic_step()
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::solve_diffusion_system()
+void MagneticDiffusionSolver<dim>::solve_diffusion_system()
 {
     std::cout << "      Solving diffusion system..." << std::endl;
 
@@ -89,7 +89,7 @@ void ConductingFluidSolver<dim>::solve_diffusion_system()
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::solve_projection_system()
+void MagneticDiffusionSolver<dim>::solve_projection_system()
 {
     std::cout << "      Solving projection system..." << std::endl;
 
@@ -222,6 +222,6 @@ void ConductingFluidSolver<dim>::solve_projection_system()
 }  // namespace ConductingFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<3>::magnetic_step();
-template void ConductingFluid::ConductingFluidSolver<3>::solve_diffusion_system();
-template void ConductingFluid::ConductingFluidSolver<3>::solve_projection_system();
+template void ConductingFluid::MagneticDiffusionSolver<3>::magnetic_step();
+template void ConductingFluid::MagneticDiffusionSolver<3>::solve_diffusion_system();
+template void ConductingFluid::MagneticDiffusionSolver<3>::solve_projection_system();

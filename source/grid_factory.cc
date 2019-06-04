@@ -823,7 +823,3 @@ template class GridFactory::TopographyBox<3>;
 
 template class GridFactory::SinusoidalManifold<2>;
 template class GridFactory::SinusoidalManifold<3>;
-
-template class GridFactory::SphericalHarmonicPerturbationManifold<3>;
-
-template class GridFactory::SphericalShellWithTopography<3>;

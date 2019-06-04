@@ -5,26 +5,20 @@
  *      Author: sg
  */
 
-#include "conducting_fluid_solver.h"
+#include <magnetic_diffusion_solver.h>
 #include "grid_factory.h"
 
 namespace ConductingFluid {
 
 template<int dim>
-void ConductingFluidSolver<dim>::make_grid()
+void MagneticDiffusionSolver<dim>::make_grid()
 {
     TimerOutput::Scope timer_section(computing_timer, "make grid");
 
     std::cout << "   Making grid..." << std::endl;
 
-    GridFactory::SphericalShellWithTopography<dim>
-    spherical_shell(2,
-                    2,
-                    0.01,
-                    0.35);
+    GridFactory::SphericalShell<dim> spherical_shell(aspect_ratio);
     spherical_shell.create_coarse_mesh(triangulation);
-
-    const Point<dim> center;
 
     const unsigned int n_global_refinements = 3;
     // initial global refinements
@@ -38,7 +32,7 @@ void ConductingFluidSolver<dim>::make_grid()
                   << std::endl;
     }
 
-    const unsigned int n_interface_refinements = 0;
+    const unsigned int n_interface_refinements = 1;
 
     // initial boundary refinements
     if (n_interface_refinements > 0)
@@ -61,4 +55,4 @@ void ConductingFluidSolver<dim>::make_grid()
 }  // namespace BuoyantFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<3>::make_grid();
+template void ConductingFluid::MagneticDiffusionSolver<3>::make_grid();

@@ -12,14 +12,14 @@
 #include <deal.II/dofs/function_map.h>
 
 #include <deal.II/numerics/vector_tools.h>
+#include <magnetic_diffusion_solver.h>
 
-#include "conducting_fluid_solver.h"
 #include "grid_factory.h"
 
 namespace ConductingFluid {
 
 template<int dim>
-void ConductingFluidSolver<dim>::setup_dofs()
+void MagneticDiffusionSolver<dim>::setup_dofs()
 {
 
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
@@ -99,7 +99,7 @@ void ConductingFluidSolver<dim>::setup_dofs()
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block)
+void MagneticDiffusionSolver<dim>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block)
 {
     magnetic_matrix.clear();
     magnetic_curl_matrix.clear();
@@ -173,6 +173,6 @@ void ConductingFluidSolver<dim>::setup_magnetic_matrices(const std::vector<types
 }  // namespace ConductingFluid
 
 // explicit instantiation
-template void ConductingFluid::ConductingFluidSolver<3>::setup_dofs();
+template void ConductingFluid::MagneticDiffusionSolver<3>::setup_dofs();
 
-template void ConductingFluid::ConductingFluidSolver<3>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block);
+template void ConductingFluid::MagneticDiffusionSolver<3>::setup_magnetic_matrices(const std::vector<types::global_dof_index> &dofs_per_block);

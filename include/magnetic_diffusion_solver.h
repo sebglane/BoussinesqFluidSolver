@@ -5,10 +5,11 @@
  *      Author: sg
  */
 
-#ifndef INCLUDE_CONDUCTING_FLUID_SOLVER_H_
-#define INCLUDE_CONDUCTING_FLUID_SOLVER_H_
+#ifndef INCLUDE_MAGNETIC_DIFFUSION_SOLVER_H_
+#define INCLUDE_MAGNETIC_DIFFUSION_SOLVER_H_
 
 #include <deal.II/base/timer.h>
+#include <deal.II/base/table_handler.h>
 
 #include <deal.II/dofs/dof_handler.h>
 
@@ -28,7 +29,6 @@
 #include <memory>
 
 #include "assembly_data.h"
-#include "parameters.h"
 #include "timestepping.h"
 
 
@@ -48,14 +48,14 @@ using namespace dealii;
  *
  */
 template <int dim>
-class ConductingFluidSolver
+class MagneticDiffusionSolver
 {
 public:
-    ConductingFluidSolver(const double          &aspect_ratio = 0.35,
-                          const double          &time_step = 1e-3,
-                          const unsigned int    &n_steps = 200,
-                          const unsigned int    &vtk_frequency = 1,
-                          const double          &t_final = 1.0);
+    MagneticDiffusionSolver(const double          &aspect_ratio = 0.35,
+                            const double          &time_step = 1e-3,
+                            const unsigned int    &n_steps = 200,
+                            const unsigned int    &vtk_frequency = 1,
+                            const double          &t_final = 1.0);
 
     void run();
 
@@ -129,6 +129,8 @@ private:
 
     const double        t_final;
 
+    TableHandler        rms_table;
+
     // time stepping variables
     double              timestep;
     double              old_timestep;
@@ -145,4 +147,4 @@ private:
 };
 }  // namespace ConductingFluid
 
-#endif /* INCLUDE_CONDUCTING_FLUID_SOLVER_H_ */
+#endif /* INCLUDE_MAGNETIC_DIFFUSION_SOLVER_H_ */

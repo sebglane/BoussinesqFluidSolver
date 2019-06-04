@@ -6,7 +6,7 @@ SET(TARGET_SRC
   grid_factory.cc
   timestepping.cc
   assemble_system.cc
-  conducting_fluid_solver.cc
+  magnetic_diffusion_solver.cc
   initial_values.cc
   make_grid.cc
   setup.cc

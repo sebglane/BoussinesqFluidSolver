@@ -19,16 +19,15 @@
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/solution_transfer.h>
 #include <deal.II/numerics/vector_tools.h>
+#include <magnetic_diffusion_solver.h>
 
-#include "conducting_fluid_solver.h"
 #include "grid_factory.h"
 #include "initial_values.h"
-#include "postprocessor.h"
 
 namespace ConductingFluid {
 
 template<int dim>
-ConductingFluidSolver<dim>::ConductingFluidSolver(
+MagneticDiffusionSolver<dim>::MagneticDiffusionSolver(
         const double        &aspect_ratio,
         const double        &timestep,
         const unsigned int  &n_steps,
@@ -57,10 +56,15 @@ t_final(t_final),
 n_steps(n_steps),
 vtk_frequency(vtk_frequency),
 rms_frequency(10)
-{}
+{
+    rms_table.declare_column("time step");
+    rms_table.declare_column("time");
+    rms_table.declare_column("rms_field");
+    rms_table.declare_column("rms_pressure");
+}
 
 template<int dim>
-void ConductingFluidSolver<dim>::output_results(const bool initial_condition) const
+void MagneticDiffusionSolver<dim>::output_results(const bool initial_condition) const
 {
     std::cout << "   Output results..." << std::endl;
 
@@ -142,7 +146,7 @@ void ConductingFluidSolver<dim>::refine_mesh()
  */
 
 template<int dim>
-std::pair<double, double> ConductingFluidSolver<dim>::compute_rms_values() const
+std::pair<double, double> MagneticDiffusionSolver<dim>::compute_rms_values() const
 {
     const QGauss<dim> quadrature(magnetic_degree + 1);
 
@@ -196,7 +200,7 @@ std::pair<double, double> ConductingFluidSolver<dim>::compute_rms_values() const
 }
 
 template<int dim>
-void ConductingFluidSolver<dim>::run()
+void MagneticDiffusionSolver<dim>::run()
 {
     make_grid();
 
@@ -214,9 +218,6 @@ void ConductingFluidSolver<dim>::run()
     magnetic_solution = old_magnetic_solution;
 
     output_results(true);
-
-    /*
-     *
 
     double time = 0;
 
@@ -242,6 +243,11 @@ void ConductingFluidSolver<dim>::run()
                       << "   pseudo pressure rms value: "
                       << rms_values.second
                       << std::endl;
+
+            rms_table.add_value("time", time);
+            rms_table.add_value("time step", timestep);
+            rms_table.add_value("rms_field", rms_values.first);
+            rms_table.add_value("rms_pressure", rms_values.second);
         }
 
         if (timestep_number % vtk_frequency == 0)
@@ -266,17 +272,18 @@ void ConductingFluidSolver<dim>::run()
 
     if (n_steps % vtk_frequency != 0)
         output_results();
-     *
-     */
 
     std::cout << std::fixed;
 
     computing_timer.print_summary();
     computing_timer.reset();
-
     std::cout << std::endl;
+
+    std::ofstream   out_file("rms_report.txt");
+    rms_table.write_text(out_file);
+    out_file.close();
 }
 }  // namespace ConductingFluid
 
 // explicit instantiation
-template class ConductingFluid::ConductingFluidSolver<3>;
+template class ConductingFluid::MagneticDiffusionSolver<3>;
