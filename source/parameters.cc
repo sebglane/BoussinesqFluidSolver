@@ -41,6 +41,7 @@ min_timestep(1e-9),
 max_timestep(1e-3),
 cfl_min(0.3),
 cfl_max(0.7),
+adaptive_timestep_barrier(2),
 adaptive_timestep(true),
 // discretization parameters
 projection_scheme(PressureUpdateType::StandardForm),
@@ -115,7 +116,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("temperature_perturbation",
                 "None",
                 Patterns::Selection("None|Sinusoidal"),
-                "Type of perturbation.");
+                "Type of perturbation (None|Sinusoidal).");
     }
     prm.leave_subsection();
 
@@ -280,6 +281,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "0.7",
                 Patterns::Double(),
                 "Maximal value for the cfl number.");
+
+        prm.declare_entry("adaptive_timestep_barrier",
+                          "2",
+                          Patterns::Integer(),
+                          "Time step after which adaptive time stepping is applied.");
 
         prm.declare_entry("adaptive_timestep",
                 "true",
@@ -473,6 +479,10 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         cfl_max = prm.get_double("cfl_max");
         Assert(cfl_max > 0, ExcLowerRangeType<double>(cfl_max, 0));
         Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
+
+        adaptive_timestep_barrier = prm.get_integer("adaptive_timestep_barrier");
+        Assert(adaptive_timestep_barrier > 0,
+               ExcLowerRange(adaptive_timestep_barrier, 2));
 
         adaptive_timestep = prm.get_bool("adaptive_timestep");
 

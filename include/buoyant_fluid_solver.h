@@ -320,7 +320,6 @@ private:
     // monitor of computing times
     TimerOutput                     computing_timer;
 
-private:
     // time stepping variables
     double                          timestep;
     double                          old_timestep;

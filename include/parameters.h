@@ -102,6 +102,8 @@ struct Parameters
     double          cfl_min;
     double          cfl_max;
 
+    unsigned int    adaptive_timestep_barrier;
+
     bool            adaptive_timestep;
 
     // discretization parameters

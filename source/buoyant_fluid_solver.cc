@@ -253,7 +253,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
             cell->clear_refine_flag();
 
     // clear coarsen flags if level decreases minimum
-    for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_initial_refinements))
+    for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_global_refinements))
         cell->clear_coarsen_flag();
 
     // count number of cells to be refined and coarsened
@@ -268,8 +268,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     Utilities::MPI::sum(local_cell_counts, mpi_communicator, global_cell_counts);
 
     pcout << "   Number of cells refined: " << global_cell_counts[0] << std::endl
-          << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl
-          << "   Number of levels: " << triangulation.n_global_levels() << std::endl;
+          << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl;
 
     // preparing temperature solution transfer
     std::vector<const LA::Vector *> x_temperature(3);
@@ -294,6 +293,19 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
     }
+
+    std::vector<unsigned int>   locally_active_cells(triangulation.n_global_levels());
+    for (unsigned int level=0; level < triangulation.n_levels(); ++level)
+        for (auto cell: triangulation.active_cell_iterators())
+            if ((unsigned int) cell->level() == level && cell->is_locally_owned())
+                locally_active_cells[level] += 1;
+    pcout << "   Number of cells (on level): ";
+    for (unsigned int level=0; level < triangulation.n_levels(); ++level)
+    {
+        pcout << Utilities::MPI::sum(locally_active_cells[level], mpi_communicator) << " (" << level << ")" << ", ";
+    }
+    pcout << std::endl;
+
 
     // setup dofs and constraints on refined mesh
     setup_dofs();
@@ -514,7 +526,7 @@ void BuoyantFluidSolver<dim>::run()
             refine_mesh();
 
         // adjust time step
-        if (parameters.adaptive_timestep && timestep_number > 1)
+        if (parameters.adaptive_timestep && timestep_number > parameters.adaptive_timestep_barrier)
             update_timestep(cfl_number);
 
         // copy temperature solution
