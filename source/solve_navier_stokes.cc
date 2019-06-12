@@ -47,6 +47,9 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
     if (!rebuild_diffusion_preconditioner)
         return;
 
+    if (parameters.verbose)
+        pcout << "      Building diffusion preconditioner..." << std::endl;
+
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner diffusion");
 
     if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
@@ -84,6 +87,9 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
     if (!rebuild_projection_preconditioner)
         return;
 
+    if (parameters.verbose)
+        pcout << "      Building projection preconditioner..." << std::endl;
+
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
     preconditioner_projection.reset(new LA::PreconditionAMG());
@@ -101,6 +107,9 @@ void BuoyantFluidSolver<dim>::build_pressure_mass_preconditioner()
 {
     if (!rebuild_pressure_mass_preconditioner)
         return;
+
+    if (parameters.verbose)
+        pcout << "      Building  pressure mass matrix preconditioner..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
