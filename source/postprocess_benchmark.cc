@@ -82,8 +82,8 @@ double BuoyantFluidSolver<2>::compute_radial_velocity_locally(
 template<>
 double BuoyantFluidSolver<3>::compute_radial_velocity_locally
 (const double    &radius,
- const double    &theta,
- const double    &phi) const
+ const double    &phi,
+ const double    &theta) const
 {
     const unsigned dim = 3;
 
@@ -156,11 +156,11 @@ double BuoyantFluidSolver<3>::compute_radial_velocity_locally
 template<int dim>
 double BuoyantFluidSolver<dim>::compute_radial_velocity
 (const double    &radius,
- const double    &theta,
- const double    &phi) const
+ const double    &phi,
+ const double    &theta) const
 {
     const double local_radial_velocity
-    = compute_radial_velocity_locally(radius, theta, phi);
+    = compute_radial_velocity_locally(radius, phi, theta);
 
     std::vector<double> all_radial_velocities
     = Utilities::MPI::gather(mpi_communicator,
@@ -219,7 +219,7 @@ template<>
 double  BuoyantFluidSolver<2>::compute_azimuthal_gradient_of_radial_velocity_locally
 (const double    &radius,
  const double    &phi,
- const double    &/* phi */) const
+ const double    &/* theta */) const
 {
     const unsigned dim = 2;
 
@@ -301,8 +301,8 @@ double  BuoyantFluidSolver<2>::compute_azimuthal_gradient_of_radial_velocity_loc
 template<>
 double BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_velocity_locally
 (const double    &radius,
- const double    &theta,
- const double    &phi) const
+ const double    &phi,
+ const double    &theta) const
 {
     const unsigned dim = 3;
 
@@ -452,7 +452,7 @@ template<>
 std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally
 (const double &radius,
  const double &phi,
- const double &/* phi */) const
+ const double &/* theta */) const
 {
     const unsigned int dim = 2;
 
@@ -526,8 +526,8 @@ std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_local
 template<>
 std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally
 (const double &radius,
- const double &theta,
- const double &phi) const
+ const double &phi,
+ const double &theta) const
 {
     const unsigned int dim = 3;
 
@@ -604,11 +604,11 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
 template<int dim>
 std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests
 (const double    &radius,
- const double    &theta,
- const double    &phi) const
+ const double    &phi,
+ const double    &theta) const
 {
     const std::pair<double,double> local_benchmark_requests
-    = compute_benchmark_requests_locally(radius, theta, phi);
+    = compute_benchmark_requests_locally(radius, phi, theta);
 
     std::vector<std::pair<double,double>> all_benchmark_requests
     = Utilities::MPI::gather(mpi_communicator,
@@ -695,7 +695,7 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
     auto boost_max_iter = boost::numeric_cast<boost::uintmax_t>(max_iter);
 
     // declare lambda functions for boost root finding
-    auto function = [this,radius,theta](const double &x){ return compute_radial_velocity(radius, theta, x); };
+    auto function = [this,radius,theta](const double &x){ return compute_radial_velocity(radius, x, theta); };
     auto tolerance_criterion = [tol](const double &a, const double &b){ return abs(a-b) <= tol; };
 
     double phi = -2. * numbers::PI;
@@ -745,14 +745,14 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
     if (phi_benchmark > 0.)
     {
         const double gradient_at_trial_point
-        = compute_azimuthal_gradient_of_radial_velocity(radius, 0, phi_benchmark);
+        = compute_azimuthal_gradient_of_radial_velocity(radius, phi_benchmark, 0);
 
         const double phi
         = compute_zero_of_radial_velocity(phi_benchmark,
                                           gradient_at_trial_point > 0.);
 
         const double gradient_at_zero
-        = compute_azimuthal_gradient_of_radial_velocity(radius, 0, phi);
+        = compute_azimuthal_gradient_of_radial_velocity(radius, phi, 0);
 
         if(gradient_at_zero > 0
                 && phi_benchmark >= 0.
@@ -779,17 +779,21 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
     while(cnt < n_trial_points && point_found == false)
     {
         const double gradient_at_trial_point
-        = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
+        = compute_azimuthal_gradient_of_radial_velocity(radius, trial_points[cnt], 0);
+
+        pcout << "   gradient at trial point (phi = "
+              << trial_points[cnt] << "): " << gradient_at_trial_point
+              << std::endl;
 
         try
         {
             const double phi = compute_zero_of_radial_velocity(trial_points[cnt],
                                                                gradient_at_trial_point > 0.);
 
-            const double gradients_at_zero
-            = compute_azimuthal_gradient_of_radial_velocity(radius, 0, trial_points[cnt]);
+            const double gradient_at_zero
+            = compute_azimuthal_gradient_of_radial_velocity(radius, trial_points[cnt], 0);
 
-            if (gradients_at_zero > 0.)
+            if (gradient_at_zero > 0.)
             {
                 point_found = true;
                 phi_benchmark = phi;

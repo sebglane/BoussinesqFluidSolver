@@ -190,30 +190,30 @@ private:
      */
     double                      compute_radial_velocity_locally
                                 (const double &radius,
-                                 const double &theta,
-                                 const double &phi) const;
+                                 const double &phi,
+                                 const double &theta) const;
     double                      compute_radial_velocity
                                 (const double &radius,
-                                 const double &theta,
-                                 const double &phi) const;
+                                 const double &phi,
+                                 const double &theta) const;
 
     double                      compute_azimuthal_gradient_of_radial_velocity_locally
                                 (const double &radius,
-                                 const double &theta,
-                                 const double &phi) const;
+                                 const double &phi,
+                                 const double &theta) const;
     double                      compute_azimuthal_gradient_of_radial_velocity
                                 (const double &radius,
-                                 const double &theta,
-                                 const double &phi) const;
+                                 const double &phi,
+                                 const double &theta) const;
 
     std::pair<double,double>    compute_benchmark_requests_locally
                                 (const double   &radius,
-                                 const double   &theta,
-                                 const double   &phi) const;
+                                 const double   &phi,
+                                 const double   &theta) const;
     std::pair<double,double>    compute_benchmark_requests
                                 (const double   &radius,
-                                 const double   &theta,
-                                 const double   &phi) const;
+                                 const double   &phi,
+                                 const double   &theta) const;
 
     /**
      * Computes a zero of the radial velocity $v_r(r=r_\mathrm{m},\theta=0,

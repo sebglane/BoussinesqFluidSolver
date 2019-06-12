@@ -487,12 +487,27 @@ void BuoyantFluidSolver<dim>::run()
 
             update_benchmark_point();
 
-            pcout << "   Benchmark point is at phi: " << phi_benchmark << std::endl;
+            const double radial_velocity
+            = compute_radial_velocity(0.5 * (1. + parameters.aspect_ratio),
+                                      phi_benchmark, 0.);
+
+            pcout << "   Benchmark point is at:  phi = " << phi_benchmark
+                  << ", radial velocity =  "
+                  << radial_velocity
+                  << " (x = " <<  0.5 * (1. + parameters.aspect_ratio) * cos(phi_benchmark)
+                  << ", y = " <<  0.5 * (1. + parameters.aspect_ratio) * sin(phi_benchmark)
+                  << ")"
+                  << std::endl;
 
             std::pair<double,double> benchmark_results
             = compute_benchmark_requests(0.5 * (1. + parameters.aspect_ratio),
                                          0,
                                          phi_benchmark);
+
+            pcout << "   Benchmark requests:  T = " << benchmark_results.first
+                  << ", v_phi = " << benchmark_results.second
+                  << std::endl;
+
             // add values to table
             benchmark_table.add_value("time step", timestep_number);
             benchmark_table.add_value("time", time);
