@@ -71,6 +71,9 @@ std::vector<std::string> PostProcessor<dim>::get_names() const
             break;
     }
 
+    AssertDimension(solution_names.size(),
+                    (dim==2? 4 * dim + 4: 5 * dim + 3))
+
     return solution_names;
 }
 
@@ -121,7 +124,8 @@ PostProcessor<dim>::get_data_component_interpretation() const
             component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
             break;
         case 3:
-            component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
+            for (unsigned int d=0; d<dim; ++d)
+                component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
             break;
         default:
             Assert(false, ExcDimensionMismatch2(dim, 2, 3));
@@ -150,6 +154,9 @@ PostProcessor<dim>::get_data_component_interpretation() const
             Assert(false, ExcDimensionMismatch2(dim, 2, 3));
             break;
     }
+
+    AssertDimension(component_interpretation.size(),
+                    (dim==2? 4 * dim + 4: 5 * dim + 3))
 
     return component_interpretation;
 }
@@ -254,7 +261,7 @@ void PostProcessor<3>::evaluate_vector_field(
     Assert(computed_quantities.size() == n_quadrature_points,
            ExcDimensionMismatch(computed_quantities.size(),
                                 n_quadrature_points));
-    Assert(computed_quantities[0].size() == 3 * dim + 3,
+    Assert(computed_quantities[0].size() == 5 * dim + 3,
            ExcDimensionMismatch(computed_quantities[0].size(),
                                 5 * dim + 3));
     Assert(inputs.solution_values[0].size() == dim + 2,

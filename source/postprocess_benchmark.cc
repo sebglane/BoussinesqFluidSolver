@@ -728,7 +728,7 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
         = bracket_and_solve_root(
                 function,
                 phi_guess,
-                1.2,
+                1.5,
                 local_slope,
                 tolerance_criterion,
                 boost_max_iter);
@@ -772,7 +772,8 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
 
         const double phi
         = compute_zero_of_radial_velocity(phi_benchmark,
-                                          gradient_at_trial_point > 0.);
+                                          gradient_at_trial_point > 0.,
+                                          1e-6);
 
         const double gradient_at_zero
         = compute_azimuthal_gradient_of_radial_velocity(radius, phi, 0);
@@ -807,7 +808,8 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
         try
         {
             const double phi = compute_zero_of_radial_velocity(trial_points[cnt],
-                                                               gradient_at_trial_point > 0.);
+                                                               gradient_at_trial_point > 0.,
+                                                               1e-6);
 
             const double gradient_at_zero
             = compute_azimuthal_gradient_of_radial_velocity(radius, trial_points[cnt], 0);
@@ -815,15 +817,12 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
             if (gradient_at_zero > 0.)
             {
                 point_found = true;
-                pcout << "Benchmark found on interval" << cnt << std::endl;
                 phi_benchmark = phi;
             }
             ++cnt;
         }
         catch(ExcBoostNoConvergence &exc)
         {
-            pcout << "   no convergence at trial point: "
-                  << trial_points[cnt] << std::endl;
             ++cnt;
             continue;
         }
