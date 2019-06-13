@@ -164,10 +164,10 @@ void PostProcessor<2>::evaluate_vector_field(
         }
         velocity_magnitude = sqrt(velocity_magnitude);
 
-        Assert(computed_quantities[q](dim+3) <= velocity_magnitude,
+        Assert(computed_quantities[q](dim+3) <= velocity_magnitude + 1e-12,
                ExcLowerRangeType<double>(computed_quantities[q](dim+3),
                                          velocity_magnitude));
-        Assert(computed_quantities[q](dim+4) <= velocity_magnitude,
+        Assert(computed_quantities[q](dim+4) <= velocity_magnitude + 1e-12,
                ExcLowerRangeType<double>(computed_quantities[q](dim+4),
                                          velocity_magnitude));
         // vorticity

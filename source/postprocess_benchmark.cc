@@ -23,18 +23,27 @@ template<>
 double BuoyantFluidSolver<2>::compute_radial_velocity_locally(
         const double    &radius,
         const double    &phi,
-        const double    &/* phi */) const
+        const double    &/* theta */) const
 {
     const unsigned dim = 2;
 
     Assert(radius > 0.0, ExcNegativeRadius(radius));
 
-    Assert((phi < 0.?
-           (phi >= -numbers::PI && phi <= numbers::PI):
-           (phi >= 0. && phi <= 2. * numbers::PI)),
-           ExcAzimuthalAngleRange(phi));
+    if (phi < 0.)
+    {
+        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
+               ExcAzimuthalAngleRange(phi));
+    }
+    else
+    {
+        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
+               ExcAzimuthalAngleRange(phi));
+    }
 
     const Point<dim>    x(radius * cos(phi), radius * sin(phi));
+
+    Assert(std::abs(x.norm() - 0.5 * (1. + parameters.aspect_ratio)) <= 1e-12,
+           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
 
     Vector<double>  values(navier_stokes_fe.n_components());
 
@@ -107,6 +116,9 @@ double BuoyantFluidSolver<3>::compute_radial_velocity_locally
                           radius * sin(phi) * sin(theta),
                           radius * cos(theta));
 
+    Assert(std::abs(x.norm() - 0.5 * (1. + parameters.aspect_ratio)) <= 1e-12,
+           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
+
     Vector<double>  values(navier_stokes_fe.n_components());
 
     try
@@ -159,6 +171,11 @@ double BuoyantFluidSolver<dim>::compute_radial_velocity
  const double    &phi,
  const double    &theta) const
 {
+    Assert(radius <= 1.0,
+           ExcLowerRangeType<double>(1., radius));
+    Assert(radius >= 0.5 * (1. + parameters.aspect_ratio),
+           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
+
     const double local_radial_velocity
     = compute_radial_velocity_locally(radius, phi, theta);
 
@@ -695,8 +712,14 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
     auto boost_max_iter = boost::numeric_cast<boost::uintmax_t>(max_iter);
 
     // declare lambda functions for boost root finding
-    auto function = [this,radius,theta](const double &x){ return compute_radial_velocity(radius, x, theta); };
-    auto tolerance_criterion = [tol](const double &a, const double &b){ return abs(a-b) <= tol; };
+    auto function = [this,radius,theta](const double &x)
+    {
+        return compute_radial_velocity(radius, x, theta);
+    };
+    auto tolerance_criterion = [tol,function](const double &a, const double &b)
+    {
+        return std::abs(function(a)) <= tol && std::abs(function(b)) <= tol;
+    };
 
     double phi = -2. * numbers::PI;
     try
@@ -763,15 +786,15 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
         }
     }
 
-    /**
+    /*
      * A valid initial guess has not been computed yet or was not good enough.
      * We try to find a benchmark point from a set of trial points.
      */
-
     // initialize trial points
     const unsigned int n_trial_points = 16;
     std::vector<double> trial_points;
-    for (unsigned int i=0; i<n_trial_points; ++i)
+    trial_points.push_back(1e-3 * 2. * numbers::PI / static_cast<double>(n_trial_points));
+    for (unsigned int i=1; i<n_trial_points; ++i)
         trial_points.push_back(i * 2. * numbers::PI / static_cast<double>(n_trial_points));
 
     bool            point_found = false;
@@ -780,10 +803,6 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
     {
         const double gradient_at_trial_point
         = compute_azimuthal_gradient_of_radial_velocity(radius, trial_points[cnt], 0);
-
-        pcout << "   gradient at trial point (phi = "
-              << trial_points[cnt] << "): " << gradient_at_trial_point
-              << std::endl;
 
         try
         {
@@ -796,12 +815,15 @@ void BuoyantFluidSolver<dim>::update_benchmark_point()
             if (gradient_at_zero > 0.)
             {
                 point_found = true;
+                pcout << "Benchmark found on interval" << cnt << std::endl;
                 phi_benchmark = phi;
             }
             ++cnt;
         }
         catch(ExcBoostNoConvergence &exc)
         {
+            pcout << "   no convergence at trial point: "
+                  << trial_points[cnt] << std::endl;
             ++cnt;
             continue;
         }
