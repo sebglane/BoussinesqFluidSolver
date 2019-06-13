@@ -119,11 +119,17 @@ phi_benchmark(-2.*numbers::PI)
     pcout << std::endl << ss.str()
           << std::endl << std::fixed << std::flush;
 
-    benchmark_table.declare_column("time step");
+    benchmark_table.declare_column("timestep");
     benchmark_table.declare_column("time");
     benchmark_table.declare_column("phi");
     benchmark_table.declare_column("temperature");
     benchmark_table.declare_column("azimuthal velocity");
+
+    global_avg_table.declare_column("timestep");
+    global_avg_table.declare_column("time");
+    global_avg_table.declare_column("velocity rms");
+    global_avg_table.declare_column("kinetic energy");
+    global_avg_table.declare_column("temperature rms");
 }
 
 template<int dim>
@@ -610,9 +616,9 @@ void BuoyantFluidSolver<dim>::run()
         navier_stokes_step();
 
         // compute rms values
-        if (timestep_number % parameters.rms_frequency == 0)
+        if (timestep_number % parameters.global_avg_frequency == 0)
         {
-            TimerOutput::Scope  timer_section(computing_timer, "compute rms values");
+            TimerOutput::Scope  timer_section(computing_timer, "compute global averages values");
 
             const std::pair<double,double> rms_values = compute_rms_values();
 
@@ -622,16 +628,17 @@ void BuoyantFluidSolver<dim>::run()
                   << "   Temperature rms value: "
                   << rms_values.second
                   << std::endl;
-        }
-
-        // compute kinetic energy
-        if (timestep_number % parameters.energy_frequency == 0)
-        {
-            TimerOutput::Scope  timer_section(computing_timer, "compute energies");
 
             const double kinetic_energy = compute_kinetic_energy();
 
             pcout << "   Kinetic energy: " << kinetic_energy << std::endl;
+
+            // add values to table
+            global_avg_table.add_value("timestep", timestep_number);
+            global_avg_table.add_value("time", time);
+            global_avg_table.add_value("velocity rms", rms_values.first);
+            global_avg_table.add_value("kinetic energy", kinetic_energy);
+            global_avg_table.add_value("temperature rms", rms_values.second);
         }
 
         // compute benchmark results
@@ -664,7 +671,7 @@ void BuoyantFluidSolver<dim>::run()
                   << std::endl;
 
             // add values to table
-            benchmark_table.add_value("time step", timestep_number);
+            benchmark_table.add_value("timestep", timestep_number);
             benchmark_table.add_value("time", time);
             benchmark_table.add_value("phi", phi_benchmark);
             benchmark_table.add_value("temperature", benchmark_results.first);
@@ -763,6 +770,13 @@ void BuoyantFluidSolver<dim>::run()
     {
         std::ofstream   out_file("benchmark_report.txt");
         benchmark_table.write_text(out_file);
+        out_file.close();
+    }
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    {
+        std::ofstream   out_file("global_avg_report.txt");
+        global_avg_table.write_text(out_file);
         out_file.close();
     }
 

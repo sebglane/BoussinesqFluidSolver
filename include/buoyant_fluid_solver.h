@@ -336,6 +336,9 @@ private:
     Point<dim>                      benchmark_point;
     double                          phi_benchmark;
 
+    // logging variables
+    TableHandler                    global_avg_table;
+
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_navier_stokes_matrices = true,
             rebuild_temperature_matrices = true,

@@ -70,9 +70,8 @@ struct Parameters
 
     // logging parameters
     unsigned int    vtk_frequency;
-    unsigned int    rms_frequency;
+    unsigned int    global_avg_frequency;
     unsigned int    cfl_frequency;
-    unsigned int    energy_frequency;
     unsigned int    benchmark_frequency;
     unsigned int    snapshot_frequency;
 

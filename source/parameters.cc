@@ -20,9 +20,8 @@ adaptive_refinement(true),
 resume_from_snapshot(false),
 // logging parameters
 vtk_frequency(10),
-rms_frequency(5),
+global_avg_frequency(5),
 cfl_frequency(5),
-energy_frequency(5),
 benchmark_frequency(5),
 snapshot_frequency(100),
 benchmark_start(500),
@@ -133,18 +132,14 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "10",
                 Patterns::Integer(),
                 "Output frequency for vtk-files.");
-        prm.declare_entry("rms_freq",
+        prm.declare_entry("global_avg_freq",
                 "10",
                 Patterns::Integer(),
-                "Output frequency for rms values.");
+                "Output frequency for global averages like rms values and energies.");
         prm.declare_entry("cfl_freq",
                 "10",
                 Patterns::Integer(),
                 "Output frequency of current cfl number.");
-        prm.declare_entry("energy_freq",
-                "10",
-                Patterns::Integer(),
-                "Output frequency of current kinetic energy.");
         prm.declare_entry("benchmark_freq",
                 "5",
                 Patterns::Integer(),
@@ -352,14 +347,11 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         vtk_frequency = prm.get_integer("vtk_freq");
         Assert(vtk_frequency > 0, ExcLowerRange(0, vtk_frequency));
 
-        rms_frequency = prm.get_integer("rms_freq");
-        Assert(rms_frequency > 0, ExcLowerRange(0, rms_frequency));
+        global_avg_frequency = prm.get_integer("global_avg_freq");
+        Assert(global_avg_frequency > 0, ExcLowerRange(0, global_avg_frequency));
 
         cfl_frequency = prm.get_integer("cfl_freq");
         Assert(cfl_frequency > 0, ExcLowerRange(0, cfl_frequency));
-
-        energy_frequency = prm.get_integer("energy_freq");
-        Assert(energy_frequency > 0, ExcLowerRange(0, energy_frequency));
 
         benchmark_frequency = prm.get_integer("benchmark_freq");
         Assert(benchmark_frequency > 0, ExcLowerRange(0, benchmark_frequency));
