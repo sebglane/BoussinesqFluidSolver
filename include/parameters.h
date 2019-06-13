@@ -64,15 +64,19 @@ struct Parameters
     unsigned int    refinement_frequency;
 
     double          t_final;
+
     bool            adaptive_refinement;
+    bool            resume_from_snapshot;
 
     // logging parameters
     unsigned int    vtk_frequency;
     unsigned int    rms_frequency;
     unsigned int    cfl_frequency;
     unsigned int    energy_frequency;
-    unsigned int    benchmark_start;
     unsigned int    benchmark_frequency;
+    unsigned int    snapshot_frequency;
+
+    unsigned int    benchmark_start;
 
     bool            verbose;
 

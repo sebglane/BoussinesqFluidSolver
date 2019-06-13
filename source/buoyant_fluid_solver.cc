@@ -176,6 +176,152 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
 }
 
 template<int dim>
+void BuoyantFluidSolver<dim>::create_snapshot()
+{
+    TimerOutput::Scope  timer(computing_timer, "create snapshot");
+
+    unsigned int mpi_process_id = Utilities::MPI::this_mpi_process(mpi_communicator);
+
+    // save triangulation and solution vectors:
+    {
+        std::vector<const LA::BlockVector *>    x_navier_stokes(3);
+        x_navier_stokes[0] = &navier_stokes_solution;
+        x_navier_stokes[1] = &old_navier_stokes_solution;
+        x_navier_stokes[2] = &old_old_navier_stokes_solution;
+
+        parallel::distributed::SolutionTransfer<dim, LA::BlockVector>
+        navier_stokes_transfer(navier_stokes_dof_handler);
+
+        navier_stokes_transfer.prepare_serialization(x_navier_stokes);
+
+        std::vector<const LA::Vector *>    x_temperature(3);
+        x_temperature[0] = &temperature_solution;
+        x_temperature[1] = &old_temperature_solution;
+        x_temperature[2] = &old_old_temperature_solution;
+
+        parallel::distributed::SolutionTransfer<dim, LA::Vector>
+        temperature_transfer(temperature_dof_handler);
+
+        temperature_transfer.prepare_serialization(x_temperature);
+
+        triangulation.save("restart.mesh");
+    }
+
+    // save general information
+    if (mpi_process_id == 0)
+    {
+        std::ofstream   os("restart.timestep.info");
+
+        os << timestep << std::endl;
+        os << old_timestep << std::endl;
+    }
+
+    pcout << "Snapshot created on "
+          << "Step: " << Utilities::int_to_string(timestep_number, 8)
+          << std::endl;
+}
+
+
+template<int dim>
+void BuoyantFluidSolver<dim>::resume_from_snapshot()
+{
+    TimerOutput::Scope  timer(computing_timer, "resume from snapshot");
+
+    // first check existence of the two restart files
+    {
+        const std::string filename = "restart.mesh";
+        std::ifstream   in(filename.c_str());
+        if (!in)
+            AssertThrow(false,
+                        ExcMessage(std::string("You are trying to restart a previous computation, "
+                                   "but the restart file <")
+                                   +
+                                   filename
+                                   +
+                                   "> does not appear to exist!"));
+    }
+    {
+        const std::string   filename = "restart.timestep.info";
+        std::ifstream   in(filename.c_str());
+        if (!in)
+            AssertThrow(false,
+                        ExcMessage(std::string("You are trying to restart a previous computation, "
+                                   "but the restart file <")
+                                   +
+                                   filename
+                                   +
+                                   "> does not appear to exist!"));
+    }
+
+    pcout << "Resuming from snapshot..." << std::endl;
+
+    try
+    {
+        triangulation.load("restart.mesh");
+    }
+    catch (...)
+    {
+        AssertThrow(false, ExcMessage("Cannot open snapshot mesh file or read the triangulation stored there."));
+    }
+
+    setup_dofs();
+
+    LA::BlockVector     distributed_navier_stokes(navier_stokes_rhs);
+    LA::BlockVector     old_distributed_navier_stokes(navier_stokes_rhs);
+    LA::BlockVector     old_old_distributed_navier_stokes(navier_stokes_rhs);
+
+    std::vector<LA::BlockVector *>  x_navier_stokes(3);
+    x_navier_stokes[0] = &distributed_navier_stokes;
+    x_navier_stokes[1] = &old_distributed_navier_stokes;
+    x_navier_stokes[2] = &old_old_distributed_navier_stokes;
+
+    parallel::distributed::SolutionTransfer<dim, LA::BlockVector>
+    navier_stokes_transfer(navier_stokes_dof_handler);
+
+    navier_stokes_transfer.deserialize(x_navier_stokes);
+    navier_stokes_solution = distributed_navier_stokes;
+    old_navier_stokes_solution= old_distributed_navier_stokes;
+    old_old_navier_stokes_solution = old_old_distributed_navier_stokes;
+
+    LA::Vector     distributed_temperature(temperature_rhs);
+    LA::Vector     old_distributed_temperature(temperature_rhs);
+    LA::Vector     old_old_distributed_temperature(temperature_rhs);
+
+    std::vector<LA::Vector *>   x_temperature(3);
+    x_temperature[0] = &distributed_temperature;
+    x_temperature[1] = &old_distributed_temperature;
+    x_temperature[2] = &old_old_distributed_temperature;
+
+    parallel::distributed::SolutionTransfer<dim, LA::Vector>
+    temperature_transfer(temperature_dof_handler);
+
+    temperature_transfer.deserialize(x_temperature);
+
+    temperature_solution = distributed_temperature;
+    old_temperature_solution = old_distributed_temperature;
+    old_old_temperature_solution= old_old_distributed_temperature;
+
+    std::ifstream   in("restart.timestep.info");
+
+    double x;
+    std::vector<double> timestep_info;
+    while (in >> x)
+    {
+        Assert(x > 0., ExcLowerRangeType<double>(x, 0));
+        timestep_info.push_back(x);
+    }
+
+    AssertDimension(timestep_info.size(), 2);
+
+    timestep = timestep_info[0];
+    old_timestep = timestep_info[1];
+
+    pcout << "Loaded timestep information: timestep = " << timestep
+          << ", old_timestep = " << old_timestep
+          << std::endl;
+}
+
+template<int dim>
 void BuoyantFluidSolver<dim>::refine_mesh()
 {
     pcout << "Mesh refinement..." << std::endl;
@@ -375,6 +521,8 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 template<int dim>
 void BuoyantFluidSolver<dim>::run()
 {
+    if (parameters.resume_from_snapshot == false )
+    {
     make_grid();
 
     setup_dofs();
@@ -433,6 +581,13 @@ void BuoyantFluidSolver<dim>::run()
         compute_initial_pressure();
         // copy solution vectors for output
         navier_stokes_solution = old_navier_stokes_solution;
+    }
+    }
+    else
+    {
+        make_coarse_grid();
+
+        resume_from_snapshot();
     }
 
     // output of the initial condition
@@ -528,6 +683,7 @@ void BuoyantFluidSolver<dim>::run()
                       << std::endl;
         }
 
+        // write vtk output
         if (timestep_number % parameters.vtk_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "output results");
@@ -586,12 +742,22 @@ void BuoyantFluidSolver<dim>::run()
 
         // advance in time
         time += timestep;
+
+        // write snapshot
+        if (timestep_number > 0 &&
+            timestep_number % parameters.snapshot_frequency == 0)
+            create_snapshot();
+
+        // increase timestep number
         ++timestep_number;
 
-    } while (timestep_number < parameters.n_steps && time < parameters.t_final);
+    } while (timestep_number < parameters.n_steps + 1 && time < parameters.t_final);
 
     if (parameters.n_steps % parameters.vtk_frequency != 0)
         output_results();
+
+    if (parameters.n_steps % parameters.snapshot_frequency != 0)
+        create_snapshot();
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
     {

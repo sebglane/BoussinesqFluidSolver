@@ -244,9 +244,7 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
         // rebuild the preconditioner of diffusion solve
         rebuild_diffusion_preconditioner = true;
     }
-    else if (timestep_number == 0 ||
-             timestep_number == 1 ||
-             timestep_modified ||
+    else if (timestep_number == 0 || timestep_number == 1 || timestep_modified ||
              rebuild_navier_stokes_matrices)
     {
         if (rebuild_navier_stokes_matrices)

@@ -149,6 +149,7 @@ public:
 
 private:
     void make_grid();
+    void make_coarse_grid();
 
     void setup_dofs();
 
@@ -237,6 +238,10 @@ private:
     void output_results(const bool initial_condition=false) const;
 
     void refine_mesh();
+
+    void create_snapshot();
+
+    void resume_from_snapshot();
 
     MPI_Comm                        mpi_communicator;
 

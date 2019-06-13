@@ -17,13 +17,16 @@ n_steps(100),
 refinement_frequency(30),
 t_final(1.0),
 adaptive_refinement(true),
+resume_from_snapshot(false),
 // logging parameters
 vtk_frequency(10),
 rms_frequency(5),
 cfl_frequency(5),
 energy_frequency(5),
-benchmark_start(500),
 benchmark_frequency(5),
+snapshot_frequency(100),
+benchmark_start(500),
+verbose(false),
 // physics parameters
 aspect_ratio(0.35),
 Pr(1.0),
@@ -108,6 +111,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "false",
                 Patterns::Bool(),
                 "Flag to activate adaptive mesh refinement.");
+        prm.declare_entry("resume_from_snapshot",
+                "false",
+                Patterns::Bool(),
+                "Flag to resume from a snapshot of an earlier simulation.");
     }
     prm.leave_subsection();
 
@@ -142,6 +149,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "5",
                 Patterns::Integer(),
                 "Output frequency of benchmark report.");
+        prm.declare_entry("snapshot_freq",
+                "100",
+                Patterns::Integer(),
+                "Output frequency of snapshots.");
         prm.declare_entry("benchmark_start",
                 "500",
                 Patterns::Integer(),
@@ -317,6 +328,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         Assert(t_final > 0.0, ExcLowerRangeType<double>(t_final, 0.0));
 
         adaptive_refinement = prm.get_bool("adaptive_refinement");
+
+        resume_from_snapshot = prm.get_bool("resume_from_snapshot");
     }
     prm.leave_subsection();
 
@@ -350,6 +363,10 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         benchmark_frequency = prm.get_integer("benchmark_freq");
         Assert(benchmark_frequency > 0, ExcLowerRange(0, benchmark_frequency));
+
+        snapshot_frequency = prm.get_integer("snapshot_freq");
+        Assert(snapshot_frequency > 0, ExcLowerRange(0, snapshot_frequency));
+
 
         benchmark_start = prm.get_integer("benchmark_start");
         Assert(benchmark_start > 0, ExcLowerRange(0, benchmark_start));

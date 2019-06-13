@@ -18,8 +18,7 @@ void BuoyantFluidSolver<dim>::make_grid()
 
     pcout << "Making grid..." << std::endl;
 
-    GridFactory::SphericalShell<dim> spherical_shell(parameters.aspect_ratio);
-    spherical_shell.create_coarse_mesh(triangulation);
+    make_coarse_grid();
 
     // initial global refinements
     if (parameters.n_global_refinements > 0)
@@ -48,6 +47,13 @@ void BuoyantFluidSolver<dim>::make_grid()
               << triangulation.n_global_active_cells()
               << std::endl;
     }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::make_coarse_grid()
+{
+    GridFactory::SphericalShell<dim> spherical_shell(parameters.aspect_ratio);
+    spherical_shell.create_coarse_mesh(triangulation);
 }
 }  // namespace BuoyantFluid
 
