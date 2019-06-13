@@ -60,3 +60,6 @@ void BuoyantFluidSolver<dim>::make_coarse_grid()
 // explicit instantiation
 template void BuoyantFluid::BuoyantFluidSolver<2>::make_grid();
 template void BuoyantFluid::BuoyantFluidSolver<3>::make_grid();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::make_coarse_grid();
+template void BuoyantFluid::BuoyantFluidSolver<3>::make_coarse_grid();
