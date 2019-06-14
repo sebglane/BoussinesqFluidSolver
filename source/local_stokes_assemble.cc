@@ -127,7 +127,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_convection_matrix
         }
 
         const Tensor<1,dim> extrapolated_velocity
-        = (timestep != 0 ?
+        = (timestep_number != 0 ?
                 (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
                         - scratch.old_old_velocity_values[q] * timestep/old_timestep)
                         : scratch.old_velocity_values[q]);
@@ -144,7 +144,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_convection_matrix
             case ConvectiveWeakForm::DivergenceForm:
             {
                 const double extrapolated_velocity_divergence
-                = (timestep != 0 ?
+                = (timestep_number != 0 ?
                         (scratch.old_velocity_divergences[q] * (1 + timestep/old_timestep)
                                 - scratch.old_old_velocity_divergences[q] * timestep/old_timestep)
                                 : scratch.old_velocity_divergences[q]);
@@ -241,13 +241,13 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit(
                 + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
 
         const double extrapolated_temperature
-            = (timestep != 0 ?
+            = (timestep_number != 0 ?
                 (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
         const Tensor<1,dim> extrapolated_velocity
-        = (timestep != 0 ?
+        = (timestep_number != 0 ?
                 (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
                         - scratch.old_old_velocity_values[q] * timestep/old_timestep)
                         : scratch.old_velocity_values[q]);
@@ -354,13 +354,13 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
                 + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
 
         const double extrapolated_temperature
-            = (timestep != 0 ?
+            = (timestep_number != 0 ?
                 (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
                         - scratch.old_old_temperature_values[q] * timestep/old_timestep)
                         : scratch.old_temperature_values[q]);
 
         const Tensor<1,dim> extrapolated_velocity
-        = (timestep != 0 ?
+        = (timestep_number != 0 ?
                 (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
                         - scratch.old_old_velocity_values[q] * timestep/old_timestep)
                         : scratch.old_velocity_values[q]);

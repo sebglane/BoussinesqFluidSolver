@@ -239,7 +239,7 @@ private:
 
     void refine_mesh();
 
-    void create_snapshot();
+    void create_snapshot(const double time=0);
 
     void resume_from_snapshot();
 

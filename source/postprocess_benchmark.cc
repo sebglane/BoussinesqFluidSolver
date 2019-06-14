@@ -177,7 +177,9 @@ double BuoyantFluidSolver<dim>::compute_radial_velocity
            ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
 
     const double local_radial_velocity
-    = compute_radial_velocity_locally(radius, phi, theta);
+    = compute_radial_velocity_locally(radius,
+                                      (phi > 2. * numbers::PI ? phi - 2. * numbers::PI: phi ),
+                                      theta);
 
     std::vector<double> all_radial_velocities
     = Utilities::MPI::gather(mpi_communicator,
@@ -728,7 +730,7 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
         = bracket_and_solve_root(
                 function,
                 phi_guess,
-                1.5,
+                1.05,
                 local_slope,
                 tolerance_criterion,
                 boost_max_iter);
