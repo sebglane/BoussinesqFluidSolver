@@ -344,7 +344,8 @@ void BuoyantFluidSolver<dim>::resume_from_snapshot()
         snapshot_info.print(pcout);
 
         timestep_number = snapshot_info.timestep_number();
-        timestep = snapshot_info.timestep();
+        if (parameters.adaptive_timestep)
+            timestep = snapshot_info.timestep();
         old_timestep = snapshot_info.old_timestep();
 
         Assert(timestep > 0, ExcLowerRangeType<double>(timestep, 0));
@@ -647,8 +648,12 @@ void BuoyantFluidSolver<dim>::run()
     // output of the initial condition
     output_results(true);
 
-    double time = 0;
-    double cfl_number = 0;
+    double  time = 0;
+    double  cfl_number = 0;
+
+    const unsigned int inital_timestep_number{timestep_number};
+
+    bool    mesh_refined = false;
 
     do
     {
@@ -668,25 +673,23 @@ void BuoyantFluidSolver<dim>::run()
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute global averages values");
 
-            const std::pair<double,double> rms_values = compute_rms_values();
+            const std::vector<double> global_avg = compute_global_averages();
 
             pcout << "   Velocity rms value: "
-                  << rms_values.first
+                  << global_avg[0]
                   << std::endl
                   << "   Temperature rms value: "
-                  << rms_values.second
+                  << global_avg[2]
                   << std::endl;
 
-            const double kinetic_energy = compute_kinetic_energy();
-
-            pcout << "   Kinetic energy: " << kinetic_energy << std::endl;
+            pcout << "   Kinetic energy: " << global_avg[1] << std::endl;
 
             // add values to table
             global_avg_table.add_value("timestep", timestep_number);
             global_avg_table.add_value("time", time);
-            global_avg_table.add_value("velocity rms", rms_values.first);
-            global_avg_table.add_value("kinetic energy", kinetic_energy);
-            global_avg_table.add_value("temperature rms", rms_values.second);
+            global_avg_table.add_value("velocity rms", global_avg[0]);
+            global_avg_table.add_value("kinetic energy", global_avg[1]);
+            global_avg_table.add_value("temperature rms", global_avg[2]);
         }
 
         // compute benchmark results
@@ -726,18 +729,6 @@ void BuoyantFluidSolver<dim>::run()
             benchmark_table.add_value("azimuthal velocity", benchmark_results.second);
         }
 
-        // compute Courant number
-        {
-            TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
-
-            cfl_number = compute_cfl_number();
-
-            if (timestep_number % parameters.cfl_frequency == 0)
-                pcout << "   Current cfl number: "
-                      << cfl_number
-                      << std::endl;
-        }
-
         // write vtk output
         if (timestep_number % parameters.vtk_frequency == 0)
         {
@@ -749,11 +740,63 @@ void BuoyantFluidSolver<dim>::run()
         if (timestep_number > 0
                 && timestep_number % parameters.refinement_frequency == 0
                 && parameters.adaptive_refinement)
+        {
             refine_mesh();
 
+            mesh_refined = true;
+
+            const std::vector<double> global_avg = compute_global_averages();
+
+            pcout << "   Velocity rms value: "
+                  << global_avg[0]
+                  << std::endl
+                  << "   Temperature rms value: "
+                  << global_avg[2]
+                  << std::endl;
+
+            pcout << "   Kinetic energy: " << global_avg[1] << std::endl;
+
+        }
+
+        // compute Courant number
+        {
+            TimerOutput::Scope  timer_section(computing_timer, "compute cfl number");
+
+            cfl_number = compute_cfl_number();
+
+            if (timestep_number % parameters.cfl_frequency == 0)
+                pcout << "   Current cfl number: "
+                      << cfl_number
+                      << std::endl;
+        }
         // adjust time step
-        if (parameters.adaptive_timestep && timestep_number > parameters.adaptive_timestep_barrier)
-            update_timestep(cfl_number);
+        if (parameters.adaptive_timestep)
+        {
+            if (mesh_refined && cfl_number > parameters.cfl_max)
+            {
+                update_timestep(cfl_number);
+                mesh_refined = false;
+            }
+            else if ((timestep_number - inital_timestep_number) > parameters.adaptive_timestep_barrier)
+                update_timestep(cfl_number);
+        }
+        /*
+         * If computation is resumed from a snapshot and non-adaptive
+         * timestepping is done, the old_timestep of the resumed computation
+         * is used in the first iteration. The old_timestep needs to be
+         * updated after the first newly computed timestep with the equidistant
+         * timestep.
+         */
+        else if (!parameters.adaptive_timestep && parameters.resume_from_snapshot)
+        {
+            if ((timestep_number - inital_timestep_number) == 0)
+            {
+                old_timestep = timestep;
+                timestep_modified = true;
+            }
+            else if (timestep_number - inital_timestep_number == 1)
+                timestep_modified = false;
+        }
 
         // copy temperature solution
         old_old_temperature_solution = old_temperature_solution;
@@ -773,11 +816,11 @@ void BuoyantFluidSolver<dim>::run()
             temperature_solution = extrapolated_solution;
         }
 
-        // copy stokes solution
+        // copy navier stokes solution
         old_old_navier_stokes_solution = old_navier_stokes_solution;
         old_navier_stokes_solution = navier_stokes_solution;
 
-        // extrapolate stokes solution
+        // extrapolate navier stokes solution
         {
             LA::BlockVector extrapolated_solution(navier_stokes_rhs),
                             old_old_distributed_solution(navier_stokes_rhs);
@@ -795,13 +838,32 @@ void BuoyantFluidSolver<dim>::run()
         old_old_phi_pressure = old_phi_pressure;
         old_phi_pressure = phi_pressure;
 
-        // advance in time
-        time += timestep;
+        /*
+         * Advance in time with old_time because the timestep may be updated
+         * by the method update_timestep earlier.
+         */
+        time += old_timestep;
 
         // write snapshot
         if (timestep_number > 0 &&
             timestep_number % parameters.snapshot_frequency == 0)
+        {
             create_snapshot(time);
+
+            if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+                std::ofstream   out_file("benchmark_report.txt");
+                benchmark_table.write_text(out_file);
+                out_file.close();
+            }
+
+            if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+            {
+                std::ofstream   out_file("global_avg_report.txt");
+                global_avg_table.write_text(out_file);
+                out_file.close();
+            }
+        }
 
         // increase timestep number
         ++timestep_number;

@@ -24,43 +24,7 @@
 namespace BuoyantFluid {
 
 template<int dim>
-double BuoyantFluidSolver<dim>::compute_kinetic_energy() const
-{
-    const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
-
-    const unsigned int n_q_points = quadrature_formula.size();
-
-    FEValues<dim> stokes_fe_values(mapping,
-                                   navier_stokes_fe,
-                                   quadrature_formula,
-                                   update_values|update_JxW_values);
-
-    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
-
-    const FEValuesExtractors::Vector velocities (0);
-
-    double local_kinetic_energy = 0;
-
-    for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
-        if (cell->is_locally_owned())
-        {
-            stokes_fe_values.reinit(cell);
-
-            stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
-                    velocity_values);
-
-            for (unsigned int q=0; q<n_q_points; ++q)
-                local_kinetic_energy += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
-        }
-
-    AssertIsFinite(local_kinetic_energy);
-    Assert(local_kinetic_energy >= 0, ExcLowerRangeType<double>(local_kinetic_energy, 0));
-
-    return Utilities::MPI::sum(local_kinetic_energy, mpi_communicator);
-}
-
-template<int dim>
-std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
+std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 {
     const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
 
@@ -81,7 +45,7 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
     const FEValuesExtractors::Vector velocities (0);
 
-    double local_sum_velocity = 0;
+    double local_sum_velocity_sqrd = 0;
     double local_sum_temperature = 0;
     double local_volume = 0;
 
@@ -103,27 +67,28 @@ std::pair<double, double> BuoyantFluidSolver<dim>::compute_rms_values() const
 
         for (unsigned int q=0; q<n_q_points; ++q)
         {
-            local_sum_velocity += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+            local_sum_velocity_sqrd += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
             local_sum_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
             local_volume += stokes_fe_values.JxW(q);
         }
     }
 
-    AssertIsFinite(local_sum_velocity);
-    Assert(local_sum_velocity >= 0, ExcLowerRangeType<double>(local_sum_velocity, 0));
+    AssertIsFinite(local_sum_velocity_sqrd);
+    Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
     AssertIsFinite(local_sum_temperature);
     Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
     Assert(local_volume >= 0, ExcLowerRangeType<double>(local_volume, 0));
 
-    const double local_sums[3]  = { local_sum_velocity, local_sum_temperature, local_volume};
+    const double local_sums[3]  = { local_sum_velocity_sqrd, local_sum_temperature, local_volume};
     double global_sums[3];
 
     Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
 
-    const double rms_velocity = global_sums[0] / global_sums[2];
-    const double rms_temperature = global_sums[1] / global_sums[2];
+    const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
+    const double rms_kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
+    const double rms_temperature = std::sqrt(global_sums[1] / global_sums[2]);
 
-    return std::pair<double,double>(std::sqrt(rms_velocity), std::sqrt(rms_temperature));
+    return std::vector<double>{rms_velocity, rms_kinetic_energy, rms_temperature};
 }
 
 template <int dim>
@@ -332,15 +297,10 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 }  // namespace BuoyantFluid
 
 // explicit instantiation
-template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<2>::compute_rms_values() const;
-template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<3>::compute_rms_values() const;
-
-template double
-BuoyantFluid::BuoyantFluidSolver<2>::compute_kinetic_energy() const;
-template double
-BuoyantFluid::BuoyantFluidSolver<3>::compute_kinetic_energy() const;
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<2>::compute_global_averages() const;
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<3>::compute_global_averages() const;
 
 template double
 BuoyantFluid::BuoyantFluidSolver<2>::compute_cfl_number() const;

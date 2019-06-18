@@ -264,6 +264,7 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     }
     {
     TimerOutput::Scope timer_section(computing_timer, "assemble diff. sys., part 2");
+
     // reset all entries
     navier_stokes_rhs = 0;
 
@@ -367,12 +368,8 @@ void BuoyantFluidSolver<dim>::assemble_projection_system()
 
     TimerOutput::Scope timer_section(computing_timer, "assemble projection system");
 
-    const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
-
     if (rebuild_navier_stokes_matrices)
-    {
         assemble_navier_stokes_matrices();
-    }
 
     LA::Vector  distributed_velocity(navier_stokes_rhs.block(0));
     distributed_velocity = navier_stokes_solution.block(0);

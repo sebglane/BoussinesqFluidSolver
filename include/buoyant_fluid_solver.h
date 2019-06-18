@@ -121,6 +121,7 @@ namespace LA
 #include <deal.II/distributed/tria.h>
 
 #include <memory>
+#include <tuple>
 
 #include "assembly_data.h"
 #include "exceptions.h"
@@ -182,9 +183,8 @@ private:
 
     void navier_stokes_step();
 
-    std::pair<double,double>    compute_rms_values() const;
-    double                      compute_kinetic_energy() const;
-    double                      compute_cfl_number() const;
+    std::vector<double> compute_global_averages() const;
+    double              compute_cfl_number() const;
 
     /*
      * benchmarking methods

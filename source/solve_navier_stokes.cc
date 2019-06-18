@@ -105,11 +105,12 @@ void BuoyantFluidSolver<dim>::build_projection_preconditioner()
 template<int dim>
 void BuoyantFluidSolver<dim>::build_pressure_mass_preconditioner()
 {
-    if (!rebuild_pressure_mass_preconditioner)
+    if (!rebuild_pressure_mass_preconditioner &&
+            parameters.projection_scheme != PressureUpdateType::IrrotationalForm)
         return;
 
     if (parameters.verbose)
-        pcout << "      Building  pressure mass matrix preconditioner..." << std::endl;
+        pcout << "      Building pressure mass matrix preconditioner..." << std::endl;
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner projection");
 
@@ -355,8 +356,6 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
 {
     if (parameters.verbose)
         pcout << "Computing initial pressure..." << std::endl;
-
-
 
     assemble_navier_stokes_matrices();
 
