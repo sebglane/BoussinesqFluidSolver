@@ -229,7 +229,8 @@ RightHandSide<dim>::RightHandSide
  const UpdateFlags           temperature_update_flags,
  const std::vector<double>  &alpha,
  const std::vector<double>  &beta,
- const std::vector<double>  &gamma)
+ const std::vector<double>  &gamma,
+ const EquationData::GravityProfile gravity_profile)
 :
 stokes_fe_values(mapping,
                  stokes_fe,
@@ -253,7 +254,8 @@ gamma(gamma),
 gravity_vectors(stokes_quadrature.size()),
 dofs_per_cell(stokes_fe.dofs_per_cell),
 n_q_points(stokes_quadrature.size()),
-velocity(0)
+velocity(0),
+gravity_function(gravity_profile)
 {}
 
 template <int dim>
@@ -281,7 +283,8 @@ gamma(scratch.gamma),
 gravity_vectors(scratch.gravity_vectors),
 dofs_per_cell(scratch.dofs_per_cell),
 n_q_points(scratch.n_q_points),
-velocity(0)
+velocity(0),
+gravity_function(scratch.gravity_function.get_profile_type())
 {}
 
 }  // namespace Scratch

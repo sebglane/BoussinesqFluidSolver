@@ -321,7 +321,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         (timestep_number != 0?
                                 imex_coefficients.beta(timestep/old_timestep):
                                 std::vector<double>({1.0,0.0})),
-                        gamma),
+                        gamma,
+                        parameters.gravity_profile),
                 NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
     else if (parameters.convective_scheme == ConvectiveDiscretizationType::LinearImplicit)
         WorkStream::run(
@@ -351,7 +352,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         (timestep_number != 0?
                                 imex_coefficients.beta(timestep/old_timestep):
                                 std::vector<double>({1.0,0.0})),
-                        gamma),
+                        gamma,
+                        parameters.gravity_profile),
                 NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
     else
         throw   ExcInternalError();

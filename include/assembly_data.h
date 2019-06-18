@@ -173,7 +173,8 @@ struct RightHandSide
                   const UpdateFlags          temperature_update_flags,
                   const std::vector<double> &alpha,
                   const std::vector<double> &beta,
-                  const std::vector<double> &gamma);
+                  const std::vector<double> &gamma,
+                  const EquationData::GravityProfile    gravity_profile);
 
     RightHandSide(const RightHandSide<dim>  &scratch);
 

@@ -31,6 +31,7 @@ aspect_ratio(0.35),
 Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
+gravity_profile(EquationData::GravityProfile::Linear),
 rotation(false),
 // linear solver parameters
 rel_tol(1e-6),
@@ -239,6 +240,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "1.0e-3",
                 Patterns::Double(),
                 "Ekman number of the flow");
+
+        prm.declare_entry("GravityProfile",
+                "Linear",
+                Patterns::Selection("Constant|Linear"),
+                "Type of the gravity profile (Constant|Linear).");
     }
     prm.leave_subsection();
 
@@ -462,6 +468,16 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         Ek = prm.get_double("Ek");
         Assert(Ek > 0, ExcLowerRangeType<double>(Ek, 0));
+
+        std::string profile_string = prm.get("GravityProfile");
+
+        if (profile_string == "Constant")
+            gravity_profile = EquationData::GravityProfile::Constant;
+        else if (profile_string == "Linear")
+            gravity_profile = EquationData::GravityProfile::Linear;
+        else
+            AssertThrow(false, ExcMessage("Unexpected string for gravity profile."));
+
     }
     prm.leave_subsection();
 

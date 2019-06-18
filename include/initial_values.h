@@ -28,6 +28,17 @@ enum TemperaturePerturbation
     Sinusoidal
 };
 
+/*
+ *
+ * enumeration for the type of the gravity profile
+ *
+ */
+enum GravityProfile
+{
+    Constant,
+    Linear
+};
+
 using namespace dealii;
 
 using namespace GeometryExceptions;
@@ -70,12 +81,20 @@ template <int dim>
 class GravityFunction : public TensorFunction<1,dim>
 {
 public:
-    GravityFunction();
+    GravityFunction(const double    outer_radius = 1.0,
+                    const GravityProfile    profile_type = GravityProfile::Constant);
 
     virtual Tensor<1,dim>   value(const Point<dim> &p) const;
 
     virtual void            value_list(const std::vector<Point<dim>>    &points,
                                        std::vector<Tensor<1,dim>>       &values) const;
+
+    GravityProfile  get_profile_type() const;
+
+private:
+    const double outer_radius;
+
+    const GravityProfile    profile_type;
 };
 
 }  // namespace EquationData

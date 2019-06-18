@@ -85,6 +85,8 @@ struct Parameters
     double  Ra;
     double  Ek;
 
+    EquationData::GravityProfile    gravity_profile;
+
     bool    rotation;
 
     // initial conditions
