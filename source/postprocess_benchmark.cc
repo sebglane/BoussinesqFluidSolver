@@ -173,8 +173,8 @@ double BuoyantFluidSolver<dim>::compute_radial_velocity
 {
     Assert(radius <= 1.0,
            ExcLowerRangeType<double>(1., radius));
-    Assert(radius >= 0.5 * (1. + parameters.aspect_ratio),
-           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
+    Assert(radius >= parameters.aspect_ratio,
+           ExcLowerRangeType<double>(radius, parameters.aspect_ratio));
 
     const double local_radial_velocity
     = compute_radial_velocity_locally(radius,

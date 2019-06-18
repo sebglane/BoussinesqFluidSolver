@@ -702,7 +702,8 @@ void BuoyantFluidSolver<dim>::run()
 
             const double radial_velocity
             = compute_radial_velocity(0.5 * (1. + parameters.aspect_ratio),
-                                      phi_benchmark, 0.);
+                                      phi_benchmark,
+                                      numbers::PI / 2.);
 
             pcout << "   Benchmark point at  phi = " << phi_benchmark
                   << " (x = " <<  0.5 * (1. + parameters.aspect_ratio) * cos(phi_benchmark)
@@ -714,8 +715,8 @@ void BuoyantFluidSolver<dim>::run()
 
             std::pair<double,double> benchmark_results
             = compute_benchmark_requests(0.5 * (1. + parameters.aspect_ratio),
-                                         0,
-                                         phi_benchmark);
+                                         phi_benchmark,
+                                         numbers::PI / 2.);
 
             pcout << "   Benchmark requests:  T = " << benchmark_results.first
                   << ", v_phi = " << benchmark_results.second
