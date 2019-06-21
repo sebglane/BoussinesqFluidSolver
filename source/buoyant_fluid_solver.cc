@@ -47,7 +47,7 @@ navier_stokes_fe(FESystem<dim>(FE_Q<dim>(parameters.velocity_degree), dim), 1,
                  FE_Q<dim>(parameters.velocity_degree - 1), 1),
 navier_stokes_dof_handler(triangulation),
 // coefficients
-equation_coefficients{(parameters.rotation ? 2.0/parameters.Ek: 0.0),
+equation_coefficients{(parameters.rotation ? 2.0 / parameters.Ek: 0.0),
                       (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
                       (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
                       (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr) )},
@@ -446,7 +446,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     parallel::distributed::
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
                                                       estimated_error_per_cell,
-                                                      0.3, 0.1);
+                                                      0.3, 0.3);
 
     // clear refinement flags if refinement level exceeds maximum
     if (triangulation.n_levels() > parameters.n_max_levels)
@@ -454,7 +454,7 @@ void BuoyantFluidSolver<dim>::refine_mesh()
             cell->clear_refine_flag();
 
     // clear coarsen flags if level decreases minimum
-    for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_global_refinements))
+    for (auto cell: triangulation.active_cell_iterators_on_level(parameters.n_min_levels))
         cell->clear_coarsen_flag();
 
     // count number of cells to be refined and coarsened

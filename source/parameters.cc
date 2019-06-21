@@ -56,7 +56,8 @@ velocity_degree(2),
 n_global_refinements(1),
 n_initial_refinements(4),
 n_boundary_refinements(1),
-n_max_levels(6)
+n_max_levels(6),
+n_min_levels(3)
 {
     ParameterHandler prm;
     declare_parameters(prm);
@@ -214,6 +215,12 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                     "1",
                     Patterns::Integer(),
                     "Total of number of refinements allowed during the run.");
+
+            prm.declare_entry("n_min_levels",
+                    "1",
+                    Patterns::Integer(),
+                    "Minimum of number of refinements during the run.");
+
         }
         prm.leave_subsection();
     }
@@ -435,6 +442,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
             n_max_levels = prm.get_integer("n_max_levels");
 
+            n_min_levels = prm.get_integer("n_min_levels");
+
             if (n_max_levels < n_global_refinements + n_boundary_refinements + n_initial_refinements)
             {
                 std::ostringstream message;
@@ -446,6 +455,22 @@ void Parameters::parse_parameters(ParameterHandler &prm)
                         << std::endl
                         << " which is "
                         << n_global_refinements + n_boundary_refinements + n_initial_refinements
+                        << " for your parameter file."
+                        << std::endl;
+
+                AssertThrow(false, ExcMessage(message.str().c_str()));
+            }
+            if (n_max_levels < n_min_levels)
+            {
+                std::ostringstream message;
+                message << "Inconsistency in parameter file in definition of minimum and maximum number of levels."
+                        << std::endl
+                        << "minimum number of levels is: "
+                        << n_min_levels
+                        << ", which is larger than the minimum number of levels,"
+                        << std::endl
+                        << " which is "
+                        << n_max_levels
                         << " for your parameter file."
                         << std::endl;
 

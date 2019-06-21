@@ -124,6 +124,7 @@ struct Parameters
     unsigned int n_initial_refinements;
     unsigned int n_boundary_refinements;
     unsigned int n_max_levels;
+    unsigned int n_min_levels;
 };
 
 

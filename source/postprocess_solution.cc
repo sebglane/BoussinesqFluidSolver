@@ -26,28 +26,34 @@ namespace BuoyantFluid {
 template<int dim>
 std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 {
-    const QGauss<dim> quadrature_formula(parameters.velocity_degree + 1);
+    const QGauss<dim> velocity_quadrature(parameters.velocity_degree + 1);
 
-    const unsigned int n_q_points = quadrature_formula.size();
+    const QGauss<dim> temperature_quadrature(parameters.temperature_degree + 1);
+
+    const unsigned int n_velocity_q_points = velocity_quadrature.size();
+    const unsigned int n_temperature_q_points = temperature_quadrature.size();
 
     FEValues<dim> stokes_fe_values(mapping,
                                    navier_stokes_fe,
-                                   quadrature_formula,
-                                   update_values|update_JxW_values);
+                                   velocity_quadrature,
+                                   update_values|
+                                   update_JxW_values);
 
     FEValues<dim> temperature_fe_values(mapping,
                                         temperature_fe,
-                                        quadrature_formula,
-                                        update_values);
+                                        temperature_quadrature,
+                                        update_values|
+                                        update_JxW_values);
 
-    std::vector<double>         temperature_values(n_q_points);
-    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
+    std::vector<double>         temperature_values(n_temperature_q_points);
+    std::vector<Tensor<1,dim>>  velocity_values(n_velocity_q_points);
 
     const FEValuesExtractors::Vector velocities (0);
 
     double local_sum_velocity_sqrd = 0;
     double local_sum_temperature = 0;
-    double local_volume = 0;
+    double local_navier_stokes_volume = 0;
+    double local_temperature_volume = 0;
 
     typename DoFHandler<dim>::active_cell_iterator
     cell = navier_stokes_dof_handler.begin_active(),
@@ -62,31 +68,43 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 
         temperature_fe_values.get_function_values(temperature_solution,
                                                   temperature_values);
+
         stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
                                                          velocity_values);
 
-        for (unsigned int q=0; q<n_q_points; ++q)
+        for (unsigned int q=0; q<n_velocity_q_points; ++q)
         {
             local_sum_velocity_sqrd += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
-            local_sum_temperature += temperature_values[q] * temperature_values[q] * stokes_fe_values.JxW(q);
-            local_volume += stokes_fe_values.JxW(q);
+            local_navier_stokes_volume += stokes_fe_values.JxW(q);
+        }
+        for (unsigned int q=0; q<n_temperature_q_points; ++q)
+        {
+            local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+            local_temperature_volume += temperature_fe_values.JxW(q);
         }
     }
 
     AssertIsFinite(local_sum_velocity_sqrd);
-    Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
     AssertIsFinite(local_sum_temperature);
-    Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
-    Assert(local_volume >= 0, ExcLowerRangeType<double>(local_volume, 0));
+    AssertIsFinite(local_navier_stokes_volume);
+    AssertIsFinite(local_temperature_volume);
 
-    const double local_sums[3]  = { local_sum_velocity_sqrd, local_sum_temperature, local_volume};
-    double global_sums[3];
+    Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
+    Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+    Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
+    Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
+
+    const double local_sums[4]  = { local_sum_velocity_sqrd,
+                                    local_sum_temperature,
+                                    local_navier_stokes_volume,
+                                    local_temperature_volume};
+    double global_sums[4];
 
     Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
 
     const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
     const double rms_kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
-    const double rms_temperature = std::sqrt(global_sums[1] / global_sums[2]);
+    const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
 
     return std::vector<double>{rms_velocity, rms_kinetic_energy, rms_temperature};
 }
@@ -101,28 +119,69 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     FEValues<dim> fe_values(mapping,
                             navier_stokes_fe,
                             quadrature_formula,
-                            update_values);
+                            update_values|
+                            (parameters.rotation ?
+                            update_quadrature_points: update_default));
 
-    std::vector<Tensor<1,dim>> velocity_values(n_q_points);
+    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
+
+    std::vector<Point<dim>>     quadrature_points(n_q_points);
 
     const FEValuesExtractors::Vector velocities (0);
 
+    const double largest_viscosity = std::max(equation_coefficients[1],
+                                              equation_coefficients[3]);
+
     double max_cfl = 0;
 
-    for (auto cell : navier_stokes_dof_handler.active_cell_iterators())
-    if (cell->is_locally_owned())
-    {
-        fe_values.reinit (cell);
-        fe_values[velocities].get_function_values(navier_stokes_solution,
-                                                  velocity_values);
-        double max_cell_velocity = 0;
-        for (unsigned int q=0; q<n_q_points; ++q)
-            max_cell_velocity = std::max(max_cell_velocity,
-                                         velocity_values[q].norm());
-        max_cfl = std::max(max_cfl,
-                           max_cell_velocity / cell->diameter());
-    }
-    const double local_cfl = max_cfl * timestep;
+    if (parameters.rotation)
+        for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
+            if (cell->is_locally_owned())
+            {
+                fe_values.reinit (cell);
+                fe_values[velocities].get_function_values(navier_stokes_solution,
+                                                          velocity_values);
+
+                quadrature_points = fe_values.get_quadrature_points();
+
+                double  max_cell_velocity = 0;
+                for (unsigned int q=0; q<n_q_points; ++q)
+                {
+                    max_cell_velocity = std::max(max_cell_velocity,
+                                                 velocity_values[q].norm()
+                                                 + std::sqrt(quadrature_points[q](0) * quadrature_points[q](0)
+                                                           + quadrature_points[q](1) * quadrature_points[q](1)) / parameters.Ek);
+                }
+                max_cfl = std::max(max_cfl,
+                                   max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
+                max_cfl = std::max(max_cfl,
+                                   largest_viscosity / (cell->diameter() * cell->diameter() * dim));
+            }
+    else
+        for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
+            if (cell->is_locally_owned())
+            {
+                fe_values.reinit (cell);
+                fe_values[velocities].get_function_values(navier_stokes_solution,
+                                                          velocity_values);
+
+                double  max_cell_velocity = 0;
+                for (unsigned int q=0; q<n_q_points; ++q)
+                {
+                    max_cell_velocity = std::max(max_cell_velocity,
+                                                 velocity_values[q].norm());
+                }
+                max_cfl = std::max(max_cfl,
+                                   max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
+                max_cfl = std::max(max_cfl,
+                                   largest_viscosity / (cell->diameter() * cell->diameter() * dim));
+            }
+
+    const double max_polynomial_degree
+    = double(std::max(parameters.temperature_degree,
+                      parameters.velocity_degree));
+
+    const double local_cfl = max_cfl * timestep / max_polynomial_degree;
 
     const double global_cfl
     = Utilities::MPI::max(local_cfl, mpi_communicator);
