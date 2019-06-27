@@ -222,7 +222,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit(
                                                       scratch.old_old_temperature_values);
 
     scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
-                                        scratch.gravity_vectors);
+                                        scratch.gravity_values);
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -292,7 +292,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit(
                             (dim == 2? cross_product_2d(extrapolated_velocity)
                                     : cross_product_3d(rotation_vector, extrapolated_velocity))
                             * scratch.phi_velocity[i]: 0)
-                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_vectors[q] * scratch.phi_velocity[i]
+                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_values[q] * scratch.phi_velocity[i]
                     ) * scratch.stokes_fe_values.JxW(q);
     }
 }
@@ -335,7 +335,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
                                                       scratch.old_old_temperature_values);
 
     scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
-                                        scratch.gravity_vectors);
+                                        scratch.gravity_values);
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -374,7 +374,7 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
                             (dim == 2? cross_product_2d(extrapolated_velocity)
                                     : cross_product_3d(rotation_vector, extrapolated_velocity))
                             * scratch.phi_velocity[i]: 0)
-                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_vectors[q] * scratch.phi_velocity[i]
+                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_values[q] * scratch.phi_velocity[i]
                     ) * scratch.stokes_fe_values.JxW(q);
     }
 }

@@ -196,7 +196,7 @@ struct RightHandSide
     const std::vector<double>   gamma;
 
     const EquationData::GravityFunction<dim> gravity_function;
-    std::vector<Tensor<1,dim>>  gravity_vectors;
+    std::vector<Tensor<1,dim>>  gravity_values;
 
     const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;

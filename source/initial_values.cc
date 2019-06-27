@@ -146,7 +146,7 @@ double TemperatureInitialValues<2>::value(
             break;
         case TemperaturePerturbation::Sinusoidal:
         {
-            value = (log_ro - log_r) / (log_ro - log_ri);;
+            value = (log_ro - log_r) / (log_ro - log_ri);
 
             const double phi = atan2(point[1], point[0]);
             Assert(phi >= -numbers::PI && phi <= numbers::PI,

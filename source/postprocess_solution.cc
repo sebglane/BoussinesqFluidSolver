@@ -119,13 +119,9 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     FEValues<dim> fe_values(mapping,
                             navier_stokes_fe,
                             quadrature_formula,
-                            update_values|
-                            (parameters.rotation ?
-                            update_quadrature_points: update_default));
+                            update_values);
 
     std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
-
-    std::vector<Point<dim>>     quadrature_points(n_q_points);
 
     const FEValuesExtractors::Vector velocities (0);
 
@@ -133,49 +129,24 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
                                               equation_coefficients[3]);
 
     double max_cfl = 0;
+    for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
+        if (cell->is_locally_owned())
+        {
+            fe_values.reinit (cell);
+            fe_values[velocities].get_function_values(navier_stokes_solution,
+                                                      velocity_values);
 
-    if (parameters.rotation)
-        for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
-            if (cell->is_locally_owned())
+            double  max_cell_velocity = 0;
+            for (unsigned int q=0; q<n_q_points; ++q)
             {
-                fe_values.reinit (cell);
-                fe_values[velocities].get_function_values(navier_stokes_solution,
-                                                          velocity_values);
-
-                quadrature_points = fe_values.get_quadrature_points();
-
-                double  max_cell_velocity = 0;
-                for (unsigned int q=0; q<n_q_points; ++q)
-                {
-                    max_cell_velocity = std::max(max_cell_velocity,
-                                                 velocity_values[q].norm()
-                                                 + std::sqrt(quadrature_points[q](0) * quadrature_points[q](0)
-                                                           + quadrature_points[q](1) * quadrature_points[q](1)) / parameters.Ek);
-                }
-                max_cfl = std::max(max_cfl,
-                                   max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
-                max_cfl = std::max(max_cfl,
-                                   largest_viscosity / (cell->diameter() * cell->diameter() * dim));
+                max_cell_velocity = std::max(max_cell_velocity,
+                                             velocity_values[q].norm());
             }
-    else
-        for (auto cell: navier_stokes_dof_handler.active_cell_iterators())
-            if (cell->is_locally_owned())
-            {
-                fe_values.reinit (cell);
-                fe_values[velocities].get_function_values(navier_stokes_solution,
-                                                          velocity_values);
-
-                double  max_cell_velocity = 0;
-                for (unsigned int q=0; q<n_q_points; ++q)
-                {
-                    max_cell_velocity = std::max(max_cell_velocity,
-                                                 velocity_values[q].norm());
-                }
-                max_cfl = std::max(max_cfl,
-                                   max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
-                max_cfl = std::max(max_cfl,
-                                   largest_viscosity / (cell->diameter() * cell->diameter() * dim));
-            }
+            max_cfl = std::max(max_cfl,
+                               max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
+            max_cfl = std::max(max_cfl,
+                               largest_viscosity / (cell->diameter() * cell->diameter() * dim));
+        }
 
     const double max_polynomial_degree
     = double(std::max(parameters.temperature_degree,
