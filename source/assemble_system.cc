@@ -127,6 +127,7 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
 
     temperature_rhs.compress(VectorOperation::add);
 }
+
 template<int dim>
 void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
 {
@@ -174,6 +175,55 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
 
     // do not rebuild stokes matrices again
     rebuild_navier_stokes_matrices = false;
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::assemble_magnetic_matrices()
+{
+    const QGauss<dim>   quadrature_formula(parameters.magnetic_degree + 1);
+
+    // reset all entries
+    magnetic_matrix= 0;
+    magnetic_mass_matrix = 0;
+    magnetic_laplace_matrix = 0;
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
+    // assemble matrix
+    WorkStream::run(
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       magnetic_dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       magnetic_dof_handler.end()),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_magnetic_matrix,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_magnetic_matrix,
+                      this,
+                      std::placeholders::_1),
+            MagneticAssembly::Scratch::Matrix<dim>(
+                    magnetic_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_gradients|
+                    update_JxW_values),
+            MagneticAssembly::CopyData::Matrix<dim>(magnetic_fe));
+
+    magnetic_matrix.compress(VectorOperation::add);
+    magnetic_mass_matrix.compress(VectorOperation::add);
+    magnetic_laplace_matrix.compress(VectorOperation::add);
+
+    // rebuild both preconditionerss
+    rebuild_projection_preconditioner = true;
+    rebuild_pressure_mass_preconditioner = true;
+
+    // do not rebuild stokes matrices again
+    rebuild_magnetic_matrices = false;
 }
 
 template<int dim>
@@ -382,6 +432,145 @@ void BuoyantFluidSolver<dim>::assemble_projection_system()
     navier_stokes_rhs.compress(VectorOperation::add);
 }
 
+template<int dim>
+void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
+{
+    if (parameters.verbose)
+        pcout << "      Assembling magnetic diffusion system..." << std::endl;
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
+    // quadrature formula
+    const QGauss<dim>   quadrature_formula(parameters.magnetic_degree + 1);
+
+    // time stepping coefficients
+    const std::vector<double> alpha = (timestep_number != 0?
+                                        imex_coefficients.alpha(timestep/old_timestep):
+                                        std::vector<double>({1.0,-1.0,0.0}));
+    const std::vector<double> gamma = (timestep_number != 0?
+                                        imex_coefficients.gamma(timestep/old_timestep):
+                                        std::vector<double>({1.0,0.0,0.0}));
+
+    {
+    TimerOutput::Scope timer_section(computing_timer, "assemble mag. diff. sys., part 1");
+
+    if (timestep_number == 0 || timestep_number == 1 || timestep_modified ||
+            rebuild_magnetic_matrices)
+    {
+        if (rebuild_magnetic_matrices)
+            assemble_navier_stokes_matrices();
+
+        // correct (0,0)-block of navier stokes system by copy-operation
+        magnetic_matrix.block(0,0).copy_from(magnetic_mass_matrix.block(0,0));
+        magnetic_matrix.block(0,0) *= alpha[0] / timestep;
+        magnetic_matrix.block(0,0).add(equation_coefficients[5] * gamma[0],
+                                       magnetic_laplace_matrix.block(0,0));
+
+        // TODO: add stabilization term to system matrix
+
+        magnetic_matrix.compress(VectorOperation::add);
+
+        // TODO: separated preconditioner flags
+        // rebuild the preconditioner of diffusion solve
+        rebuild_diffusion_preconditioner = true;
+    }
+    }
+    {
+    TimerOutput::Scope timer_section(computing_timer, "assemble mag. diff. sys., part 2");
+
+    // reset all entries
+    magnetic_rhs = 0;
+
+    // compute extrapolated pressure
+    LA::Vector  extrapolated_pressure(magnetic_rhs.block(1));
+    LA::Vector  aux_distributed_pressure(magnetic_rhs.block(1));
+    switch (timestep_number)
+    {
+        case 0:
+            break;
+        case 1:
+            aux_distributed_pressure = old_phi_pseudo_pressure.block(1);
+            extrapolated_pressure.add(-alpha[1], aux_distributed_pressure);
+            break;
+        default:
+            aux_distributed_pressure = old_phi_pseudo_pressure.block(1);
+            extrapolated_pressure.add(-alpha[1]/alpha[0], aux_distributed_pressure);
+            aux_distributed_pressure = old_old_phi_pseudo_pressure.block(1);
+            extrapolated_pressure.add(-alpha[2]/alpha[0], aux_distributed_pressure);
+            break;
+    }
+    extrapolated_pressure *= -1.0;
+
+    // TODO: check the signs
+    // add pressure gradient to right-hand side
+    magnetic_matrix.block(0,1).vmult(magnetic_rhs.block(0),
+                                     extrapolated_pressure);
+
+    // assemble right-hand side function
+    WorkStream::run(
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       navier_stokes_dof_handler.end()),
+            std::bind(&BuoyantFluidSolver<dim>::local_assemble_magnetic_rhs,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&BuoyantFluidSolver<dim>::copy_local_to_global_magnetic_rhs,
+                      this,
+                      std::placeholders::_1),
+            MagneticAssembly::Scratch::RightHandSide<dim>(
+                    magnetic_fe,
+                    mapping,
+                    quadrature_formula,
+                    update_values|
+                    update_JxW_values|
+                    update_gradients,
+                    navier_stokes_fe,
+                    update_values,
+                    alpha,
+                    (timestep_number != 0?
+                            imex_coefficients.beta(timestep/old_timestep):
+                            std::vector<double>({1.0,0.0})),
+                    gamma),
+                    MagneticAssembly::CopyData::RightHandSide<dim>(magnetic_fe));
+    magnetic_rhs.compress(VectorOperation::add);
+    }
+}
+
+template<int dim>
+void BuoyantFluidSolver<dim>::assemble_magnetic_projection_system()
+{
+    if (parameters.verbose)
+        pcout << "      Assembling magnetic projection system..." << std::endl;
+
+    TimerOutput::Scope timer_section(computing_timer, "assemble projection system");
+
+    if (rebuild_magnetic_matrices)
+        assemble_magnetic_matrices();
+
+    // compute stiffness matrix with PSPG term
+    if (timestep_number == 0 || timestep_modified)
+    {
+        magnetic_matrix.block(1,1).copy_from(magnetic_laplace_matrix.block(1,1));
+
+        // TODO: add stabilization matrix
+        // compute stiffness matrix with PSPG term
+//        magnetic_matrix.block(1,1).add(1. / timestep,
+//                                       magnetic_stabilization_matrix.block(1,1));
+    }
+
+    LA::Vector  distributed_magnetic_field(navier_stokes_rhs.block(0));
+    distributed_magnetic_field = navier_stokes_solution.block(0);
+
+    magnetic_matrix.block(1,0).vmult(magnetic_rhs.block(1),
+                                     distributed_magnetic_field);
+
+    magnetic_rhs.compress(VectorOperation::add);
+}
 
 }  // namespace BuoyantFluid
 
@@ -393,8 +582,17 @@ template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_temperature_system()
 template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_navier_stokes_matrices();
 template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_navier_stokes_matrices();
 
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_magnetic_matrices();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_magnetic_matrices();
+
 template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_diffusion_system();
 template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_diffusion_system();
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_projection_system();
 template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_projection_system();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_magnetic_diffusion_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_magnetic_diffusion_system();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::assemble_magnetic_projection_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::assemble_magnetic_projection_system();
