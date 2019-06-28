@@ -42,6 +42,13 @@ pcout(std::cout,
 // monitor
 computing_timer(mpi_communicator, pcout,
                 TimerOutput::summary, TimerOutput::wall_times),
+// coefficients
+equation_coefficients{(parameters.rotation ? 2.0 / parameters.Ek: 0.0),
+                      (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
+                      (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
+                      (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr)),
+                      (parameters.magnetism ? 1. / (parameters.Ek * parameters.Pm): 0.0),
+                      (parameters.magnetism ? 1. / parameters.Pm: 0.0)},
 // triangulation
 triangulation(mpi_communicator),
 mapping(4),
@@ -56,13 +63,11 @@ navier_stokes_dof_handler(triangulation),
 magnetic_fe(FESystem<dim>(FE_Q<dim>(parameters.magnetic_degree), dim), 1,
             FE_Q<dim>(parameters.magnetic_degree - 1), 1),
 magnetic_dof_handler(triangulation),
-// coefficients
-equation_coefficients{(parameters.rotation ? 2.0 / parameters.Ek: 0.0),
-                      (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
-                      (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
-                      (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr)),
-                      (parameters.magnetism ? 1. / (parameters.Ek * parameters.Pm): 0.0),
-                      (parameters.magnetism ? 1. / parameters.Pm: 0.0)},
+// magnetic stabilization
+tau{parameters.magnetism ?
+        (1. - parameters.aspect_ratio) * (1. - parameters.aspect_ratio) / equation_coefficients[5] : 0.,
+    parameters.magnetism ?
+        equation_coefficients[5] / (1. - parameters.aspect_ratio) / (1. - parameters.aspect_ratio): 0.},
 // time stepping
 imex_coefficients(parameters.imex_scheme),
 timestep(parameters.initial_timestep),

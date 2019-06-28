@@ -336,20 +336,11 @@ struct Matrix
     FullMatrix<double>      local_matrix;
     FullMatrix<double>      local_mass_matrix;
     FullMatrix<double>      local_laplace_matrix;
+    FullMatrix<double>      local_stabilization_matrix;
 
     std::vector<types::global_dof_index>   local_dof_indices;
 };
 
-template <int dim>
-struct ConvectionMatrix
-{
-    ConvectionMatrix(const FiniteElement<dim>       &magnetic_fe);
-    ConvectionMatrix(const ConvectionMatrix<dim>    &data);
-
-    FullMatrix<double>      local_matrix;
-
-    std::vector<types::global_dof_index>   local_dof_indices;
-};
 
 template <int dim>
 struct RightHandSide
@@ -357,7 +348,7 @@ struct RightHandSide
     RightHandSide(const FiniteElement<dim>  &magnetic_fe);
     RightHandSide(const RightHandSide<dim>  &data);
 
-    Vector<double>          local_rhs;
+    Vector<double>  local_rhs;
 
     std::vector<types::global_dof_index>   local_dof_indices;
 };

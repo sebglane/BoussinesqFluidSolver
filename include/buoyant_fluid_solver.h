@@ -317,6 +317,13 @@ private:
 
     TableHandler                    global_avg_table;
 
+    /*
+     * physics related objects
+     */
+    const std::vector<double>       equation_coefficients;
+
+    Tensor<1,dim>                   rotation_vector;
+
     // triangulation related object
     parallel::distributed::Triangulation<dim>   triangulation;
 
@@ -381,6 +388,8 @@ private:
     /*
      * magnetic solver objects
      */
+    std::vector<double> tau;
+
     ConstraintMatrix    magnetic_constraints;
 
     LA::BlockSparseMatrix    magnetic_matrix;
@@ -416,13 +425,6 @@ private:
     preconditioner_pressure_mass;
 
     /*
-     * physics related objects
-     */
-    const std::vector<double>       equation_coefficients;
-
-    Tensor<1,dim>                   rotation_vector;
-
-    /*
      * timestep control objects
      */
     TimeStepping::IMEXCoefficients  imex_coefficients;
@@ -449,7 +451,7 @@ private:
     Point<dim>                      benchmark_point;
     double                          phi_benchmark;
 
-    // working stream methods for temperature assembly
+    // workstream methods for temperature assembly
     void local_assemble_temperature_rhs
     (const typename DoFHandler<dim>::active_cell_iterator   &cell,
      TemperatureAssembly::Scratch::RightHandSide<dim>       &scratch,
@@ -465,7 +467,7 @@ private:
     (const TemperatureAssembly::CopyData::Matrix<dim>    &data);
 
 
-    // working stream methods for stokes assembly
+    // workstream methods for navier stokes assembly
     void local_assemble_stokes_matrix
     (const typename DoFHandler<dim>::active_cell_iterator   &cell,
      NavierStokesAssembly::Scratch::Matrix<dim>             &scratch,
@@ -490,6 +492,21 @@ private:
      NavierStokesAssembly::CopyData::RightHandSide<dim>     &data);
     void copy_local_to_global_stokes_rhs
     (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
+
+    // workstream methods for magnetic assembly
+    void local_assemble_magnetic_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     MagneticAssembly::Scratch::Matrix<dim>       &scratch,
+     MagneticAssembly::CopyData::Matrix<dim>      &data);
+    void copy_local_to_global_magnetic_matrix
+    (const MagneticAssembly::CopyData::Matrix<dim>    &data);
+
+    void local_assemble_magnetic_rhs
+    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
+     MagneticAssembly::Scratch::RightHandSide<dim>       &scratch,
+     MagneticAssembly::CopyData::RightHandSide<dim>      &data);
+    void copy_local_to_global_magnetic_rhs
+    (const MagneticAssembly::CopyData::RightHandSide<dim>    &data);
 };
 
 }  // namespace BouyantFluid

@@ -462,6 +462,8 @@ local_mass_matrix(magnetic_fe.dofs_per_cell,
                   magnetic_fe.dofs_per_cell),
 local_laplace_matrix(magnetic_fe.dofs_per_cell,
                      magnetic_fe.dofs_per_cell),
+local_stabilization_matrix(magnetic_fe.dofs_per_cell,
+                           magnetic_fe.dofs_per_cell),
 local_dof_indices(magnetic_fe.dofs_per_cell)
 {}
 
@@ -471,6 +473,7 @@ Matrix<dim>::Matrix(const Matrix<dim>   &data)
 local_matrix(data.local_matrix),
 local_mass_matrix(data.local_mass_matrix),
 local_laplace_matrix(data.local_laplace_matrix),
+local_stabilization_matrix(data.local_stabilization_matrix),
 local_dof_indices(data.local_dof_indices)
 {}
 
