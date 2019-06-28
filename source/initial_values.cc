@@ -216,11 +216,107 @@ double TemperatureInitialValues<3>::value(
     return value;
 }
 
+template <int dim>
+MagneticFieldInitialValues<dim>::MagneticFieldInitialValues
+(const double inner_radius,
+ const double outer_radius)
+:
+Function<dim>(dim+1),
+inner_radius(inner_radius),
+outer_radius(outer_radius)
+{
+    Assert(inner_radius > 0.0, ExcNegativeRadius(inner_radius));
+    Assert(outer_radius > 0.0, ExcNegativeRadius(outer_radius));
+    Assert(inner_radius < outer_radius, ExcLowerRangeType<double>(inner_radius, outer_radius));
+}
+
+template<>
+void MagneticFieldInitialValues<2>::vector_value
+(const Point<2>    &point,
+ Vector<double>    &value) const
+{
+    const unsigned int dim = 2;
+
+    AssertDimension(value.size(), dim + 1);
+
+    const double radius = point.distance(Point<dim>());
+    Assert(radius> 0., ExcNegativeRadius(radius));
+
+    const double phi = atan2(point[1], point[0]);
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
+
+    const double B_phi
+    = 15. / (8. * sqrt(2)) * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius));
+
+
+    value[0] = - B_phi * sin(phi) ;
+    AssertIsFinite(value[0]);
+
+    value[1] = B_phi * cos(phi);
+    AssertIsFinite(value[1]);
+
+    value[2] = 0.0;
+    AssertIsFinite(value[2]);
+}
+
+template<>
+void MagneticFieldInitialValues<3>::vector_value
+(const Point<3>    &point,
+ Vector<double>    &value) const
+{
+    const unsigned int dim = 3;
+
+    AssertDimension(value.size(), dim + 1);
+
+    const double radius = point.distance(Point<dim>());
+    Assert(radius> 0., ExcNegativeRadius(radius));
+
+    const double cylinder_radius = sqrt(point[0]*point[0] + point[1]*point[1]);
+
+    const double theta = atan2(cylinder_radius, point[2]);
+    Assert(theta >= 0. && theta <= numbers::PI,
+           ExcPolarAngleRange(theta));
+
+    const double phi = atan2(point[1], point[0]);
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
+
+    const double B_r
+    = 5. / (8. * sqrt(2))
+    * (  -48. * inner_radius * outer_radius
+       + (4. * outer_radius + inner_radius * (4. + 3. * outer_radius)) * 6. * radius
+       - 4. * (4. + 3. *(outer_radius + inner_radius)) * radius * radius
+       + 9. * radius * radius * radius) / radius
+    * cos(theta);
+
+    const double B_theta
+    = -15. / (4. * sqrt(2))
+    * (radius - inner_radius) * (radius - outer_radius) * (3. * radius - 4.) / radius
+    * sin(theta);
+
+    const double B_phi
+    = 15. / (8. * sqrt(2))
+    * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius))
+    * sin(2. * theta);
+
+
+    value[0] = (B_r * sin(theta) + B_theta * cos(theta)) * cos(phi) - B_phi * sin(phi) ;
+    AssertIsFinite(value[0]);
+
+    value[1] = (B_r * sin(theta) + B_theta * cos(theta)) * sin(phi) + B_phi * cos(phi);
+    AssertIsFinite(value[1]);
+
+    value[2] = B_r * cos(theta) - B_theta * sin(theta);
+    AssertIsFinite(value[2]);
+
+    value[3] = 0.0;
+}
 
 template<int dim>
 GravityFunction<dim>::GravityFunction
-(const double outer_radius,
- const GravityProfile  profile_type)
+(const double           outer_radius,
+ const GravityProfile   profile_type)
 :
 TensorFunction<1,dim>(),
 outer_radius(outer_radius),
@@ -269,8 +365,6 @@ GravityProfile GravityFunction<dim>::get_profile_type() const
     return profile_type;
 }
 
-
-
 }  // namespace EquationData
 
 // explicit instantiation
@@ -279,6 +373,9 @@ template class EquationData::VelocityTestValues<3>;
 
 template class EquationData::TemperatureInitialValues<2>;
 template class EquationData::TemperatureInitialValues<3>;
+
+template class EquationData::MagneticFieldInitialValues<2>;
+template class EquationData::MagneticFieldInitialValues<3>;
 
 template class EquationData::GravityFunction<1>;
 template class EquationData::GravityFunction<2>;

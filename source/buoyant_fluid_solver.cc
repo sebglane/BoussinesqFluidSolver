@@ -36,7 +36,13 @@ BuoyantFluidSolver<dim>::BuoyantFluidSolver(Parameters &parameters_)
 :
 mpi_communicator(MPI_COMM_WORLD),
 parameters(parameters_),
-imex_coefficients(parameters.imex_scheme),
+// parallel output
+pcout(std::cout,
+      (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
+// monitor
+computing_timer(mpi_communicator, pcout,
+                TimerOutput::summary, TimerOutput::wall_times),
+// triangulation
 triangulation(mpi_communicator),
 mapping(4),
 // temperature part
@@ -46,79 +52,120 @@ temperature_dof_handler(triangulation),
 navier_stokes_fe(FESystem<dim>(FE_Q<dim>(parameters.velocity_degree), dim), 1,
                  FE_Q<dim>(parameters.velocity_degree - 1), 1),
 navier_stokes_dof_handler(triangulation),
+// magnetic part
+magnetic_fe(FESystem<dim>(FE_Q<dim>(parameters.magnetic_degree), dim), 1,
+            FE_Q<dim>(parameters.magnetic_degree - 1), 1),
+magnetic_dof_handler(triangulation),
 // coefficients
 equation_coefficients{(parameters.rotation ? 2.0 / parameters.Ek: 0.0),
                       (parameters.rotation ? 1.0 : std::sqrt(parameters.Pr/ parameters.Ra) ),
                       (parameters.rotation ? parameters.Ra / parameters.Pr  : 1.0 ),
-                      (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr) )},
-// parallel output
-pcout(std::cout,
-      (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)),
-// monitor
-computing_timer(mpi_communicator, pcout,
-                TimerOutput::summary, TimerOutput::wall_times),
+                      (parameters.rotation ? 1.0 / parameters.Pr : 1.0 / std::sqrt(parameters.Ra * parameters.Pr)),
+                      (parameters.magnetism ? 1. / (parameters.Ek * parameters.Pm): 0.0),
+                      (parameters.magnetism ? 1. / parameters.Pm: 0.0)},
 // time stepping
+imex_coefficients(parameters.imex_scheme),
 timestep(parameters.initial_timestep),
 old_timestep(parameters.initial_timestep),
 // benchmarking
 phi_benchmark(-2.*numbers::PI)
 {
     pcout << "Boussinesq solver written by Sebastian Glane\n"
-          << "This program solves the Navier-Stokes system with thermal convection.\n"
+          << "This program solves the Navier-Stokes system incl. thermal convection and magnetic induction.\n"
           << "The stable Taylor-Hood (P2-P1) element and a pressure projection scheme is applied.\n"
           << "For time discretization an adaptive IMEX time stepping is used.\n\n"
           << "The governing equations are\n\n"
           << "\t-- Incompressibility constraint:\n\t\t div(v) = 0,\n\n"
-          << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega .times. v\n"
-          << "\t\t\t\t= - grad(p) + C2 div(grad(v)) - C3 T g,\n\n"
+          << "\t-- Navier-Stokes equation:\n\t\tdv/dt + v . grad(v) + C1 Omega x v\n"
+          << "\t\t\t\t= - grad(p) + C2 div(grad(v)) - C3 T g + C5 curl(B) x B,\n\n"
           << "\t-- Heat conduction equation:\n\t\tdT/dt + v . grad(T) = C4 div(grad(T)).\n\n"
+          << "\t-- Magnetic induction equation:\n\t\tdB/dt = curl(v x B) + C6 div(grad(T)).\n\n"
           << "The coefficients C1 to C4 depend on the normalization as follows.\n\n";
 
     // generate a nice table of the equation coefficients
-    pcout << "+-------------------+----------+---------------+----------+-------------------+\n"
-          << "|       case        |    C1    |      C2       |    C3    |        C4         |\n"
-          << "+-------------------+----------+---------------+----------+-------------------+\n"
-          << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |\n"
-          << "| Rotating case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           |\n"
-          << "+-------------------+----------+---------------+----------+-------------------+\n";
+    pcout << "+-------------------+----------+---------------+----------+-------------------+---------------+--------+\n"
+          << "|       case        |    C1    |      C2       |    C3    |        C4         |      C5       |   C6   |\n"
+          << "+-------------------+----------+---------------+----------+-------------------+---------------+--------+\n"
+          << "| Non-rotating case |    0     | sqrt(Pr / Ra) |    1     | 1 / sqrt(Ra * Pr) |      0        |   0    |\n"
+          << "| Rotating case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           |      0        |   0    |\n"
+          << "| Magnetic case     |  2 / Ek  |      1        |  Ra / Pr | 1 /  Pr           | 1 / (Ek * Pm) | 1 / Pm |  \n"
+          << "+-------------------+----------+---------------+----------+-------------------+---------------+--------+\n";
 
     pcout << std::endl << "You have chosen ";
 
     std::stringstream ss;
-    ss << "+----------+----------+----------+----------+----------+----------+----------+\n"
-       << "|    Ek    |    Ra    |    Pr    |    C1    |    C2    |    C3    |    C4    |\n"
-       << "+----------+----------+----------+----------+----------+----------+----------+\n";
 
-    if (parameters.rotation)
+    if (parameters.rotation && !parameters.rotation)
     {
         rotation_vector[dim-1] = 1.0;
 
         pcout << "the rotating case with the following parameters: "
               << std::endl;
+
+        ss << "+----------+----------+----------+----------+\n"
+           << "|    Ek    |    Ra    |    Pr    |    Pm    |\n"
+           << "+----------+----------+----------+----------+\n";
+
         ss << "| ";
         ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ek;
         ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
+        ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
+        ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pm;
+        ss << " | ";
+        ss << "\n+----------+----------+----------+----------+\n";
+    }
+    else if (parameters.rotation && parameters.rotation)
+    {
+        rotation_vector[dim-1] = 1.0;
+
+        pcout << "the rotating magnetic case with the following parameters: "
+              << std::endl;
+
+        ss << "+----------+----------+----------+\n"
+           << "|    Ek    |    Ra    |    Pr    |\n"
+           << "+----------+----------+----------+\n";
+
+        ss << "| ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ek;
+        ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
+        ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
+        ss << " |";
+        ss << "\n+----------+----------+----------+\n";
     }
     else
     {
-        pcout << "the non-rotating case with the following parameters: "
+        pcout << "the non-rotating non-magnetic case with the following parameters: "
               << std::endl;
-        ss << "|     0    | ";
+
+        ss << "+----------+----------+\n"
+           << "|    Ra    |    Pr    |\n"
+           << "+----------+----------+\n";
+
+        ss << "| ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
+        ss << " | ";
+        ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
+        ss << " |";
+        ss << "\n+----------+----------+\n";
     }
 
-    ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Ra;
-    ss << " | ";
-    ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters.Pr;
-    ss << " | ";
+    ss << "\n";
+    ss << "+----------+----------+----------+----------+----------+----------+\n"
+       << "|    C1    |    C2    |    C3    |    C4    |    C5    |    C6    |\n"
+       << "+----------+----------+----------+----------+----------+----------+\n";
 
-
-    for (unsigned int n=0; n<4; ++n)
+    for (unsigned int n=0; n<6; ++n)
     {
         ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << equation_coefficients[n];
         ss << " | ";
     }
 
-    ss << "\n+----------+----------+----------+----------+----------+----------+----------+\n";
+    ss << "\n+----------+----------+----------+----------+----------+----------+\n";
 
     pcout << std::endl << ss.str()
           << std::endl << std::fixed << std::flush;
@@ -134,6 +181,15 @@ phi_benchmark(-2.*numbers::PI)
     global_avg_table.declare_column("velocity rms");
     global_avg_table.declare_column("kinetic energy");
     global_avg_table.declare_column("temperature rms");
+
+    if (parameters.magnetism)
+    {
+        benchmark_table.declare_column("polar magnetic field");
+
+        global_avg_table.declare_column("magnetic rms");
+        global_avg_table.declare_column("magnetic energy");
+    }
+
 }
 
 template<int dim>

@@ -149,10 +149,55 @@ public:
     void run();
 
 private:
+    /*
+     * grid initialization methods
+     */
     void make_grid();
     void make_coarse_grid();
 
+    /*
+     * setup methods
+     */
     void setup_dofs();
+
+    /*
+     * solution initialization methods
+     */
+
+    /*
+     * solver related methods
+     */
+    void magnetic_step();
+
+    /*
+     * postprocessing related methods
+     */
+    std::vector<double> compute_global_averages() const;
+
+    double              compute_cfl_number() const;
+
+    void update_timestep(const double current_cfl_number);
+
+    void refine_mesh();
+
+    /*
+     * benchmark related methods
+     */
+    void update_benchmark_point();
+
+    /*
+     * input-output related methods
+     */
+    void output_results(const bool initial_condition=false) const;
+
+    void create_snapshot(const double time=0);
+
+    void resume_from_snapshot();
+
+    /*
+     * temperature solver methods
+     */
+    types::global_dof_index setup_temperature();
 
     void setup_temperature_matrix
     (const IndexSet &locally_owned_dofs,
@@ -163,7 +208,13 @@ private:
     void solve_temperature_system();
     void temperature_step();
 
+    /*
+     * navier stokes solver methods
+     */
     void compute_initial_pressure();
+
+    std::pair<types::global_dof_index,types::global_dof_index>
+    setup_navier_stokes();
 
     void setup_navier_stokes_system
     (const std::vector<IndexSet>    &locally_owned_dofs,
@@ -183,29 +234,48 @@ private:
 
     void navier_stokes_step();
 
-    std::vector<double> compute_global_averages() const;
-    double              compute_cfl_number() const;
+    /*
+     * magnetic solver methods
+     */
+    std::pair<types::global_dof_index,types::global_dof_index>
+    setup_magnetic();
+
+    void setup_magnetic_system
+    (const std::vector<IndexSet>    &locally_owned_dofs,
+     const std::vector<IndexSet>    &locally_relevant_dofs);
+
+    void assemble_magnetic_matrices();
+
+    void assemble_magnetic_diffusion_system();
+    void assemble_magnetic_projection_system();
+
+    void build_magnetic_diffusion_preconditioner();
+    void build_magnetic_projection_preconditioner();
+    void build_magnetic_pressure_mass_preconditioner();
+
+    void solve_magnetic_diffusion_system();
+    void solve_magnetic_projection_system();
 
     /*
-     * benchmarking methods
+     * auxiliary benchmarking methods
      */
-    double                      compute_radial_velocity_locally
-                                (const double &radius,
-                                 const double &phi,
-                                 const double &theta) const;
-    double                      compute_radial_velocity
-                                (const double &radius,
-                                 const double &phi,
-                                 const double &theta) const;
+    double compute_radial_velocity_locally
+           (const double &radius,
+            const double &phi,
+            const double &theta) const;
+    double compute_radial_velocity
+           (const double &radius,
+            const double &phi,
+            const double &theta) const;
 
-    double                      compute_azimuthal_gradient_of_radial_velocity_locally
-                                (const double &radius,
-                                 const double &phi,
-                                 const double &theta) const;
-    double                      compute_azimuthal_gradient_of_radial_velocity
-                                (const double &radius,
-                                 const double &phi,
-                                 const double &theta) const;
+    double compute_azimuthal_gradient_of_radial_velocity_locally
+           (const double &radius,
+            const double &phi,
+            const double &theta) const;
+    double compute_azimuthal_gradient_of_radial_velocity
+           (const double &radius,
+            const double &phi,
+            const double &theta) const;
 
     std::pair<double,double>    compute_benchmark_requests_locally
                                 (const double   &radius,
@@ -231,26 +301,23 @@ private:
                                  const double       &tol = 1e-3,
                                  const unsigned int &max_iter = 100) const;
 
-    void                        update_benchmark_point();
-
-    void update_timestep(const double current_cfl_number);
-
-    void output_results(const bool initial_condition=false) const;
-
-    void refine_mesh();
-
-    void create_snapshot(const double time=0);
-
-    void resume_from_snapshot();
-
+    /*
+     * class utility objects
+     */
     MPI_Comm                        mpi_communicator;
 
     Parameters                     &parameters;
 
-    TimeStepping::IMEXCoefficients  imex_coefficients;
+    /*
+     * output related objects
+     */
+    ConditionalOStream              pcout;
 
-    Tensor<1,dim>                   rotation_vector;
+    TimerOutput                     computing_timer;
 
+    TableHandler                    global_avg_table;
+
+    // triangulation related object
     parallel::distributed::Triangulation<dim>   triangulation;
 
     const MappingQ<dim>             mapping;
@@ -269,7 +336,16 @@ private:
     std::vector<IndexSet>           locally_owned_stokes_dofs;
     std::vector<IndexSet>           locally_relevant_stokes_dofs;
 
-    // temperature part
+    // magnetic FiniteElement and DoFHandler
+    const FESystem<dim>             magnetic_fe;
+    DoFHandler<dim>                 magnetic_dof_handler;
+
+    std::vector<IndexSet>           locally_owned_magnetic_dofs;
+    std::vector<IndexSet>           locally_relevant_magnetic_dofs;
+
+    /*
+     * temperature solver objects
+     */
     ConstraintMatrix                temperature_constraints;
 
     LA::SparseMatrix     temperature_matrix;
@@ -282,7 +358,9 @@ private:
     LA::Vector           old_old_temperature_solution;
     LA::Vector           temperature_rhs;
 
-    // stokes part
+    /*
+     * navier stokes solver objects
+     */
     ConstraintMatrix                navier_stokes_constraints;
     ConstraintMatrix                stokes_pressure_constraints;
 
@@ -300,7 +378,28 @@ private:
     LA::BlockVector      old_phi_pressure;
     LA::BlockVector      old_old_phi_pressure;
 
-    // pointers to preconditioners
+    /*
+     * magnetic solver objects
+     */
+    ConstraintMatrix    magnetic_constraints;
+
+    LA::BlockSparseMatrix    magnetic_matrix;
+    LA::BlockSparseMatrix    magnetic_laplace_matrix;
+    LA::BlockSparseMatrix    magnetic_mass_matrix;
+
+    // vectors of magnetic part
+    LA::BlockVector      magnetic_solution;
+    LA::BlockVector      old_magnetic_solution;
+    LA::BlockVector      old_old_magnetic_solution;
+    LA::BlockVector      magnetic_rhs;
+
+    LA::BlockVector      phi_pseudo_pressure;
+    LA::BlockVector      old_phi_pseudo_pressure;
+    LA::BlockVector      old_old_phi_pseudo_pressure;
+
+    /*
+     * preconditioner pointers
+     */
     std::shared_ptr<LA::PreconditionSSOR>
     preconditioner_temperature;
 
@@ -316,36 +415,39 @@ private:
     std::shared_ptr<LA::PreconditionJacobi>
     preconditioner_pressure_mass;
 
-    // equation coefficients
+    /*
+     * physics related objects
+     */
     const std::vector<double>       equation_coefficients;
 
-    // parallel output
-    ConditionalOStream              pcout;
+    Tensor<1,dim>                   rotation_vector;
 
-    // monitor of computing times
-    TimerOutput                     computing_timer;
-
-    // time stepping variables
+    /*
+     * timestep control objects
+     */
+    TimeStepping::IMEXCoefficients  imex_coefficients;
     double                          timestep;
     double                          old_timestep;
     unsigned int                    timestep_number = 0;
     bool                            timestep_modified = false;
 
-    // benchmark variables
-    TableHandler                    benchmark_table;
-    Point<dim>                      benchmark_point;
-    double                          phi_benchmark;
-
-    // logging variables
-    TableHandler                    global_avg_table;
-
-    // flags for rebuilding matrices and preconditioners
+    /*
+     * solution control flags
+     */
     bool    rebuild_navier_stokes_matrices = true,
             rebuild_temperature_matrices = true,
+            rebuild_magnetic_matrices = true,
             rebuild_temperature_preconditioner = true,
             rebuild_diffusion_preconditioner = true,
             rebuild_projection_preconditioner = true,
             rebuild_pressure_mass_preconditioner = true;
+
+    /*
+     * benchmark related objects
+     */
+    TableHandler                    benchmark_table;
+    Point<dim>                      benchmark_point;
+    double                          phi_benchmark;
 
     // working stream methods for temperature assembly
     void local_assemble_temperature_rhs

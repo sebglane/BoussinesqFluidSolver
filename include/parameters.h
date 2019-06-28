@@ -84,10 +84,12 @@ struct Parameters
     double  Pr;
     double  Ra;
     double  Ek;
+    double  Pm;
 
     EquationData::GravityProfile    gravity_profile;
 
     bool    rotation;
+    bool    magnetism;
 
     // initial conditions
     EquationData::TemperaturePerturbation   temperature_perturbation;
@@ -118,6 +120,7 @@ struct Parameters
 
     unsigned int temperature_degree;
     unsigned int velocity_degree;
+    unsigned int magnetic_degree;
 
     // refinement parameters
     unsigned int n_global_refinements;

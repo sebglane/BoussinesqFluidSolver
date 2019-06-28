@@ -31,8 +31,10 @@ aspect_ratio(0.35),
 Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
+Pm(5.0),
 gravity_profile(EquationData::GravityProfile::Linear),
 rotation(false),
+magnetism(false),
 // linear solver parameters
 rel_tol(1e-6),
 abs_tol(1e-9),
@@ -52,6 +54,7 @@ convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
 convective_scheme(ConvectiveDiscretizationType::Explicit),
 temperature_degree(1),
 velocity_degree(2),
+magnetic_degree(2),
 // refinement parameters
 n_global_refinements(1),
 n_initial_refinements(4),
@@ -167,12 +170,18 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "2",
                 Patterns::Integer(1,2),
                 "Polynomial degree of the velocity discretization. The polynomial "
-                "degree of the pressure is automatically set to one less than the velocity");
+                "degree of the pressure is automatically set to one less than the velocity degree.");
 
         prm.declare_entry("p_degree_temperature",
                 "1",
                 Patterns::Integer(1,2),
                 "Polynomial degree of the temperature discretization.");
+
+        prm.declare_entry("p_degree_magnetic",
+                "2",
+                Patterns::Integer(1,2),
+                "Polynomial degree of the magnetic field discretization. The polynomial "
+                "degree of the pseudo pressure is automatically set to one less than the magnetic field one.");
 
         prm.declare_entry("aspect_ratio",
                 "0.35",
@@ -231,22 +240,32 @@ void Parameters::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("rotating_case",
                 "true",
                 Patterns::Bool(),
-                "Turn rotation on or off");
+                "Turn rotation on or off.");
+
+        prm.declare_entry("magnetic_case",
+                "false",
+                Patterns::Bool(),
+                "Turn magnetism on or off.");
 
         prm.declare_entry("Pr",
                 "1.0",
                 Patterns::Double(),
-                "Prandtl number of the fluid");
+                "Prandtl number of the fluid.");
 
         prm.declare_entry("Ra",
                 "1.0e5",
                 Patterns::Double(),
-                "Rayleigh number of the flow");
+                "Rayleigh number of the fluid.");
 
         prm.declare_entry("Ek",
                 "1.0e-3",
                 Patterns::Double(),
-                "Ekman number of the flow");
+                "Ekman number of the fluid.");
+
+        prm.declare_entry("Pm",
+                "5.0",
+                Patterns::Double(),
+                "Magnetic Prandtl number of the fluid.");
 
         prm.declare_entry("GravityProfile",
                 "Linear",
@@ -388,6 +407,10 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         temperature_degree = prm.get_integer("p_degree_temperature");
         Assert(temperature_degree > 0, ExcLowerRange(temperature_degree, 0));
 
+        magnetic_degree = prm.get_integer("p_degree_magnetic");
+        Assert(magnetic_degree > 1, ExcLowerRange(magnetic_degree, 1));
+
+
         aspect_ratio = prm.get_double("aspect_ratio");
         Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
 
@@ -485,6 +508,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     {
         rotation = prm.get_bool("rotating_case");
 
+        magnetism = prm.get_bool("magnetic_case");
+
         Ra = prm.get_double("Ra");
         Assert(Ra > 0, ExcLowerRangeType<double>(Ra, 0));
 
@@ -493,6 +518,9 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         Ek = prm.get_double("Ek");
         Assert(Ek > 0, ExcLowerRangeType<double>(Ek, 0));
+
+        Pm = prm.get_double("Pm");
+        Assert(Pm > 0, ExcLowerRangeType<double>(Pm, 0));
 
         std::string profile_string = prm.get("GravityProfile");
 

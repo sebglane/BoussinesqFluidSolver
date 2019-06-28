@@ -77,6 +77,21 @@ private:
     const TemperaturePerturbation   perturbation_type;
 };
 
+template<int dim>
+class MagneticFieldInitialValues : public Function<dim>
+{
+public:
+    MagneticFieldInitialValues(const double inner_radius,
+                               const double outer_radius);
+
+    virtual void vector_value(const Point<dim>  &point,
+                              Vector<double>    &values) const;
+
+private:
+    const double inner_radius;
+    const double outer_radius;
+};
+
 template <int dim>
 class GravityFunction : public TensorFunction<1,dim>
 {
