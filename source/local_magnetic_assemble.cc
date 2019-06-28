@@ -1,5 +1,5 @@
 /*
- * local_magnetic_assemble.cc
+b * local_magnetic_assemble.cc
  *
  *  Created on: Jun 28, 2019
  *      Author: sg
@@ -95,6 +95,10 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_magnetic_matrix
             data.local_laplace_matrix,
             data.local_dof_indices,
             magnetic_laplace_matrix);
+    magnetic_constraints.distribute_local_to_global(
+            data.local_stabilization_matrix,
+            data.local_dof_indices,
+            magnetic_stabilization_matrix);
 }
 
 template<>
@@ -105,7 +109,12 @@ void BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
 {
     scratch.magnetic_fe_values.reinit(cell);
 
-    scratch.stokes_fe_values.reinit(cell);
+    typename DoFHandler<2>::active_cell_iterator
+    stokes_cell(&triangulation,
+                cell->level(),
+                cell->index(),
+                &navier_stokes_dof_handler);
+    scratch.stokes_fe_values.reinit(stokes_cell);
 
     scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
     (old_magnetic_solution, scratch.old_magnetic_values);
@@ -160,7 +169,12 @@ void BuoyantFluidSolver<3>::local_assemble_magnetic_rhs
 {
     scratch.magnetic_fe_values.reinit(cell);
 
-    scratch.stokes_fe_values.reinit(cell);
+    typename DoFHandler<3>::active_cell_iterator
+    stokes_cell(&triangulation,
+                cell->level(),
+                cell->index(),
+                &navier_stokes_dof_handler);
+    scratch.stokes_fe_values.reinit(stokes_cell);
 
     scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
     (old_magnetic_solution, scratch.old_magnetic_values);

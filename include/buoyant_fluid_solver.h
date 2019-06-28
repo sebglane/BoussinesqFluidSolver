@@ -395,6 +395,7 @@ private:
     LA::BlockSparseMatrix    magnetic_matrix;
     LA::BlockSparseMatrix    magnetic_laplace_matrix;
     LA::BlockSparseMatrix    magnetic_mass_matrix;
+    LA::BlockSparseMatrix    magnetic_stabilization_matrix;
 
     // vectors of magnetic part
     LA::BlockVector      magnetic_solution;

@@ -460,21 +460,24 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
             rebuild_magnetic_matrices)
     {
         if (rebuild_magnetic_matrices)
-            assemble_navier_stokes_matrices();
+            assemble_magnetic_matrices();
 
-        // correct (0,0)-block of navier stokes system by copy-operation
+        // correct (0,0)-block of magnetic system by copy-operation
         magnetic_matrix.block(0,0).copy_from(magnetic_mass_matrix.block(0,0));
         magnetic_matrix.block(0,0) *= alpha[0] / timestep;
         magnetic_matrix.block(0,0).add(equation_coefficients[5] * gamma[0],
                                        magnetic_laplace_matrix.block(0,0));
 
-        // TODO: add stabilization term to system matrix
+        // add stabilization term to system matrix
+        magnetic_matrix.block(0,0).add(1.0,
+                                       magnetic_stabilization_matrix.block(0,0));
+
 
         magnetic_matrix.compress(VectorOperation::add);
 
         // TODO: separated preconditioner flags
         // rebuild the preconditioner of diffusion solve
-        rebuild_diffusion_preconditioner = true;
+        rebuild_magnetic_diffusion_preconditioner = true;
     }
     }
     {
@@ -511,9 +514,9 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
     // assemble right-hand side function
     WorkStream::run(
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       navier_stokes_dof_handler.begin_active()),
+                       magnetic_dof_handler.begin_active()),
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       navier_stokes_dof_handler.end()),
+                       magnetic_dof_handler.end()),
             std::bind(&BuoyantFluidSolver<dim>::local_assemble_magnetic_rhs,
                       this,
                       std::placeholders::_1,
@@ -557,14 +560,13 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_projection_system()
     {
         magnetic_matrix.block(1,1).copy_from(magnetic_laplace_matrix.block(1,1));
 
-        // TODO: add stabilization matrix
         // compute stiffness matrix with PSPG term
-//        magnetic_matrix.block(1,1).add(1. / timestep,
-//                                       magnetic_stabilization_matrix.block(1,1));
+        magnetic_matrix.block(1,1).add(1. / timestep,
+                                       magnetic_stabilization_matrix.block(1,1));
     }
 
-    LA::Vector  distributed_magnetic_field(navier_stokes_rhs.block(0));
-    distributed_magnetic_field = navier_stokes_solution.block(0);
+    LA::Vector  distributed_magnetic_field(magnetic_rhs.block(0));
+    distributed_magnetic_field = magnetic_solution.block(0);
 
     magnetic_matrix.block(1,0).vmult(magnetic_rhs.block(1),
                                      distributed_magnetic_field);

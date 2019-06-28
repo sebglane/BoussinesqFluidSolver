@@ -502,8 +502,9 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
     magnetic_matrix.clear();
     magnetic_mass_matrix.clear();
     magnetic_laplace_matrix.clear();
+    magnetic_stabilization_matrix.clear();
 
-    // sparsity pattern for stokes matrix
+    // sparsity pattern for magnetic matrix
     LA::BlockDynamicSparsityPattern dsp(locally_owned_dofs,
                                         locally_owned_dofs,
                                         locally_relevant_dofs,
@@ -532,6 +533,7 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
         dsp.compress();
     }
     magnetic_matrix.reinit(dsp);
+    magnetic_stabilization_matrix.reinit(dsp);
 
     // sparsity pattern for laplace matrix
     LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_dofs,
