@@ -197,7 +197,7 @@ private:
     /*
      * temperature solver methods
      */
-    types::global_dof_index setup_temperature();
+    types::global_dof_index setup_temperature_dofs();
 
     void setup_temperature_matrix
     (const IndexSet &locally_owned_dofs,
@@ -214,7 +214,7 @@ private:
     void compute_initial_pressure();
 
     std::pair<types::global_dof_index,types::global_dof_index>
-    setup_navier_stokes();
+    setup_navier_stokes_dofs();
 
     void setup_navier_stokes_system
     (const std::vector<IndexSet>    &locally_owned_dofs,
@@ -238,7 +238,7 @@ private:
      * magnetic solver methods
      */
     std::pair<types::global_dof_index,types::global_dof_index>
-    setup_magnetic();
+    setup_magnetic_dofs();
 
     void setup_magnetic_system
     (const std::vector<IndexSet>    &locally_owned_dofs,

@@ -24,10 +24,54 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
-    // temperature part
+
+    const types::global_dof_index n_dofs_temperature = setup_temperature_dofs();
+
+    const std::pair<types::global_dof_index,types::global_dof_index>
+    n_navier_stokes_dofs = setup_navier_stokes_dofs();
+
+    std::pair<types::global_dof_index,types::global_dof_index>
+    n_magnetic_dofs;
+    if (parameters.magnetism)
+        n_magnetic_dofs = setup_magnetic_dofs();
+
+    // print info message
+    pcout << "   Number of active cells: "
+          << triangulation.n_global_active_cells()
+          << std::endl
+          << "   Number of degrees of freedom: "
+          << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature +
+             (parameters.magnetism ? magnetic_dof_handler.n_dofs() : 0)
+          << std::endl
+          << "   Number of velocity degrees of freedom: "
+          << n_navier_stokes_dofs.first
+          << std::endl
+          << "   Number of pressure degrees of freedom: "
+          << n_navier_stokes_dofs.second
+          << std::endl
+          << "   Number of temperature degrees of freedom: "
+          << n_dofs_temperature
+          << std::endl;
+    if (parameters.magnetism)
+    {
+        pcout << "   Number of magnetic degrees of freedom: "
+              << n_magnetic_dofs.first
+              << std::endl
+              << "   Number of pseudo pressure degrees of freedom: "
+              << n_magnetic_dofs.second
+              << std::endl;
+    }
+}
+
+template<int dim>
+types::global_dof_index BuoyantFluidSolver<dim>::setup_temperature_dofs()
+{
     locally_owned_temperature_dofs.clear();
     locally_relevant_temperature_dofs.clear();
     temperature_dof_handler.distribute_dofs(temperature_fe);
+
+    const types::global_dof_index n_dofs_temperature
+    = temperature_dof_handler.n_dofs();
 
     DoFRenumbering::Cuthill_McKee(temperature_dof_handler);
 
@@ -72,7 +116,46 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                            mpi_communicator,
                            true);
 
-    // stokes part
+    return n_dofs_temperature;
+}
+
+
+template<int dim>
+void BuoyantFluidSolver<dim>::setup_temperature_matrix
+(const IndexSet &locally_owned_dofs,
+ const IndexSet &locally_relevant_dofs)
+{
+    preconditioner_temperature.reset();
+
+    temperature_matrix.clear();
+    temperature_mass_matrix.clear();
+    temperature_stiffness_matrix.clear();
+
+    LA::DynamicSparsityPattern  dsp(locally_owned_dofs,
+                                    locally_owned_dofs,
+                                    locally_relevant_dofs,
+                                    mpi_communicator);
+
+    DoFTools::make_sparsity_pattern(temperature_dof_handler,
+                                    dsp,
+                                    temperature_constraints,
+                                    false,
+                                    Utilities::MPI::this_mpi_process(mpi_communicator));
+
+    dsp.compress();
+
+    temperature_matrix.reinit(dsp);
+    temperature_mass_matrix.reinit(dsp);
+    temperature_stiffness_matrix.reinit(dsp);
+
+    rebuild_temperature_matrices = true;
+}
+
+
+template<int dim>
+std::pair<types::global_dof_index,types::global_dof_index>
+BuoyantFluidSolver<dim>::setup_navier_stokes_dofs()
+{
     locally_owned_stokes_dofs.clear();
     locally_relevant_stokes_dofs.clear();
     navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
@@ -88,8 +171,9 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                                    dofs_per_block,
                                    stokes_block_component);
 
-    const unsigned int  n_velocity_dofs = dofs_per_block[0],
-                        n_pressure_dofs = dofs_per_block[1];
+    const types::global_dof_index
+    n_velocity_dofs = dofs_per_block[0],
+    n_pressure_dofs = dofs_per_block[1];
 
     // extract locally owned and relevant dofs
     IndexSet    locally_relevant_stokes_set;
@@ -151,7 +235,7 @@ void BuoyantFluidSolver<dim>::setup_dofs()
                                         boundary_pressure_dofs);
 
         types::global_dof_index local_idx = numbers::invalid_dof_index;
-        
+
         IndexSet::ElementIterator
         idx = boundary_pressure_dofs.begin(),
         endidx = boundary_pressure_dofs.end();
@@ -187,10 +271,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
         stokes_pressure_constraints.close();
     }
 
-    // count dofs
-    const types::global_dof_index n_dofs_temperature
-    = temperature_dof_handler.n_dofs();
-
     // stokes matrix and vector setup
     setup_navier_stokes_system(locally_owned_stokes_dofs,
                                locally_relevant_stokes_dofs);
@@ -211,59 +291,14 @@ void BuoyantFluidSolver<dim>::setup_dofs()
     old_phi_pressure.reinit(navier_stokes_solution);
     old_old_phi_pressure.reinit(navier_stokes_solution);
 
-    // print info message
-    pcout << "   Number of active cells: "
-          << triangulation.n_global_active_cells()
-          << std::endl
-          << "   Number of degrees of freedom: "
-          << navier_stokes_dof_handler.n_dofs() + n_dofs_temperature
-          << std::endl
-          << "   Number of velocity degrees of freedom: "
-          << dofs_per_block[0]
-          << std::endl
-          << "   Number of pressure degrees of freedom: "
-          << dofs_per_block[1]
-          << std::endl
-          << "   Number of temperature degrees of freedom: "
-          << n_dofs_temperature
-          << std::endl;
-}
-
-template<int dim>
-void BuoyantFluidSolver<dim>::setup_temperature_matrix
-(const IndexSet &locally_owned_dofs,
- const IndexSet &locally_relevant_dofs)
-{
-    preconditioner_temperature.reset();
-
-    temperature_matrix.clear();
-    temperature_mass_matrix.clear();
-    temperature_stiffness_matrix.clear();
-
-    LA::DynamicSparsityPattern  dsp(locally_owned_dofs,
-                                    locally_owned_dofs,
-                                    locally_relevant_dofs,
-                                    mpi_communicator);
-
-    DoFTools::make_sparsity_pattern(temperature_dof_handler,
-                                    dsp,
-                                    temperature_constraints,
-                                    false,
-                                    Utilities::MPI::this_mpi_process(mpi_communicator));
-
-    dsp.compress();
-
-    temperature_matrix.reinit(dsp);
-    temperature_mass_matrix.reinit(dsp);
-    temperature_stiffness_matrix.reinit(dsp);
-
-    rebuild_temperature_matrices = true;
+    return std::pair<types::global_dof_index,types::global_dof_index>
+    (n_velocity_dofs,n_pressure_dofs);
 }
 
 template<int dim>
 void BuoyantFluidSolver<dim>::setup_navier_stokes_system
 (const std::vector<IndexSet>    &locally_owned_dofs,
- const std::vector<IndexSet>    &locally_releveant_dofs)
+ const std::vector<IndexSet>    &locally_relevant_dofs)
 {
     preconditioner_symmetric_diffusion.reset();
     preconditioner_asymmetric_diffusion.reset();
@@ -277,7 +312,7 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system
     // sparsity pattern for stokes matrix
     LA::BlockDynamicSparsityPattern dsp(locally_owned_dofs,
                                         locally_owned_dofs,
-                                        locally_releveant_dofs,
+                                        locally_relevant_dofs,
                                         mpi_communicator);
     {
         Table<2,DoFTools::Coupling> stokes_coupling(dim+1, dim+1);
@@ -300,16 +335,20 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system
 
         dsp.compress();
     }
-
     navier_stokes_matrix.reinit(dsp);
 
     // sparsity pattern for laplace matrix
-    LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_stokes_dofs,
-                                                locally_owned_stokes_dofs,
-                                                locally_relevant_stokes_dofs,
+    LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_dofs,
+                                                locally_owned_dofs,
+                                                locally_relevant_dofs,
                                                 mpi_communicator);
+    // sparsity pattern for mass matrix
+    LA::BlockDynamicSparsityPattern mass_dsp(locally_owned_dofs,
+                                             locally_owned_dofs,
+                                             locally_relevant_dofs,
+                                             mpi_communicator);
     {
-        // auxiliary coupling structure
+        // auxiliary coupling structure for pressure part
         Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
         for (unsigned int c=0; c<dim+1; ++c)
             for (unsigned int d=0; d<dim+1; ++d)
@@ -325,40 +364,222 @@ void BuoyantFluidSolver<dim>::setup_navier_stokes_system
                 stokes_pressure_constraints,
                 false,
                 Utilities::MPI::this_mpi_process(mpi_communicator));
-
         laplace_dsp.compress();
-    }
-    navier_stokes_laplace_matrix.reinit(laplace_dsp);
-    navier_stokes_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
-
-    // sparsity pattern for mass matrix
-    LA::BlockDynamicSparsityPattern mass_dsp(locally_owned_stokes_dofs,
-                                             locally_owned_stokes_dofs,
-                                             locally_relevant_stokes_dofs,
-                                             mpi_communicator);
-    {
-        // auxiliary coupling structure
-        Table<2,DoFTools::Coupling> pressure_coupling(dim+1, dim+1);
-        for (unsigned int c=0; c<dim+1; ++c)
-            for (unsigned int d=0; d<dim+1; ++d)
-                if (c==d && c==dim)
-                    pressure_coupling[c][d] = DoFTools::always;
-                else
-                    pressure_coupling[c][d] = DoFTools::none;
 
         DoFTools::make_sparsity_pattern(
                 navier_stokes_dof_handler,
                 pressure_coupling,
                 mass_dsp,
                 navier_stokes_constraints);
-
         mass_dsp.compress();
     }
+    navier_stokes_laplace_matrix.reinit(laplace_dsp);
+    navier_stokes_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
+
     navier_stokes_mass_matrix.reinit(mass_dsp);
     navier_stokes_mass_matrix.block(0,0).reinit(dsp.block(0,0));
 
     rebuild_navier_stokes_matrices = true;
 }
+
+template<int dim>
+std::pair<types::global_dof_index,types::global_dof_index>
+BuoyantFluidSolver<dim>::setup_magnetic_dofs()
+{
+    locally_owned_magnetic_dofs.clear();
+    locally_relevant_magnetic_dofs.clear();
+    magnetic_dof_handler.distribute_dofs(magnetic_fe);
+
+    DoFRenumbering::Cuthill_McKee(magnetic_dof_handler);
+    DoFRenumbering::block_wise(magnetic_dof_handler);
+
+    // count magnetic dofs
+    std::vector<unsigned int> magnetic_block_component(2,0);
+    magnetic_block_component[1] = 1;
+    std::vector<types::global_dof_index> dofs_per_block(2);
+    DoFTools::count_dofs_per_block(magnetic_dof_handler,
+                                   dofs_per_block,
+                                   magnetic_block_component);
+
+    const types::global_dof_index   n_magnetic_dofs = dofs_per_block[0],
+                                    n_pseudo_pressure_dofs = dofs_per_block[1];
+
+    // extract locally owned and relevant dofs
+    IndexSet    locally_relevant_magnetic_set;
+    {
+        const IndexSet locally_owned_magnetic_set
+        = magnetic_dof_handler.locally_owned_dofs();
+
+        locally_owned_magnetic_dofs.push_back(
+                locally_owned_magnetic_set.get_view(0, n_magnetic_dofs));
+        locally_owned_magnetic_dofs.push_back(
+                locally_owned_magnetic_set.get_view(n_magnetic_dofs,
+                                                    n_magnetic_dofs + n_pseudo_pressure_dofs));
+
+        DoFTools::extract_locally_relevant_dofs(magnetic_dof_handler,
+                                                locally_relevant_magnetic_set);
+
+        locally_relevant_magnetic_dofs.push_back(
+                locally_relevant_magnetic_set.get_view(0, n_magnetic_dofs));
+        locally_relevant_magnetic_dofs.push_back(
+                locally_relevant_magnetic_set.get_view(n_magnetic_dofs,
+                                                       n_magnetic_dofs + n_pseudo_pressure_dofs));
+    }
+    // magnetic constraints
+    {
+        magnetic_constraints.clear();
+        magnetic_constraints.reinit(locally_relevant_magnetic_set);
+
+        DoFTools::make_hanging_node_constraints(magnetic_dof_handler,
+                                                magnetic_constraints);
+        // zero pseudo pressure constraint
+        {
+            const Functions::ZeroFunction<dim> zero_function(dim+1);
+
+            const std::map<typename types::boundary_id, const Function<dim>*>
+            pseudo_pressure_boundary_values
+            = {{GridFactory::BoundaryIds::ICB, &zero_function},
+               {GridFactory::BoundaryIds::CMB, &zero_function}};
+
+            const FEValuesExtractors::Scalar pseudo_pressure(dim);
+            VectorTools::interpolate_boundary_values(
+                    magnetic_dof_handler,
+                    pseudo_pressure_boundary_values,
+                    magnetic_constraints,
+                    magnetic_fe.component_mask(pseudo_pressure));
+        }
+        // zero tangential magnetic field constraint
+        {
+            const Functions::ZeroFunction<dim>  zero_function(dim);
+            typename FunctionMap<dim,double>::type  function_map
+            {{types::boundary_id(DomainIdentifiers::BoundaryIds::ICB),&zero_function},
+             {types::boundary_id(DomainIdentifiers::BoundaryIds::CMB),&zero_function}};
+
+            const std::set<types::boundary_id>  boundary_ids
+            {DomainIdentifiers::BoundaryIds::ICB,
+             DomainIdentifiers::BoundaryIds::CMB};
+
+            VectorTools::compute_nonzero_tangential_flux_constraints(
+                    magnetic_dof_handler,
+                    0,
+                    boundary_ids,
+                    function_map,
+                    magnetic_constraints);
+        }
+        magnetic_constraints.close();
+    }
+
+    // magnetic matrix and vector setup
+    setup_magnetic_system(locally_owned_magnetic_dofs,
+                          locally_relevant_magnetic_dofs);
+
+    // reinit block vectors
+    magnetic_solution.reinit(locally_relevant_magnetic_dofs,
+                             mpi_communicator);
+    old_magnetic_solution.reinit(magnetic_solution);
+    old_old_magnetic_solution.reinit(magnetic_solution);
+
+    magnetic_rhs.reinit(locally_owned_magnetic_dofs,
+                        locally_relevant_magnetic_dofs,
+                        mpi_communicator,
+                        true);
+
+    // reinit pressure vectors
+    phi_pseudo_pressure.reinit(magnetic_solution);
+    old_phi_pseudo_pressure.reinit(magnetic_solution);
+    old_old_phi_pseudo_pressure.reinit(magnetic_solution);
+
+    return std::pair<types::global_dof_index,types::global_dof_index>
+    (n_magnetic_dofs,n_pseudo_pressure_dofs);
+}
+
+
+template<int dim>
+void BuoyantFluidSolver<dim>::setup_magnetic_system
+(const std::vector<IndexSet>    &locally_owned_dofs,
+ const std::vector<IndexSet>    &locally_relevant_dofs)
+{
+    magnetic_matrix.clear();
+    magnetic_mass_matrix.clear();
+    magnetic_laplace_matrix.clear();
+
+    // sparsity pattern for stokes matrix
+    LA::BlockDynamicSparsityPattern dsp(locally_owned_dofs,
+                                        locally_owned_dofs,
+                                        locally_relevant_dofs,
+                                        mpi_communicator);
+    {
+        Table<2,DoFTools::Coupling> magnetic_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                // magnetic-magnetic coupling
+                if (c<dim && d<dim)
+                    magnetic_coupling[c][d] = DoFTools::Coupling::always;
+                // magnetic-pseudo pressure coupling
+                else if ((c<dim && d==dim) || (c==dim && d<dim))
+                    magnetic_coupling[c][d] = DoFTools::Coupling::always;
+                else
+                    magnetic_coupling[c][d] = DoFTools::none;
+
+        DoFTools::make_sparsity_pattern(
+                magnetic_dof_handler,
+                magnetic_coupling,
+                dsp,
+                magnetic_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
+
+        dsp.compress();
+    }
+    magnetic_matrix.reinit(dsp);
+
+    // sparsity pattern for laplace matrix
+    LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_dofs,
+                                                locally_owned_dofs,
+                                                locally_relevant_dofs,
+                                                mpi_communicator);
+    // sparsity pattern for mass matrix
+    LA::BlockDynamicSparsityPattern mass_dsp(locally_owned_stokes_dofs,
+                                             locally_owned_stokes_dofs,
+                                             locally_relevant_stokes_dofs,
+                                             mpi_communicator);
+    {
+        // auxiliary coupling structure for pressure part
+        Table<2,DoFTools::Coupling> pseudo_pressure_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                if (c==d && c==dim)
+                    pseudo_pressure_coupling[c][d] = DoFTools::always;
+                else
+                    pseudo_pressure_coupling[c][d] = DoFTools::none;
+
+        DoFTools::make_sparsity_pattern(
+                magnetic_dof_handler,
+                pseudo_pressure_coupling,
+                laplace_dsp,
+                magnetic_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
+        laplace_dsp.compress();
+
+        DoFTools::make_sparsity_pattern(
+                magnetic_dof_handler,
+                pseudo_pressure_coupling,
+                mass_dsp,
+                magnetic_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
+        mass_dsp.compress();
+    }
+    magnetic_laplace_matrix.reinit(laplace_dsp);
+    magnetic_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
+
+    magnetic_mass_matrix.reinit(mass_dsp);
+    magnetic_mass_matrix.block(0,0).reinit(dsp.block(0,0));
+
+    rebuild_magnetic_matrices = true;
+}
+
 }  // namespace BuoyantFluid
 
 
@@ -379,3 +600,11 @@ template void BuoyantFluid::BuoyantFluidSolver<2>::setup_navier_stokes_system
 template void BuoyantFluid::BuoyantFluidSolver<3>::setup_navier_stokes_system
 (const std::vector<IndexSet>    &,
  const std::vector<IndexSet>    &);
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::setup_magnetic_system
+(const std::vector<IndexSet>    &,
+ const std::vector<IndexSet>    &);
+template void BuoyantFluid::BuoyantFluidSolver<3>::setup_magnetic_system
+(const std::vector<IndexSet>    &,
+ const std::vector<IndexSet>    &);
+
