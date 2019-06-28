@@ -30,12 +30,12 @@ void BuoyantFluidSolver<dim>::navier_stokes_step()
     // solve projection step
     solve_diffusion_system();
 
+    // assemble right-hand side (and system if necessary)
+    assemble_projection_system();
+
     // rebuild preconditioner for projection step
     build_projection_preconditioner();
     build_pressure_mass_preconditioner();
-
-    // assemble right-hand side (and system if necessary)
-    assemble_projection_system();
 
     // solve projection system
     solve_projection_system();

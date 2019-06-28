@@ -425,6 +425,16 @@ private:
     std::shared_ptr<LA::PreconditionJacobi>
     preconditioner_pressure_mass;
 
+    std::shared_ptr<LA::PreconditionAMG>
+    preconditioner_magnetic_diffusion;
+
+    std::shared_ptr<LA::PreconditionAMG>
+    preconditioner_magnetic_projection;
+
+    std::shared_ptr<LA::PreconditionJacobi>
+    preconditioner_magnetic_pressure_mass;
+
+
     /*
      * timestep control objects
      */
@@ -443,7 +453,10 @@ private:
             rebuild_temperature_preconditioner = true,
             rebuild_diffusion_preconditioner = true,
             rebuild_projection_preconditioner = true,
-            rebuild_pressure_mass_preconditioner = true;
+            rebuild_pressure_mass_preconditioner = true,
+            rebuild_magnetic_diffusion_preconditioner = true,
+            rebuild_magnetic_projection_preconditioner = true,
+            rebuild_magnetic_pressure_mass_preconditioner = true;
 
     /*
      * benchmark related objects
