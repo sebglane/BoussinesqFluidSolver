@@ -166,7 +166,7 @@ div_phi_velocity(stokes_fe.dofs_per_cell),
 phi_velocity(stokes_fe.dofs_per_cell),
 grad_phi_velocity(stokes_fe.dofs_per_cell),
 phi_pressure(stokes_fe.dofs_per_cell),
-grad_phi_pressure(dim * stokes_fe.base_element(0).dofs_per_cell)
+grad_phi_pressure(stokes_fe.dofs_per_cell)
 {}
 
 template <int dim>
@@ -348,6 +348,151 @@ local_dof_indices(data.local_dof_indices)
 
 }  // namespace StokesAssembly
 
+namespace MagneticAssembly {
+
+namespace Scratch {
+
+template <int dim>
+Matrix<dim>::Matrix(
+        const FiniteElement<dim> &magnetic_fe,
+        const Mapping<dim>       &mapping,
+        const Quadrature<dim>    &magnetic_quadrature,
+        const UpdateFlags         magnetic_update_flags)
+:
+magnetic_fe_values(mapping,
+                   magnetic_fe,
+                   magnetic_quadrature,
+                   magnetic_update_flags),
+div_phi_magnetic_field(magnetic_fe.dofs_per_cell),
+phi_magnetic_field(magnetic_fe.dofs_per_cell),
+curl_phi_magnetic_field(magnetic_fe.dofs_per_cell),
+phi_pseudo_pressure(magnetic_fe.dofs_per_cell),
+grad_phi_pseudo_pressure(magnetic_fe.dofs_per_cell)
+{}
+
+template <int dim>
+Matrix<dim>::Matrix(const Matrix<dim>   &scratch)
+:
+magnetic_fe_values(scratch.magnetic_fe_values.get_mapping(),
+                   scratch.magnetic_fe_values.get_fe(),
+                   scratch.magnetic_fe_values.get_quadrature(),
+                   scratch.magnetic_fe_values.get_update_flags()),
+div_phi_magnetic_field(scratch.div_phi_magnetic_field),
+phi_magnetic_field(scratch.phi_magnetic_field),
+curl_phi_magnetic_field(scratch.curl_phi_magnetic_field),
+phi_pseudo_pressure(scratch.phi_pseudo_pressure),
+grad_phi_pseudo_pressure(scratch.grad_phi_pseudo_pressure)
+{}
+
+template <int dim>
+RightHandSide<dim>::RightHandSide
+(const FiniteElement<dim>   &magnetic_fe,
+ const Mapping<dim>         &mapping,
+ const Quadrature<dim>      &magnetic_quadrature,
+ const UpdateFlags           magnetic_update_flags,
+ const FiniteElement<dim>   &stokes_fe,
+ const UpdateFlags           stokes_update_flags,
+ const std::vector<double>  &alpha,
+ const std::vector<double>  &beta,
+ const std::vector<double>  &gamma)
+:
+magnetic_fe_values(mapping,
+                   magnetic_fe,
+                   magnetic_quadrature,
+                   magnetic_update_flags),
+phi_magnetic_field(stokes_fe.dofs_per_cell),
+curl_phi_magnetic_field(stokes_fe.dofs_per_cell),
+old_magnetic_values(magnetic_quadrature.size()),
+old_old_magnetic_values(magnetic_quadrature.size()),
+old_magnetic_curls(magnetic_quadrature.size()),
+old_old_magnetic_curls(magnetic_quadrature.size()),
+stokes_fe_values(mapping,
+                 stokes_fe,
+                 magnetic_quadrature,
+                 stokes_update_flags),
+old_velocity_values(magnetic_quadrature.size()),
+old_old_velocity_values(magnetic_quadrature.size()),
+alpha(alpha),
+beta(beta),
+gamma(gamma),
+dofs_per_cell(stokes_fe.dofs_per_cell),
+n_q_points(magnetic_quadrature.size()),
+magnetic_field(0),
+velocity(0)
+{}
+
+template <int dim>
+RightHandSide<dim>::RightHandSide(const RightHandSide<dim>  &scratch)
+:
+magnetic_fe_values(scratch.magnetic_fe_values.get_mapping(),
+                   scratch.magnetic_fe_values.get_fe(),
+                   scratch.magnetic_fe_values.get_quadrature(),
+                   scratch.magnetic_fe_values.get_update_flags()),
+phi_magnetic_field(scratch.phi_magnetic_field),
+curl_phi_magnetic_field(scratch.curl_phi_magnetic_field),
+old_magnetic_values(scratch.old_magnetic_values),
+old_old_magnetic_values(scratch.old_old_magnetic_values),
+old_magnetic_curls(scratch.old_magnetic_curls),
+old_old_magnetic_curls(scratch.old_old_magnetic_curls),
+stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
+                 scratch.stokes_fe_values.get_fe(),
+                 scratch.stokes_fe_values.get_quadrature(),
+                 scratch.stokes_fe_values.get_update_flags()),
+old_velocity_values(scratch.old_velocity_values),
+old_old_velocity_values(scratch.old_old_velocity_values),
+alpha(scratch.alpha),
+beta(scratch.beta),
+gamma(scratch.gamma),
+dofs_per_cell(scratch.dofs_per_cell),
+n_q_points(scratch.n_q_points),
+magnetic_field(0),
+velocity(0)
+{}
+
+}  // namespace Scratch
+
+namespace CopyData {
+
+template <int dim>
+Matrix<dim>::Matrix(const FiniteElement<dim>    &magnetic_fe)
+:
+local_matrix(magnetic_fe.dofs_per_cell,
+             magnetic_fe.dofs_per_cell),
+local_mass_matrix(magnetic_fe.dofs_per_cell,
+                  magnetic_fe.dofs_per_cell),
+local_laplace_matrix(magnetic_fe.dofs_per_cell,
+                     magnetic_fe.dofs_per_cell),
+local_dof_indices(magnetic_fe.dofs_per_cell)
+{}
+
+template <int dim>
+Matrix<dim>::Matrix(const Matrix<dim>   &data)
+:
+local_matrix(data.local_matrix),
+local_mass_matrix(data.local_mass_matrix),
+local_laplace_matrix(data.local_laplace_matrix),
+local_dof_indices(data.local_dof_indices)
+{}
+
+template <int dim>
+RightHandSide<dim>::RightHandSide(const FiniteElement<dim> &magnetic_fe)
+:
+local_rhs(magnetic_fe.dofs_per_cell),
+local_dof_indices(magnetic_fe.dofs_per_cell)
+{}
+
+template <int dim>
+RightHandSide<dim>::RightHandSide(const RightHandSide<dim> &data)
+:
+local_rhs(data.local_rhs),
+local_dof_indices(data.local_dof_indices)
+{}
+
+
+}  // namespace CopyData
+
+}  // namespace MagneticAssembly
+
 // explicit instantiation
 template class TemperatureAssembly::Scratch::RightHandSide<2>;
 template class TemperatureAssembly::Scratch::RightHandSide<3>;
@@ -372,3 +517,13 @@ template class NavierStokesAssembly::CopyData::ConvectionMatrix<2>;
 template class NavierStokesAssembly::CopyData::ConvectionMatrix<3>;
 template class NavierStokesAssembly::CopyData::RightHandSide<2>;
 template class NavierStokesAssembly::CopyData::RightHandSide<3>;
+
+template class MagneticAssembly::Scratch::Matrix<2>;
+template class MagneticAssembly::Scratch::Matrix<3>;
+template class MagneticAssembly::Scratch::RightHandSide<2>;
+template class MagneticAssembly::Scratch::RightHandSide<3>;
+
+template class MagneticAssembly::CopyData::Matrix<2>;
+template class MagneticAssembly::CopyData::Matrix<3>;
+template class MagneticAssembly::CopyData::RightHandSide<2>;
+template class MagneticAssembly::CopyData::RightHandSide<3>;

@@ -250,4 +250,121 @@ struct RightHandSide
 }  // namespace NavierStokesAssembly
 
 
+namespace MagneticAssembly {
+
+using namespace dealii;
+
+namespace Scratch {
+
+template<int dim>
+struct Matrix
+{
+    Matrix(const FiniteElement<dim> &magnetic_fe,
+           const Mapping<dim>       &mapping,
+           const Quadrature<dim>    &magnetic_quadrature,
+           const UpdateFlags        magnetic_update_flags);
+
+    Matrix(const Matrix<dim>  &scratch);
+
+    FEValues<dim>               magnetic_fe_values;
+
+    typedef typename FEValuesViews::Vector<dim>::curl_type curl_type;
+
+    std::vector<double>         div_phi_magnetic_field;
+    std::vector<Tensor<1,dim>>  phi_magnetic_field;
+    std::vector<curl_type>      curl_phi_magnetic_field;
+
+    std::vector<double>         phi_pseudo_pressure;
+    std::vector<Tensor<1,dim>>  grad_phi_pseudo_pressure;
+
+};
+
+template<int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim>  &magnetic_fe,
+                  const Mapping<dim>        &mapping,
+                  const Quadrature<dim>     &magnetic_quadrature,
+                  const UpdateFlags          magnetic_update_flags,
+                  const FiniteElement<dim>  &stokes_fe,
+                  const UpdateFlags          stokes_update_flags,
+                  const std::vector<double> &alpha,
+                  const std::vector<double> &beta,
+                  const std::vector<double> &gamma);
+
+    RightHandSide(const RightHandSide<dim>  &scratch);
+
+    FEValues<dim>               magnetic_fe_values;
+
+    typedef typename FEValuesViews::Vector<dim>::curl_type curl_type;
+
+    std::vector<Tensor<1,dim>>  phi_magnetic_field;
+    std::vector<curl_type>      curl_phi_magnetic_field;
+
+    std::vector<Tensor<1,dim>>  old_magnetic_values;
+    std::vector<Tensor<1,dim>>  old_old_magnetic_values;
+
+    std::vector<curl_type>      old_magnetic_curls;
+    std::vector<curl_type>      old_old_magnetic_curls;
+
+    FEValues<dim>               stokes_fe_values;
+    std::vector<Tensor<1,dim>>  old_velocity_values;
+    std::vector<Tensor<1,dim>>  old_old_velocity_values;
+
+    const std::vector<double>   alpha;
+    const std::vector<double>   beta;
+    const std::vector<double>   gamma;
+
+    const unsigned int          dofs_per_cell;
+    const unsigned int          n_q_points;
+
+    const FEValuesExtractors::Vector    magnetic_field;
+    const FEValuesExtractors::Vector    velocity;
+};
+
+
+}  // namespace Scratch
+
+namespace CopyData {
+
+template <int dim>
+struct Matrix
+{
+    Matrix(const FiniteElement<dim> &magnetic_fe);
+    Matrix(const Matrix<dim>        &data);
+
+    FullMatrix<double>      local_matrix;
+    FullMatrix<double>      local_mass_matrix;
+    FullMatrix<double>      local_laplace_matrix;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+template <int dim>
+struct ConvectionMatrix
+{
+    ConvectionMatrix(const FiniteElement<dim>       &magnetic_fe);
+    ConvectionMatrix(const ConvectionMatrix<dim>    &data);
+
+    FullMatrix<double>      local_matrix;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+template <int dim>
+struct RightHandSide
+{
+    RightHandSide(const FiniteElement<dim>  &magnetic_fe);
+    RightHandSide(const RightHandSide<dim>  &data);
+
+    Vector<double>          local_rhs;
+
+    std::vector<types::global_dof_index>   local_dof_indices;
+};
+
+}  // namespace Copy
+
+}  // namespace MagneticAssembly
+
+
 #endif /* INCLUDE_ASSEMBLY_DATA_H_ */
