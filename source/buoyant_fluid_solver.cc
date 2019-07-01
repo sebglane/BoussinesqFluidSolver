@@ -651,6 +651,10 @@ void BuoyantFluidSolver<dim>::run()
                             1.0,
                             parameters.temperature_perturbation);
 
+        const EquationData::MagneticFieldInitialValues<dim>
+        initial_magnetic_field(parameters.aspect_ratio,
+                               1.0);
+
         // initial condition for temperature
         if (parameters.n_initial_refinements == 0)
         {
@@ -663,12 +667,26 @@ void BuoyantFluidSolver<dim>::run()
             temperature_constraints.distribute(distributed_temperature);
 
             old_temperature_solution = distributed_temperature;
+
+            if (parameters.magnetism)
+            {
+                // interpolate magnetic field
+                LA::BlockVector distributed_magnetic_field(magnetic_rhs);
+
+                VectorTools::interpolate(mapping,
+                                         magnetic_dof_handler,
+                                         initial_magnetic_field,
+                                         distributed_magnetic_field);
+
+                old_magnetic_solution = distributed_magnetic_field;
+            }
         }
         else
         {
             unsigned int cnt = 0;
             while (cnt < parameters.n_initial_refinements)
             {
+                // interpolate initial temperature
                 LA::Vector  distributed_temperature(temperature_rhs);
 
                 VectorTools::interpolate(mapping,
@@ -681,6 +699,22 @@ void BuoyantFluidSolver<dim>::run()
 
                 // copy solution vectors for mesh refinement
                 temperature_solution = old_temperature_solution;
+
+                if (parameters.magnetism)
+                {
+                    // interpolate magnetic field
+                    LA::BlockVector distributed_magnetic_field(magnetic_rhs);
+
+                    VectorTools::interpolate(mapping,
+                                             magnetic_dof_handler,
+                                             initial_magnetic_field,
+                                             distributed_magnetic_field);
+
+                    old_magnetic_solution = distributed_magnetic_field;
+
+                    // copy solution vectors for mesh refinement
+                    magnetic_solution = old_magnetic_solution;
+                }
 
                 refine_mesh();
 
@@ -695,6 +729,7 @@ void BuoyantFluidSolver<dim>::run()
 
         // compute consistent initial pressure
         compute_initial_pressure();
+
         // copy solution vectors for output
         navier_stokes_solution = old_navier_stokes_solution;
     }

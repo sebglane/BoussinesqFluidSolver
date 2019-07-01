@@ -30,8 +30,11 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 
     const QGauss<dim> temperature_quadrature(parameters.temperature_degree + 1);
 
+    const QGauss<dim> magnetic_quadrature(parameters.magnetic_degree + 1);
+
     const unsigned int n_velocity_q_points = velocity_quadrature.size();
     const unsigned int n_temperature_q_points = temperature_quadrature.size();
+    const unsigned int n_magnetic_q_points = magnetic_quadrature.size();
 
     FEValues<dim> stokes_fe_values(mapping,
                                    navier_stokes_fe,
@@ -45,68 +48,146 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
                                         update_values|
                                         update_JxW_values);
 
+    FEValues<dim> magnetic_fe_values(mapping,
+                                     magnetic_fe,
+                                     magnetic_quadrature,
+                                     update_values|
+                                     update_JxW_values);
+
     std::vector<double>         temperature_values(n_temperature_q_points);
     std::vector<Tensor<1,dim>>  velocity_values(n_velocity_q_points);
+    std::vector<Tensor<1,dim>>  magnetic_values(n_magnetic_q_points);
 
-    const FEValuesExtractors::Vector velocities (0);
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Vector magnetic_field(0);
 
     double local_sum_velocity_sqrd = 0;
     double local_sum_temperature = 0;
+    double local_sum_magnetic_field_sqrd = 0;
     double local_navier_stokes_volume = 0;
     double local_temperature_volume = 0;
+    double local_magnetic_volume = 0;
 
     typename DoFHandler<dim>::active_cell_iterator
     cell = navier_stokes_dof_handler.begin_active(),
     temperature_cell = temperature_dof_handler.begin_active(),
+    magnetic_cell = magnetic_dof_handler.begin_active(),
     endc = navier_stokes_dof_handler.end();
 
-    for (; cell != endc; ++cell, ++temperature_cell)
-    if (cell->is_locally_owned())
+    if (parameters.magnetism)
     {
-        stokes_fe_values.reinit(cell);
-        temperature_fe_values.reinit(temperature_cell);
-
-        temperature_fe_values.get_function_values(temperature_solution,
-                                                  temperature_values);
-
-        stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
-                                                         velocity_values);
-
-        for (unsigned int q=0; q<n_velocity_q_points; ++q)
+        for (; cell != endc; ++cell, ++temperature_cell, ++magnetic_cell)
+        if (cell->is_locally_owned())
         {
-            local_sum_velocity_sqrd += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
-            local_navier_stokes_volume += stokes_fe_values.JxW(q);
+            stokes_fe_values.reinit(cell);
+            temperature_fe_values.reinit(temperature_cell);
+            magnetic_fe_values.reinit(magnetic_cell);
+
+            temperature_fe_values.get_function_values(temperature_solution,
+                                                      temperature_values);
+
+            stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
+                                                             velocity_values);
+
+            magnetic_fe_values[magnetic_field].get_function_values(magnetic_solution,
+                                                                   magnetic_values);
+
+            for (unsigned int q=0; q<n_velocity_q_points; ++q)
+            {
+                local_sum_velocity_sqrd += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+                local_navier_stokes_volume += stokes_fe_values.JxW(q);
+            }
+            for (unsigned int q=0; q<n_temperature_q_points; ++q)
+            {
+                local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+                local_temperature_volume += temperature_fe_values.JxW(q);
+            }
+            for (unsigned int q=0; q<n_magnetic_q_points; ++q)
+            {
+                local_sum_magnetic_field_sqrd += magnetic_values[q] * magnetic_values[q] * magnetic_fe_values.JxW(q);
+                local_magnetic_volume += magnetic_fe_values.JxW(q);
+            }
         }
-        for (unsigned int q=0; q<n_temperature_q_points; ++q)
-        {
-            local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
-            local_temperature_volume += temperature_fe_values.JxW(q);
-        }
+
+        AssertIsFinite(local_sum_velocity_sqrd);
+        AssertIsFinite(local_sum_temperature);
+        AssertIsFinite(local_navier_stokes_volume);
+        AssertIsFinite(local_temperature_volume);
+
+        Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
+        Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+        Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
+        Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
+
+        const double local_sums[6]  = { local_sum_velocity_sqrd,
+                                        local_sum_temperature,
+                                        local_navier_stokes_volume,
+                                        local_temperature_volume,
+                                        local_sum_magnetic_field_sqrd,
+                                        local_magnetic_volume};
+        double global_sums[6];
+
+        Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+
+        const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
+        const double kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
+        const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
+        const double rms_magnetic_field = std::sqrt(global_sums[4] / global_sums[5]);
+        const double magnetic_energy = 0.5 * global_sums[4] / global_sums[5];
+
+        return std::vector<double>{rms_velocity, kinetic_energy, rms_temperature,
+                                   rms_magnetic_field, magnetic_energy};
     }
+    else
+    {
+        for (; cell != endc; ++cell, ++temperature_cell)
+        if (cell->is_locally_owned())
+        {
+            stokes_fe_values.reinit(cell);
+            temperature_fe_values.reinit(temperature_cell);
 
-    AssertIsFinite(local_sum_velocity_sqrd);
-    AssertIsFinite(local_sum_temperature);
-    AssertIsFinite(local_navier_stokes_volume);
-    AssertIsFinite(local_temperature_volume);
+            temperature_fe_values.get_function_values(temperature_solution,
+                                                      temperature_values);
 
-    Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
-    Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
-    Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
-    Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
+            stokes_fe_values[velocities].get_function_values(navier_stokes_solution,
+                                                             velocity_values);
 
-    const double local_sums[4]  = { local_sum_velocity_sqrd,
-                                    local_sum_temperature,
-                                    local_navier_stokes_volume,
-                                    local_temperature_volume};
-    double global_sums[4];
+            for (unsigned int q=0; q<n_velocity_q_points; ++q)
+            {
+                local_sum_velocity_sqrd += velocity_values[q] * velocity_values[q] * stokes_fe_values.JxW(q);
+                local_navier_stokes_volume += stokes_fe_values.JxW(q);
+            }
+            for (unsigned int q=0; q<n_temperature_q_points; ++q)
+            {
+                local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+                local_temperature_volume += temperature_fe_values.JxW(q);
+            }
+        }
 
-    Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+        AssertIsFinite(local_sum_velocity_sqrd);
+        AssertIsFinite(local_sum_temperature);
+        AssertIsFinite(local_navier_stokes_volume);
+        AssertIsFinite(local_temperature_volume);
 
-    const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
-    const double rms_kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
-    const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
+        Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
+        Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+        Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
+        Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
 
-    return std::vector<double>{rms_velocity, rms_kinetic_energy, rms_temperature};
+        const double local_sums[4]  = { local_sum_velocity_sqrd,
+                                        local_sum_temperature,
+                                        local_navier_stokes_volume,
+                                        local_temperature_volume};
+        double global_sums[4];
+
+        Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+
+        const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
+        const double kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
+        const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
+
+        return std::vector<double>{rms_velocity, kinetic_energy, rms_temperature};
+    }
 }
 
 template <int dim>
@@ -166,79 +247,169 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
     if (parameters.verbose)
         pcout << "Output results..." << std::endl;
 
-    // create joint finite element
-    const FESystem<dim> joint_fe(navier_stokes_fe, 1,
-                                 temperature_fe, 1);
-
-    // create joint dof handler
-    DoFHandler<dim>     joint_dof_handler(triangulation);
-    joint_dof_handler.distribute_dofs(joint_fe);
-
-    Assert(joint_dof_handler.n_dofs() ==
-           navier_stokes_dof_handler.n_dofs() +
-           temperature_dof_handler.n_dofs(),
-           ExcInternalError());
-
-    // create joint solution
-    LA::Vector  distributed_joint_solution;
-    distributed_joint_solution.reinit(joint_dof_handler.locally_owned_dofs(),
-                                      mpi_communicator);
-    {
-        std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
-        std::vector<types::global_dof_index> local_stokes_dof_indices(navier_stokes_fe.dofs_per_cell);
-        std::vector<types::global_dof_index> local_temperature_dof_indices(temperature_fe.dofs_per_cell);
-
-        typename DoFHandler<dim>::active_cell_iterator
-        joint_cell       = joint_dof_handler.begin_active(),
-        joint_endc       = joint_dof_handler.end(),
-        stokes_cell      = navier_stokes_dof_handler.begin_active(),
-        temperature_cell = temperature_dof_handler.begin_active();
-        for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell)
-        if (joint_cell->is_locally_owned())
-        {
-            joint_cell->get_dof_indices(local_joint_dof_indices);
-            stokes_cell->get_dof_indices(local_stokes_dof_indices);
-            temperature_cell->get_dof_indices(local_temperature_dof_indices);
-
-            for (unsigned int i=0; i<joint_fe.dofs_per_cell; ++i)
-                if (joint_fe.system_to_base_index(i).first.first == 0)
-                {
-                    Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
-                            ExcInternalError());
-                    distributed_joint_solution(local_joint_dof_indices[i])
-                    = navier_stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
-                }
-                else if (joint_fe.system_to_base_index(i).first.first == 1)
-                {
-                    Assert (joint_fe.system_to_base_index(i).first.first == 1,
-                            ExcInternalError());
-                    Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
-                            ExcInternalError());
-                    distributed_joint_solution(local_joint_dof_indices[i])
-                    = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
-                }
-        }
-    }
-    distributed_joint_solution.compress(VectorOperation::insert);
-
-    IndexSet locally_relevant_joint_dofs(joint_dof_handler.n_dofs());
-    DoFTools::extract_locally_relevant_dofs(joint_dof_handler,
-                                            locally_relevant_joint_dofs);
-
-    LA::Vector  joint_solution;
-    joint_solution.reinit(locally_relevant_joint_dofs,
-                          mpi_communicator);
-    joint_solution = distributed_joint_solution;
-
-
-    // create post processor
-    PostProcessor<dim>   postprocessor(Utilities::MPI::this_mpi_process(mpi_communicator));
-
-    // prepare data out object
     DataOut<dim>    data_out;
-    data_out.attach_dof_handler(joint_dof_handler);
-    data_out.add_data_vector(joint_solution, postprocessor);
-    data_out.build_patches();
+
+    if (parameters.magnetism)
+    {
+        // create joint finite element
+        const FESystem<dim> joint_fe(navier_stokes_fe, 1,
+                                     temperature_fe, 1);
+
+        // create joint dof handler
+        DoFHandler<dim>     joint_dof_handler(triangulation);
+        joint_dof_handler.distribute_dofs(joint_fe);
+
+        Assert(joint_dof_handler.n_dofs() ==
+               navier_stokes_dof_handler.n_dofs() +
+               temperature_dof_handler.n_dofs(),
+               ExcInternalError());
+
+        // create joint solution
+        LA::Vector  distributed_joint_solution;
+        distributed_joint_solution.reinit(joint_dof_handler.locally_owned_dofs(),
+                                          mpi_communicator);
+        {
+            std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
+            std::vector<types::global_dof_index> local_stokes_dof_indices(navier_stokes_fe.dofs_per_cell);
+            std::vector<types::global_dof_index> local_temperature_dof_indices(temperature_fe.dofs_per_cell);
+
+            typename DoFHandler<dim>::active_cell_iterator
+            joint_cell       = joint_dof_handler.begin_active(),
+            joint_endc       = joint_dof_handler.end(),
+            stokes_cell      = navier_stokes_dof_handler.begin_active(),
+            temperature_cell = temperature_dof_handler.begin_active();
+            for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell)
+            if (joint_cell->is_locally_owned())
+            {
+                joint_cell->get_dof_indices(local_joint_dof_indices);
+                stokes_cell->get_dof_indices(local_stokes_dof_indices);
+                temperature_cell->get_dof_indices(local_temperature_dof_indices);
+
+                for (unsigned int i=0; i<joint_fe.dofs_per_cell; ++i)
+                    if (joint_fe.system_to_base_index(i).first.first == 0)
+                    {
+                        Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
+                                ExcInternalError());
+                        distributed_joint_solution(local_joint_dof_indices[i])
+                        = navier_stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    }
+                    else if (joint_fe.system_to_base_index(i).first.first == 1)
+                    {
+                        Assert (joint_fe.system_to_base_index(i).first.first == 1,
+                                ExcInternalError());
+                        Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
+                                ExcInternalError());
+                        distributed_joint_solution(local_joint_dof_indices[i])
+                        = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    }
+            }
+        }
+        distributed_joint_solution.compress(VectorOperation::insert);
+
+        IndexSet locally_relevant_joint_dofs(joint_dof_handler.n_dofs());
+        DoFTools::extract_locally_relevant_dofs(joint_dof_handler,
+                                                locally_relevant_joint_dofs);
+
+        LA::Vector  joint_solution;
+        joint_solution.reinit(locally_relevant_joint_dofs,
+                              mpi_communicator);
+        joint_solution = distributed_joint_solution;
+
+
+        // create post processor
+        PostProcessor<dim>   postprocessor(Utilities::MPI::this_mpi_process(mpi_communicator));
+
+        // prepare data out object
+        data_out.attach_dof_handler(joint_dof_handler);
+        data_out.add_data_vector(joint_solution, postprocessor);
+        data_out.build_patches();
+    }
+    else
+    {
+        // create joint finite element
+        const FESystem<dim> joint_fe(navier_stokes_fe, 1,
+                                     temperature_fe, 1,
+                                     magnetic_fe, 1);
+
+        // create joint dof handler
+        DoFHandler<dim>     joint_dof_handler(triangulation);
+        joint_dof_handler.distribute_dofs(joint_fe);
+
+        Assert(joint_dof_handler.n_dofs() ==
+               navier_stokes_dof_handler.n_dofs() +
+               temperature_dof_handler.n_dofs() +
+               magnetic_dof_handler.n_dofs(),
+               ExcInternalError());
+
+        // create joint solution
+        LA::Vector  distributed_joint_solution;
+        distributed_joint_solution.reinit(joint_dof_handler.locally_owned_dofs(),
+                                          mpi_communicator);
+        {
+            std::vector<types::global_dof_index> local_joint_dof_indices(joint_fe.dofs_per_cell);
+            std::vector<types::global_dof_index> local_stokes_dof_indices(navier_stokes_fe.dofs_per_cell);
+            std::vector<types::global_dof_index> local_temperature_dof_indices(temperature_fe.dofs_per_cell);
+            std::vector<types::global_dof_index> local_magnetic_dof_indices(magnetic_fe.dofs_per_cell);
+
+            typename DoFHandler<dim>::active_cell_iterator
+            joint_cell       = joint_dof_handler.begin_active(),
+            joint_endc       = joint_dof_handler.end(),
+            stokes_cell      = navier_stokes_dof_handler.begin_active(),
+            temperature_cell = temperature_dof_handler.begin_active(),
+            magnetic_cell = magnetic_dof_handler.begin_active();
+            for (; joint_cell!=joint_endc; ++joint_cell, ++stokes_cell, ++temperature_cell, ++magnetic_cell)
+            if (joint_cell->is_locally_owned())
+            {
+                joint_cell->get_dof_indices(local_joint_dof_indices);
+                stokes_cell->get_dof_indices(local_stokes_dof_indices);
+                temperature_cell->get_dof_indices(local_temperature_dof_indices);
+                magnetic_cell->get_dof_indices(local_magnetic_dof_indices);
+
+                for (unsigned int i=0; i<joint_fe.dofs_per_cell; ++i)
+                    if (joint_fe.system_to_base_index(i).first.first == 0)
+                    {
+                        Assert (joint_fe.system_to_base_index(i).second < local_stokes_dof_indices.size(),
+                                ExcInternalError());
+                        distributed_joint_solution(local_joint_dof_indices[i])
+                        = navier_stokes_solution(local_stokes_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    }
+                    else if (joint_fe.system_to_base_index(i).first.first == 1)
+                    {
+                        Assert (joint_fe.system_to_base_index(i).second < local_temperature_dof_indices.size(),
+                                ExcInternalError());
+                        distributed_joint_solution(local_joint_dof_indices[i])
+                        = temperature_solution(local_temperature_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    }
+                    else if (joint_fe.system_to_base_index(i).first.first == 2)
+                    {
+                        Assert (joint_fe.system_to_base_index(i).second < local_magnetic_dof_indices.size(),
+                                ExcInternalError());
+                        distributed_joint_solution(local_joint_dof_indices[i])
+                        = magnetic_solution(local_magnetic_dof_indices[joint_fe.system_to_base_index(i).second]);
+                    }
+            }
+        }
+        distributed_joint_solution.compress(VectorOperation::insert);
+
+        IndexSet locally_relevant_joint_dofs(joint_dof_handler.n_dofs());
+        DoFTools::extract_locally_relevant_dofs(joint_dof_handler,
+                                                locally_relevant_joint_dofs);
+
+        LA::Vector  joint_solution;
+        joint_solution.reinit(locally_relevant_joint_dofs,
+                              mpi_communicator);
+        joint_solution = distributed_joint_solution;
+
+
+        // create post processor
+        // TODO: create magnetic post processor...
+        PostProcessor<dim>   postprocessor(Utilities::MPI::this_mpi_process(mpi_communicator));
+
+        // prepare data out object
+        data_out.attach_dof_handler(joint_dof_handler);
+        data_out.add_data_vector(joint_solution, postprocessor);
+        data_out.build_patches();
+    }
 
     /*
      *
