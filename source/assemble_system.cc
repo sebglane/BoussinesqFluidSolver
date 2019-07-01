@@ -321,15 +321,37 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     // compute extrapolated pressure
     LA::Vector  extrapolated_pressure(navier_stokes_rhs.block(1));
     LA::Vector  aux_distributed_pressure(navier_stokes_rhs.block(1));
+
+    // 1st step: initial extrapolated with the pressure from the previous timestep
+    extrapolated_pressure = old_navier_stokes_solution.block(1);
+
+    // 2nd step: add pressure updates from the previous timesteps
     switch (timestep_number)
     {
         case 0:
             break;
         case 1:
             aux_distributed_pressure = old_phi_pressure.block(1);
+            /*
+             * The previous timestep (first timestep) an Euler method is used.
+             * That means alpha[0] was equal to 1 in the first timestep, which is
+             * not necessary the case in the present timestep (second timestep),
+             * because a different timestepping scheme is used. Therefore there
+             * is no division by alpha[0] in the second timestep.
+             */
+
             extrapolated_pressure.add(-alpha[1], aux_distributed_pressure);
             break;
         default:
+            /*
+             * TODO: This step may introduce an inaccuracy due to the adaptive
+             * timestepping scheme. The value of alpha[0] should be the alpha[0]
+             * from the previous timestep. If the timestep is modified, this value
+             * is different from the current value of alpha[0].
+             *
+             * The values of alpha[1] and alpha[2] should be the ones of the
+             * present timestep.
+             */
             aux_distributed_pressure = old_phi_pressure.block(1);
             extrapolated_pressure.add(-alpha[1]/alpha[0], aux_distributed_pressure);
             aux_distributed_pressure = old_old_phi_pressure.block(1);
