@@ -24,18 +24,23 @@ public:
     SnapshotInformation(const unsigned int  timestep_number,
                         const double        time,
                         const double        timestep,
-                        const double        old_timestep);
+                        const double        old_timestep,
+                        const bool          magnetism = false);
 
     template<typename Stream>
     void    print(Stream &stream);
+
     void    set_parameters(const double ekman,
                            const double prandtl,
-                           const double rayleigh);
+                           const double rayleigh,
+                           const double magnetic_prandtl = 1.0);
 
     double  timestep() const;
     double  old_timestep() const;
 
     unsigned int timestep_number() const;
+
+    bool    magnetism() const;
 
 private:
     friend class boost::serialization::access;
@@ -46,6 +51,8 @@ private:
     unsigned int    timestep_number_;
 
     double  time_;
+
+    bool    magnetism_;
 
     std::pair<double,double>    timesteps;
 

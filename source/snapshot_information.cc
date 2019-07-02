@@ -21,22 +21,29 @@ SnapshotInformation::SnapshotInformation
 (const unsigned int  timestep_number,
  const double        time,
  const double        timestep,
- const double        old_timestep)
+ const double        old_timestep,
+ const bool          magnetism)
 :
 timestep_number_(timestep_number),
 time_(time),
+magnetism_(magnetism),
 timesteps(timestep, old_timestep)
 {}
 
 void SnapshotInformation::set_parameters
 (const double ekman,
  const double prandtl,
- const double rayleigh)
+ const double rayleigh,
+ const double magnetic_prandtl)
 {
     parameters_["Ek"] = ekman;
     parameters_["Pr"] = prandtl;
     parameters_["Ra"] = rayleigh;
+
+    if (magnetism_)
+        parameters_["Pm"] = magnetic_prandtl;
 }
+
 template<typename Stream>
 void SnapshotInformation::print(Stream &stream)
 {
@@ -54,17 +61,32 @@ void SnapshotInformation::print(Stream &stream)
 
     stream << "Snapshot parameters: " << std::endl;
 
-    stream << "   +----------+----------+----------+\n"
-           << "   |    Ek    |    Ra    |    Pr    |\n"
-           << "   +----------+----------+----------+\n"
-           << "   | "
-           << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ek"]
-           << " | "
-           << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Pr"]
-           << " | "
-           << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ra"]
-           << " |\n"
-           << "   +----------+----------+----------+\n";
+    if (magnetism_)
+        stream << "   +----------+----------+----------+----------+\n"
+               << "   |    Ek    |    Ra    |    Pr    |    Pm    |\n"
+               << "   +----------+----------+----------+----------+\n"
+               << "   | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ek"]
+               << " | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Pr"]
+               << " | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ra"]
+               << " | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Pm"]
+               << " |\n"
+               << "   +----------+----------+----------+----------+\n";
+    else
+        stream << "   +----------+----------+----------+\n"
+               << "   |    Ek    |    Ra    |    Pr    |\n"
+               << "   +----------+----------+----------+\n"
+               << "   | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ek"]
+               << " | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Pr"]
+               << " | "
+               << std::setw(8) << std::setprecision(1) << std::scientific << std::right << parameters_["Ra"]
+               << " |\n"
+               << "   +----------+----------+----------+\n";
 
     stream << std::endl << std::setprecision(6) << std::fixed << std::flush;
 }
@@ -84,6 +106,11 @@ double SnapshotInformation::old_timestep() const
     return timesteps.second;
 }
 
+bool SnapshotInformation::magnetism() const
+{
+    return magnetism_;
+}
+
 template<typename Archive>
 void SnapshotInformation::serialize(Archive  &ar, const unsigned int /* version */)
 {
@@ -91,6 +118,7 @@ void SnapshotInformation::serialize(Archive  &ar, const unsigned int /* version 
     ar & time_;
     ar & timesteps;
     ar & parameters_;
+    ar & magnetism_;
 }
 
 void save(std::ofstream &os, const SnapshotInformation &snapshot_info)
