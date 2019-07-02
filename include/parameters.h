@@ -90,6 +90,7 @@ struct Parameters
 
     bool    rotation;
     bool    magnetism;
+    bool    magnetic_induction;
 
     // initial conditions
     EquationData::TemperaturePerturbation   temperature_perturbation;
@@ -117,6 +118,8 @@ struct Parameters
     PressureUpdateType              projection_scheme;
     ConvectiveWeakForm              convective_weak_form;
     ConvectiveDiscretizationType    convective_scheme;
+
+    PressureUpdateType              magnetic_projection_scheme;
 
     unsigned int temperature_degree;
     unsigned int velocity_degree;

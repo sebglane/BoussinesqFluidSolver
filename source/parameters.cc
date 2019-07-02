@@ -35,6 +35,7 @@ Pm(5.0),
 gravity_profile(EquationData::GravityProfile::Linear),
 rotation(false),
 magnetism(false),
+magnetic_induction(false),
 // linear solver parameters
 rel_tol(1e-6),
 abs_tol(1e-9),
@@ -191,7 +192,12 @@ void Parameters::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("pressure_update_type",
                 "Standard",
                 Patterns::Selection("Standard|Irrotational"),
-                "Type of pressure projection scheme applied (Standard|Irrotational).");
+                "Type of projection scheme applied for the pressure (Standard|Irrotational).");
+
+        prm.declare_entry("magnetic_pressure_update_type",
+                "Standard",
+                Patterns::Selection("Standard|Irrotational"),
+                "Type of projection scheme applied for the magnetic pseudo pressure (Standard|Irrotational).");
 
         prm.declare_entry("convective_weak_form",
                 "Standard",
@@ -246,6 +252,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "false",
                 Patterns::Bool(),
                 "Turn magnetism on or off.");
+
+        prm.declare_entry("magnetic_induction",
+                "false",
+                Patterns::Bool(),
+                "Turn the magnetic induction and the Lorentz force term on or off.");
 
         prm.declare_entry("Pr",
                 "1.0",
@@ -410,7 +421,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         magnetic_degree = prm.get_integer("p_degree_magnetic");
         Assert(magnetic_degree > 1, ExcLowerRange(magnetic_degree, 1));
 
-
         aspect_ratio = prm.get_double("aspect_ratio");
         Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
 
@@ -429,6 +439,16 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             projection_scheme = PressureUpdateType::IrrotationalForm;
         else
             AssertThrow(false, ExcMessage("Unexpected string for pressure update scheme."));
+
+        const std::string magnetic_projection_type_str
+        = prm.get("magnetic_pressure_update_type");
+
+        if (magnetic_projection_type_str == "Standard")
+            magnetic_projection_scheme = PressureUpdateType::StandardForm;
+        else if (magnetic_projection_type_str == "Irrotational")
+            magnetic_projection_scheme = PressureUpdateType::IrrotationalForm;
+        else
+            AssertThrow(false, ExcMessage("Unexpected string for magnetic pressure update scheme."));
 
         const std::string convective_weak_form_str
         = prm.get("convective_weak_form");
@@ -509,6 +529,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         rotation = prm.get_bool("rotating_case");
 
         magnetism = prm.get_bool("magnetic_case");
+
+        magnetic_induction = prm.get_bool("magnetic_induction");
 
         Ra = prm.get_double("Ra");
         Assert(Ra > 0, ExcLowerRangeType<double>(Ra, 0));

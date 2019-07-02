@@ -312,6 +312,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         // set right-hand side vector to divergence of the velocity
         navier_stokes_matrix.block(1,0).vmult(navier_stokes_rhs.block(1),
                                               distributed_velocity_vector);
+        navier_stokes_rhs.compress(VectorOperation::add);
 
         // solve linear system for irrotational update
         SolverControl   solver_control(parameters.n_max_iter,
@@ -358,8 +359,8 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                       << std::endl;
 
         /*
-         * step 5b: set non-distributed new pressure to preliminary solution in
-         *          order to apply the constraints
+         * step 5b: apply the constraints to the preliminary irrotational
+         *          pressure update
          */
         navier_stokes_constraints.distribute(distributed_solution_vector);
 

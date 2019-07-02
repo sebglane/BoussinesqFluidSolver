@@ -509,6 +509,11 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
                                         locally_owned_dofs,
                                         locally_relevant_dofs,
                                         mpi_communicator);
+    // void sparsity pattern for magnetic matrix
+    LA::BlockDynamicSparsityPattern void_dsp(locally_owned_dofs,
+                                             locally_owned_dofs,
+                                             locally_relevant_dofs,
+                                             mpi_communicator);
     {
         Table<2,DoFTools::Coupling> magnetic_coupling(dim+1, dim+1);
         for (unsigned int c=0; c<dim+1; ++c)
@@ -522,6 +527,11 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
                 else
                     magnetic_coupling[c][d] = DoFTools::none;
 
+        Table<2,DoFTools::Coupling> void_magnetic_coupling(dim+1, dim+1);
+        for (unsigned int c=0; c<dim+1; ++c)
+            for (unsigned int d=0; d<dim+1; ++d)
+                void_magnetic_coupling[c][d] = DoFTools::none;
+
         DoFTools::make_sparsity_pattern(
                 magnetic_dof_handler,
                 magnetic_coupling,
@@ -530,16 +540,26 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
                 false,
                 Utilities::MPI::this_mpi_process(mpi_communicator));
 
+        DoFTools::make_sparsity_pattern(
+                magnetic_dof_handler,
+                void_magnetic_coupling,
+                void_dsp,
+                magnetic_constraints,
+                false,
+                Utilities::MPI::this_mpi_process(mpi_communicator));
+
         dsp.compress();
     }
     magnetic_matrix.reinit(dsp);
-    magnetic_stabilization_matrix.reinit(dsp);
 
-    // sparsity pattern for laplace matrix
-    LA::BlockDynamicSparsityPattern laplace_dsp(locally_owned_dofs,
-                                                locally_owned_dofs,
-                                                locally_relevant_dofs,
-                                                mpi_communicator);
+    magnetic_stabilization_matrix.reinit(void_dsp);
+    magnetic_stabilization_matrix.block(0,0).reinit(dsp.block(0,0));
+    magnetic_stabilization_matrix.block(1,1).reinit(dsp.block(1,1));
+
+    magnetic_laplace_matrix.reinit(void_dsp);
+    magnetic_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
+    magnetic_laplace_matrix.block(1,1).reinit(dsp.block(1,1));
+
     // sparsity pattern for mass matrix
     LA::BlockDynamicSparsityPattern mass_dsp(locally_owned_stokes_dofs,
                                              locally_owned_stokes_dofs,
@@ -558,24 +578,11 @@ void BuoyantFluidSolver<dim>::setup_magnetic_system
         DoFTools::make_sparsity_pattern(
                 magnetic_dof_handler,
                 pseudo_pressure_coupling,
-                laplace_dsp,
-                magnetic_constraints,
-                false,
-                Utilities::MPI::this_mpi_process(mpi_communicator));
-        laplace_dsp.compress();
-
-        DoFTools::make_sparsity_pattern(
-                magnetic_dof_handler,
-                pseudo_pressure_coupling,
                 mass_dsp,
                 magnetic_constraints,
-                false,
                 Utilities::MPI::this_mpi_process(mpi_communicator));
         mass_dsp.compress();
     }
-    magnetic_laplace_matrix.reinit(laplace_dsp);
-    magnetic_laplace_matrix.block(0,0).reinit(dsp.block(0,0));
-
     magnetic_mass_matrix.reinit(mass_dsp);
     magnetic_mass_matrix.block(0,0).reinit(dsp.block(0,0));
 

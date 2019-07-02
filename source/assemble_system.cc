@@ -320,8 +320,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     LA::Vector  aux_distributed_pressure(navier_stokes_rhs.block(1));
 
     /*
-     * step 1: initial extrapolated negative pressure with the pressure
-     *           from the previous timestep.
+     * step 1: initialize extrapolated negative pressure with the pressure
+     *         from the previous timestep.
      */
     extrapolated_pressure = old_navier_stokes_solution.block(1);
     extrapolated_pressure *= -1.0;
@@ -503,7 +503,6 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
 
         magnetic_matrix.compress(VectorOperation::add);
 
-        // TODO: separated preconditioner flags
         // rebuild the preconditioner of diffusion solve
         rebuild_magnetic_diffusion_preconditioner = true;
     }
@@ -511,35 +510,63 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
     {
     TimerOutput::Scope timer_section(computing_timer, "assemble mag. diff. sys., part 2");
 
-    // reset all entries
-    magnetic_rhs = 0;
-
-    // compute extrapolated pressure
+    // compute extrapolated negative pseudo pressure
     LA::Vector  extrapolated_pressure(magnetic_rhs.block(1));
     LA::Vector  aux_distributed_pressure(magnetic_rhs.block(1));
+
+
+    /*
+     * step 1: initialize extrapolated negative pressure with the pressure
+     *         from the previous timestep.
+     */
+    extrapolated_pressure = old_magnetic_solution.block(1);
+    extrapolated_pressure *= -1.0;
+
+    /*
+     * step 2: add pressure updates from the previous timesteps
+     */
     switch (timestep_number)
     {
         case 0:
             break;
         case 1:
+            /*
+             * The previous timestep (first timestep) an Euler method is used.
+             * That means alpha[0] was equal to 1 in the first timestep, which is
+             * not necessary the case in the present timestep (second timestep),
+             * because a different timestepping scheme is used. Therefore there
+             * is no division by alpha[0] in the second timestep.
+             */
             aux_distributed_pressure = old_phi_pseudo_pressure.block(1);
-            extrapolated_pressure.add(-alpha[1], aux_distributed_pressure);
+            extrapolated_pressure.add(alpha[1], aux_distributed_pressure);
             break;
         default:
+            /*
+             * The value of alpha[0] should be the alpha[0] from the previous
+             * timestep. If the timestep is modified, this value is different
+             * from the current value of alpha[0]. Therefore the class variable
+             * old_alpha_zero is used here.
+             *
+             * The values of alpha[1] and alpha[2] should be the ones of the
+             * present timestep.
+             */
             aux_distributed_pressure = old_phi_pseudo_pressure.block(1);
-            extrapolated_pressure.add(-alpha[1]/alpha[0], aux_distributed_pressure);
+            extrapolated_pressure.add(alpha[1]/old_alpha_zero, aux_distributed_pressure);
             aux_distributed_pressure = old_old_phi_pseudo_pressure.block(1);
-            extrapolated_pressure.add(-alpha[2]/alpha[0], aux_distributed_pressure);
+            extrapolated_pressure.add(alpha[2]/old_alpha_zero, aux_distributed_pressure);
             break;
     }
-    extrapolated_pressure *= -1.0;
 
-    // TODO: check the signs
-    // add pressure gradient to right-hand side
+    /*
+     * step 3: set the right-hand side equal to the pressure gradient
+     */
     magnetic_matrix.block(0,1).vmult(magnetic_rhs.block(0),
                                      extrapolated_pressure);
+    magnetic_rhs.compress(VectorOperation::add);
 
-    // assemble right-hand side function
+    /*
+     * step 4: assemble other term of the right-hand side and add them
+     */
     WorkStream::run(
             CellFilter(IteratorFilters::LocallyOwnedCell(),
                        magnetic_dof_handler.begin_active()),

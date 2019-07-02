@@ -38,7 +38,7 @@ void BuoyantFluidSolver<dim>::magnetic_step()
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
+void BuoyantFluidSolver<dim>::build_magnetic_diffusion_preconditioner()
 {
     if (!rebuild_magnetic_diffusion_preconditioner)
         return;
@@ -62,7 +62,7 @@ void BuoyantFluidSolver<dim>::build_diffusion_preconditioner()
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::build_projection_preconditioner()
+void BuoyantFluidSolver<dim>::build_magnetic_projection_preconditioner()
 {
     if (!rebuild_magnetic_projection_preconditioner)
         return;
@@ -106,7 +106,7 @@ void BuoyantFluidSolver<dim>::build_magnetic_pressure_mass_preconditioner()
 
 
 template<int dim>
-void BuoyantFluidSolver<dim>::solve_diffusion_system()
+void BuoyantFluidSolver<dim>::solve_magnetic_diffusion_system()
 {
     if (parameters.verbose)
         pcout << "      Solving magnetic diffusion system..." << std::endl;
@@ -167,27 +167,31 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
 
 
 template<int dim>
-void BuoyantFluidSolver<dim>::solve_projection_system()
+void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
 {
     if (parameters.verbose)
         pcout << "      Solving magnetic projection system..." << std::endl;
 
     TimerOutput::Scope  timer_section(computing_timer, "solve magnetic projection");
 
-    // solve linear system for pressure update
+    // solve linear system for irrotational pseudo pressure update
     SolverControl   solver_control(parameters.n_max_iter,
                                    std::max(parameters.rel_tol * magnetic_rhs.block(1).l2_norm(),
                                    parameters.abs_tol));
 
     LA::SolverCG    cg(solver_control);
 
-    LA::BlockVector     distributed_solution(magnetic_rhs);
-    distributed_solution = phi_pseudo_pressure;
+    LA::BlockVector     distributed_solution_vector(magnetic_rhs);
+    LA::Vector          &distributed_magnetic_vector = distributed_solution_vector.block(0);
+    LA::Vector          &distributed_pseudo_pressure_vector = distributed_solution_vector.block(1);
+
+
+    distributed_solution_vector = phi_pseudo_pressure;
 
     try
     {
         cg.solve(magnetic_laplace_matrix.block(1,1),
-                 distributed_solution.block(1),
+                 distributed_pseudo_pressure_vector,
                  magnetic_rhs.block(1),
                  *preconditioner_magnetic_projection);
     }
@@ -214,7 +218,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << std::endl;
         std::abort();
     }
-    magnetic_constraints.distribute(distributed_solution);
 
     // write info message
     if (parameters.verbose)
@@ -223,31 +226,50 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << " CG iterations for magnetic projection step"
                 << std::endl;
 
+    /*
+     * step 1: set non-distributed pressure update to preliminary solution in
+     *         order to apply the constraints and to compute mean value
+     */
+    magnetic_constraints.distribute(distributed_solution_vector);
+    phi_pseudo_pressure.block(1) = distributed_pseudo_pressure_vector;
+
+    /*
+     * step 2: scale distributed solution with timestep
+     */
     {
         const std::vector<double> alpha = (timestep_number != 0?
                                            imex_coefficients.alpha(timestep/old_timestep):
                                            std::vector<double>({1.0,-1.0,0.0}));
 
-        distributed_solution.block(1) *= alpha[0] / timestep;
+        distributed_solution_vector.block(1) *= alpha[0] / timestep;
     }
-    phi_pseudo_pressure.block(1) = distributed_solution.block(1);
 
-    if (parameters.projection_scheme == PressureUpdateType::StandardForm)
+    /*
+     * step 3: set non-distributed pseudo pressure update to correct solution
+     */
+    phi_pseudo_pressure.block(1) = distributed_solution_vector.block(1);
+
+    /*
+     * step 5: update the pseudo pressure
+     */
+    if (parameters.magnetic_projection_scheme == PressureUpdateType::StandardForm)
     {
-        // update pressure
-        LA::Vector distributed_old_pseudo_pressure(distributed_solution.block(1));
-        distributed_old_pseudo_pressure= old_magnetic_solution.block(1);
-        distributed_solution.block(1) += distributed_old_pseudo_pressure;
-
-        magnetic_solution.block(1) = distributed_solution.block(1);
+        // standard update pressure: p^n = p^{n-1} + \phi^n
+        magnetic_solution.block(1) = old_magnetic_solution.block(1);
+        magnetic_solution.block(1) += phi_pressure.block(1);
     }
-    else if (parameters.projection_scheme == PressureUpdateType::IrrotationalForm)
+    else if (parameters.magnetic_projection_scheme == PressureUpdateType::IrrotationalForm)
     {
-        distributed_solution.block(0) = magnetic_solution.block(0);
+        /*
+         * step 5a: compute divergence of the velocity solution and solve the
+         *          linear system for the irrotational update
+         */
+        distributed_magnetic_vector = magnetic_solution.block(0);
 
-        magnetic_matrix.block(0,1).Tvmult(magnetic_rhs.block(1),
-                                          distributed_solution.block(0));
-        magnetic_rhs.block(1) *= -1.0;
+        // set right-hand side vector to divergence of the magnetic field
+        magnetic_matrix.block(0,1).vmult(magnetic_rhs.block(1),
+                                         distributed_solution_vector.block(0));
+        magnetic_rhs.compress(VectorOperation::add);
 
         // solve linear system for irrotational update
         SolverControl   solver_control(parameters.n_max_iter,
@@ -259,7 +281,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         try
         {
             cg.solve(magnetic_mass_matrix.block(1,1),
-                     distributed_solution.block(1),
+                     distributed_pseudo_pressure_vector,
                      magnetic_rhs.block(1),
                      *preconditioner_magnetic_pressure_mass);
         }
@@ -268,7 +290,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
             std::cerr << std::endl << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
-            std::cerr << "Exception in pressure mass matrix solve: " << std::endl
+            std::cerr << "Exception in magnetic pressure mass matrix solve: " << std::endl
                     << exc.what() << std::endl
                     << "Aborting!" << std::endl
                     << "----------------------------------------------------"
@@ -280,13 +302,12 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
             std::cerr << std::endl << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
-            std::cerr << "Unknown exception in pressure mass matrix solve!" << std::endl
+            std::cerr << "Unknown exception in magnetic pressure mass matrix solve!" << std::endl
                     << "Aborting!" << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
             std::abort();
         }
-        magnetic_constraints.distribute(distributed_solution);
 
         if (parameters.verbose)
             pcout << "      "
@@ -294,17 +315,49 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                       << " CG iterations for magnetic pressure mass matrix solve"
                       << std::endl;
 
-        distributed_solution.block(1) *= -equation_coefficients[5];
+        /*
+         * step 5b: apply the constraints to the preliminary irrotational pseudo
+         *          pressure update
+         */
+        magnetic_constraints.distribute(distributed_solution_vector);
 
-        // update pressure
-        LA::Vector aux_distributed_vector(distributed_solution.block(1));
-        aux_distributed_vector = phi_pseudo_pressure.block(1);
-        distributed_solution.block(1) += aux_distributed_vector;
+        /*
+         * step 5c: irrotational pressure update:
+         *          p^n = p^{n-1} + \phi^n - \gamma_0 * C_1 * \psi,
+         *          where \psi is the irrotational update, i.e. the solution
+         *          to (\psi, p) = (div(v^n), p)
+         */
+        // scale the irrotational update
+        const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+        distributed_pseudo_pressure_vector *= -gamma[0] * equation_coefficients[5];
 
-        aux_distributed_vector = old_magnetic_solution.block(1);
-        distributed_solution.block(1) += aux_distributed_vector;
+        magnetic_solution.block(1) = old_magnetic_solution.block(1);
 
-        magnetic_solution.block(1) = distributed_solution.block(1);
+        magnetic_solution.block(1) += phi_pseudo_pressure.block(1);
+
+        LA::Vector  irrotational_pseudo_pressure_vector(phi_pseudo_pressure.block(1));
+        irrotational_pseudo_pressure_vector = distributed_pseudo_pressure_vector;
+        magnetic_solution.block(1) += irrotational_pseudo_pressure_vector;
     }
 }
 }  // namespace BuoyantFluid
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::magnetic_step();
+template void BuoyantFluid::BuoyantFluidSolver<3>::magnetic_step();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::build_magnetic_diffusion_preconditioner();
+template void BuoyantFluid::BuoyantFluidSolver<3>::build_magnetic_diffusion_preconditioner();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::build_magnetic_projection_preconditioner();
+template void BuoyantFluid::BuoyantFluidSolver<3>::build_magnetic_projection_preconditioner();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::build_magnetic_pressure_mass_preconditioner();
+template void BuoyantFluid::BuoyantFluidSolver<3>::build_magnetic_pressure_mass_preconditioner();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::solve_magnetic_diffusion_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::solve_magnetic_diffusion_system();
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::solve_magnetic_projection_system();
+template void BuoyantFluid::BuoyantFluidSolver<3>::solve_magnetic_projection_system();
