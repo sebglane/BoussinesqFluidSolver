@@ -441,6 +441,7 @@ private:
     TimeStepping::IMEXCoefficients  imex_coefficients;
     double                          timestep;
     double                          old_timestep;
+    double                          old_alpha_zero;
     unsigned int                    timestep_number = 0;
     bool                            timestep_modified = false;
 

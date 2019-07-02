@@ -46,20 +46,26 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_matrix
             {
                 data.local_mass_matrix(i,j)
                     += (
+                      // (0,0)-block: (v, v)
                         scratch.phi_velocity[i] * scratch.phi_velocity[j]
+                      // (1,1)-block: (p, p)
                       + scratch.phi_pressure[i] * scratch.phi_pressure[j]
                         ) * scratch.stokes_fe_values.JxW(q);
                 data.local_laplace_matrix(i,j)
                     += (
+                      // (0,0)-block: (grad(v), grad(v))
                         scalar_product(scratch.grad_phi_velocity[i], scratch.grad_phi_velocity[j])
+                      // (1,1)-block: (grad(p), grad(p))
                       + scratch.grad_phi_pressure[i] * scratch.grad_phi_pressure[j]
                         ) * scratch.stokes_fe_values.JxW(q);
             }
             for (unsigned int j=0; j<dofs_per_cell; ++j)
                 data.local_matrix(i,j)
                     += (
-                        - scratch.div_phi_velocity[i] * scratch.phi_pressure[j]
-                        + scratch.grad_phi_pressure[i] * scratch.phi_velocity[j]
+                        // (0,1)-block: (grad(p), v)
+                          scratch.phi_velocity[i] * scratch.grad_phi_pressure[j]
+                        // (1,0)-block: (div(v), p)
+                        - scratch.phi_pressure[i] * scratch.div_phi_velocity[j]
                         ) * scratch.stokes_fe_values.JxW(q);
         }
     }

@@ -212,13 +212,15 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
 
     LA::SolverCG    cg(solver_control);
 
-    LA::BlockVector     distributed_solution(navier_stokes_rhs);
-    distributed_solution = phi_pressure;
+    LA::BlockVector distributed_solution_vector(navier_stokes_rhs);
+    LA::Vector      &distributed_velocity_vector = distributed_solution_vector.block(0);
+    LA::Vector      &distributed_pressure_vector = distributed_solution_vector.block(1);
+    distributed_velocity_vector = 0.0;
 
     try
     {
         cg.solve(navier_stokes_laplace_matrix.block(1,1),
-                 distributed_solution.block(1),
+                 distributed_pressure_vector,
                  navier_stokes_rhs.block(1),
                  *preconditioner_projection);
     }
@@ -245,7 +247,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << std::endl;
         std::abort();
     }
-    stokes_pressure_constraints.distribute(distributed_solution);
 
     // write info message
     if (parameters.verbose)
@@ -254,43 +255,63 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                 << " CG iterations for projection step"
                 << std::endl;
 
+    /*
+     * step 1: set non-distributed pressure update to preliminary solution in
+     *         order to apply the constraints and to compute mean value
+     */
+    stokes_pressure_constraints.distribute(distributed_solution_vector);
+    phi_pressure.block(1) = distributed_pressure_vector;
 
-    phi_pressure.block(1) = distributed_solution.block(1);
+    /*
+     * step 2: substract mean value from distributed solution
+     */
     {
         const double mean_value = VectorTools::compute_mean_value(mapping,
                                                                   navier_stokes_dof_handler,
                                                                   QGauss<dim>(parameters.velocity_degree - 1),
                                                                   phi_pressure,
                                                                   dim);
-        distributed_solution.block(1).add(-mean_value);
+        distributed_pressure_vector.add(-mean_value);
     }
+
+    /*
+     * step 3: scale distributed solution with timestep
+     */
     {
 
         const std::vector<double> alpha = (timestep_number != 0?
                                            imex_coefficients.alpha(timestep/old_timestep):
                                            std::vector<double>({1.0,-1.0,0.0}));
 
-        distributed_solution.block(1) *= alpha[0] / timestep;
+        distributed_pressure_vector *= alpha[0] / timestep;
 
     }
-    phi_pressure.block(1) = distributed_solution.block(1);
 
+    /*
+     * step 4: set non-distributed pressure update to correct solution
+     */
+    phi_pressure.block(1) = distributed_pressure_vector;
+
+    /*
+     * step 5: update the pressure
+     */
     if (parameters.projection_scheme == PressureUpdateType::StandardForm)
     {
-        // update pressure
-        LA::Vector distributed_old_pressure(distributed_solution.block(1));
-        distributed_old_pressure = old_navier_stokes_solution.block(1);
-        distributed_solution.block(1) += distributed_old_pressure;
-
-        navier_stokes_solution.block(1) = distributed_solution.block(1);
+        // standard update pressure: p^n = p^{n-1} + \phi^n
+        navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
+        navier_stokes_solution.block(1) += phi_pressure.block(1);
     }
     else if (parameters.projection_scheme == PressureUpdateType::IrrotationalForm)
     {
-        distributed_solution.block(0) = navier_stokes_solution.block(0);
+        /*
+         * step 5a: compute divergence of the velocity solution and solve the
+         *          linear system for the irrotational update
+         */
+        distributed_velocity_vector = navier_stokes_solution.block(0);
 
-        navier_stokes_matrix.block(0,1).Tvmult(navier_stokes_rhs.block(1),
-                                               distributed_solution.block(0));
-        navier_stokes_rhs.block(1) *= -1.0;
+        // set right-hand side vector to divergence of the velocity
+        navier_stokes_matrix.block(1,0).vmult(navier_stokes_rhs.block(1),
+                                              distributed_velocity_vector);
 
         // solve linear system for irrotational update
         SolverControl   solver_control(parameters.n_max_iter,
@@ -302,7 +323,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         try
         {
             cg.solve(navier_stokes_mass_matrix.block(1,1),
-                     distributed_solution.block(1),
+                     distributed_pressure_vector,
                      navier_stokes_rhs.block(1),
                      *preconditioner_pressure_mass);
         }
@@ -329,7 +350,6 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                     << std::endl;
             std::abort();
         }
-        navier_stokes_constraints.distribute(distributed_solution);
 
         if (parameters.verbose)
             pcout << "      "
@@ -337,17 +357,31 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
                       << " CG iterations for pressure mass matrix solve"
                       << std::endl;
 
-        distributed_solution.block(1) *= -equation_coefficients[1];
+        /*
+         * step 5b: set non-distributed new pressure to preliminary solution in
+         *          order to apply the constraints
+         */
+        navier_stokes_constraints.distribute(distributed_solution_vector);
 
-        // update pressure
-        LA::Vector aux_distributed_vector(distributed_solution.block(1));
-        aux_distributed_vector = phi_pressure.block(1);
-        distributed_solution.block(1) += aux_distributed_vector;
+        /*
+         * step 5c: irrotational pressure update:
+         *          p^n = p^{n-1} + \phi^n - \gamma_0 * C_1 * \psi,
+         *          where \psi is the irrotational update, i.e. the solution
+         *          to (\psi, p) = (div(v^n), p)
+         */
+        // scale the irrotational update
+        const std::vector<double> gamma = (timestep_number != 0?
+                                                imex_coefficients.gamma(timestep/old_timestep):
+                                                std::vector<double>({1.0,0.0,0.0}));
+        distributed_pressure_vector *= -gamma[0] * equation_coefficients[0];
 
-        aux_distributed_vector = old_navier_stokes_solution.block(1);
-        distributed_solution.block(1) += aux_distributed_vector;
+        navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);
 
-        navier_stokes_solution.block(1) = distributed_solution.block(1);
+        navier_stokes_solution.block(1) += phi_pressure.block(1);
+
+        LA::Vector irrotational_pressure_vector(phi_pressure.block(1));
+        irrotational_pressure_vector = distributed_pressure_vector;
+        navier_stokes_solution.block(1) += irrotational_pressure_vector;
     }
 }
 
