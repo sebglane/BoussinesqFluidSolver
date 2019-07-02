@@ -60,6 +60,7 @@ computing_timer(mpi_communicator, pcout,
 // time stepping
 timestep(parameters.initial_timestep),
 old_timestep(parameters.initial_timestep),
+old_alpha_zero(1.0),
 // benchmarking
 phi_benchmark(-2.*numbers::PI)
 {
@@ -144,6 +145,10 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     if (parameters.verbose)
         pcout << "   Updating time step..." << std::endl;
 
+    old_alpha_zero = (timestep_number != 0?
+                        imex_coefficients.alpha(timestep/old_timestep)[0]:
+                        1.0);
+
     old_timestep = timestep;
     timestep_modified = false;
 
@@ -156,16 +161,19 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
         {
             timestep = parameters.max_timestep;
             timestep_modified = true;
+            return;
         }
         else if (timestep > parameters.max_timestep
                  && old_timestep == parameters.max_timestep)
         {
             timestep = parameters.max_timestep;
+            return;
         }
         else if (timestep < parameters.max_timestep
                  && timestep > parameters.min_timestep)
         {
             timestep_modified = true;
+            return;
         }
         else if (timestep < parameters.min_timestep)
         {
