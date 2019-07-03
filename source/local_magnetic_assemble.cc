@@ -59,6 +59,16 @@ void BuoyantFluidSolver<dim>::local_assemble_magnetic_matrix
                       // (1,1)-block: (grad(r), grad(r))
                       + scratch.grad_phi_pseudo_pressure[i] * scratch.grad_phi_pseudo_pressure[j]
                         ) * scratch.magnetic_fe_values.JxW(q);
+                data.local_stabilization_matrix(i,j)
+                    += (
+                        // (0,0)-block: (div(B), div(B))
+                          tau[0] * scratch.div_phi_magnetic_field[i] * scratch.div_phi_magnetic_field[j]
+                        // (1,1)-block: (grad(r), grad(r))
+                        + tau[1] * cell->diameter() * cell->diameter()
+                        * scratch.grad_phi_pseudo_pressure[i] * scratch.grad_phi_pseudo_pressure[j]
+                        ) * scratch.magnetic_fe_values.JxW(q);
+            }
+            for (unsigned int j=0; j<dofs_per_cell; ++j)
                 data.local_matrix(i,j)
                     += (
                         // (0,1)-block: (grad(r), B)
@@ -66,23 +76,14 @@ void BuoyantFluidSolver<dim>::local_assemble_magnetic_matrix
                         // (1,0)-block: (div(B), r)
                         - scratch.phi_pseudo_pressure[i] * scratch.div_phi_magnetic_field[j]
                         ) * scratch.magnetic_fe_values.JxW(q);
-            }
-            for (unsigned int j=0; j<dofs_per_cell; ++j)
-                data.local_stabilization_matrix(i,j)
-                    += (
-                        // (0,0)-block: (div(B), div(B))
-                          tau[0] * scratch.div_phi_magnetic_field[i] * scratch.div_phi_magnetic_field[j]
-                        // (1,1)-block: (grad(r), grad(r))
-                        + tau[1] * cell->diameter() * cell->diameter() * scratch.grad_phi_pseudo_pressure[i] * scratch.grad_phi_pseudo_pressure[j]
-                        ) * scratch.magnetic_fe_values.JxW(q);
         }
     }
     for (unsigned int i=0; i<dofs_per_cell; ++i)
         for (unsigned int j=i+1; j<dofs_per_cell; ++j)
         {
-            data.local_matrix(i,j) = data.local_matrix(j,i);
             data.local_mass_matrix(i,j) = data.local_mass_matrix(j,i);
             data.local_laplace_matrix(i,j) = data.local_laplace_matrix(j,i);
+            data.local_stabilization_matrix(i,j) = data.local_stabilization_matrix(j,i);
         }
 }
 
@@ -140,7 +141,7 @@ void BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
 
     cell->get_dof_indices(data.local_dof_indices);
 
-    data.local_rhs= 0;
+    data.local_rhs = 0;
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -161,7 +162,7 @@ void BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
 
         typename FEValuesViews::Vector<2>::curl_type
         nonlinear_term_magnetic_field;
-        nonlinear_term_magnetic_field
+        nonlinear_term_magnetic_field[0]
             = scratch.beta[0] *
             ( scratch.old_magnetic_values[q][1] * scratch.old_velocity_values[q][0]
             - scratch.old_magnetic_values[q][0] * scratch.old_velocity_values[q][1])

@@ -22,7 +22,8 @@ template<int dim>
 class PostProcessor : public DataPostprocessor<dim>
 {
 public:
-    PostProcessor(const unsigned partition);
+    PostProcessor(const unsigned partition,
+                  const bool     magnetism);
 
     virtual void evaluate_vector_field(
             const DataPostprocessorInputs::Vector<dim> &inputs,
@@ -36,6 +37,7 @@ public:
     virtual UpdateFlags get_needed_update_flags() const;
 private:
   const unsigned int partition;
+  const bool magnetism;
 };
 
 }

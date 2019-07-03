@@ -186,6 +186,7 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_matrices()
     magnetic_matrix= 0;
     magnetic_mass_matrix = 0;
     magnetic_laplace_matrix = 0;
+    magnetic_stabilization_matrix = 0;
 
     typedef
     FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
@@ -217,6 +218,7 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_matrices()
     magnetic_matrix.compress(VectorOperation::add);
     magnetic_mass_matrix.compress(VectorOperation::add);
     magnetic_laplace_matrix.compress(VectorOperation::add);
+    magnetic_stabilization_matrix.compress(VectorOperation::add);
 
     // rebuild both preconditionerss
     rebuild_projection_preconditioner = true;

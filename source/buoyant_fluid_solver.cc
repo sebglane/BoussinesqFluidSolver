@@ -165,6 +165,8 @@ phi_benchmark(-2.*numbers::PI)
        << "|    C1    |    C2    |    C3    |    C4    |    C5    |    C6    |\n"
        << "+----------+----------+----------+----------+----------+----------+\n";
 
+    ss << "| ";
+
     for (unsigned int n=0; n<6; ++n)
     {
         ss << std::setw(8) << std::setprecision(1) << std::scientific << std::right << equation_coefficients[n];
@@ -286,6 +288,21 @@ void BuoyantFluidSolver<dim>::create_snapshot(const double time)
 
         temperature_transfer.prepare_serialization(x_temperature);
 
+        parallel::distributed::SolutionTransfer<dim, LA::BlockVector>
+        magnetic_transfer(magnetic_dof_handler);
+        if (parameters.magnetism)
+        {
+            std::vector<const LA::BlockVector *>    x_magnetic(6);
+            x_magnetic[0] = &magnetic_solution;
+            x_magnetic[1] = &old_magnetic_solution;
+            x_magnetic[2] = &old_old_magnetic_solution;
+            x_magnetic[3] = &phi_pseudo_pressure;
+            x_magnetic[4] = &old_phi_pseudo_pressure;
+            x_magnetic[5] = &old_old_phi_pseudo_pressure;
+
+            magnetic_transfer.prepare_serialization(x_magnetic);
+        }
+
         triangulation.save("restart.mesh");
     }
 
@@ -297,8 +314,17 @@ void BuoyantFluidSolver<dim>::create_snapshot(const double time)
         Snapshot::SnapshotInformation snapshot_info(timestep_number,
                                                     time,
                                                     timestep,
-                                                    old_timestep);
-        snapshot_info.set_parameters(parameters.Ek,parameters.Pr,parameters.Ra);
+                                                    old_timestep,
+                                                    parameters.magnetism);
+        if (parameters.magnetism)
+            snapshot_info.set_parameters(parameters.Ek,
+                                         parameters.Pr,
+                                         parameters.Ra,
+                                         parameters.Pm);
+        else
+            snapshot_info.set_parameters(parameters.Ek,
+                                         parameters.Pr,
+                                         parameters.Ra);
 
         Snapshot::save(os, snapshot_info);
     }
@@ -401,6 +427,35 @@ void BuoyantFluidSolver<dim>::resume_from_snapshot()
         old_temperature_solution = old_distributed_temperature;
         old_old_temperature_solution= old_old_distributed_temperature;
     }
+    // resume magnetic solution
+    if (parameters.magnetism)
+    {
+        LA::BlockVector     distributed_magnetic(magnetic_rhs);
+        LA::BlockVector     old_distributed_magnetic(magnetic_rhs);
+        LA::BlockVector     old_old_distributed_magnetic(magnetic_rhs);
+        LA::BlockVector     distributed_phi_pseudo_pressure(magnetic_rhs);
+        LA::BlockVector     old_distributed_phi_pseudo_pressure(magnetic_rhs);
+        LA::BlockVector     old_old_distributed_phi_pseudo_pressure(magnetic_rhs);
+
+        std::vector<LA::BlockVector *>  x_magnetic(6);
+        x_magnetic[0] = &distributed_magnetic;
+        x_magnetic[1] = &old_distributed_magnetic;
+        x_magnetic[2] = &old_old_distributed_magnetic;
+        x_magnetic[3] = &distributed_phi_pseudo_pressure;
+        x_magnetic[4] = &old_distributed_phi_pseudo_pressure;
+        x_magnetic[5] = &old_old_distributed_phi_pseudo_pressure;
+
+        parallel::distributed::SolutionTransfer<dim, LA::BlockVector>
+        magnetic_transfer(magnetic_dof_handler);
+
+        magnetic_transfer.deserialize(x_magnetic);
+        magnetic_solution = distributed_magnetic;
+        old_magnetic_solution = old_distributed_magnetic;
+        old_old_magnetic_solution = old_old_distributed_magnetic;
+        phi_pseudo_pressure= distributed_phi_pseudo_pressure;
+        old_phi_pseudo_pressure = old_distributed_phi_pseudo_pressure;
+        old_old_phi_pseudo_pressure = old_old_distributed_phi_pseudo_pressure;
+    }
 
     try
     {
@@ -455,6 +510,9 @@ void BuoyantFluidSolver<dim>::refine_mesh()
 
     parallel::distributed::SolutionTransfer<dim,LA::BlockVector>
     stokes_transfer(navier_stokes_dof_handler);
+
+    parallel::distributed::SolutionTransfer<dim,LA::BlockVector>
+    magnetic_transfer(magnetic_dof_handler);
 
     {
     TimerOutput::Scope timer_section(computing_timer, "refine mesh (part 1)");
@@ -540,11 +598,15 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     pcout << "   Number of cells refined: " << global_cell_counts[0] << std::endl
           << "   Number of cells coarsened: " << global_cell_counts[1] << std::endl;
 
+    // preparing triangulation refinement
+    triangulation.prepare_coarsening_and_refinement();
+
     // preparing temperature solution transfer
     std::vector<const LA::Vector *> x_temperature(3);
     x_temperature[0] = &temperature_solution;
     x_temperature[1] = &old_temperature_solution;
     x_temperature[2] = &old_old_temperature_solution;
+    temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
 
     // preparing stokes solution transfer
     std::vector<const LA::BlockVector *> x_stokes(6);
@@ -554,11 +616,21 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     x_stokes[3] = &phi_pressure;
     x_stokes[4] = &old_phi_pressure;
     x_stokes[5] = &old_old_phi_pressure;
-
-    // preparing triangulation refinement
-    triangulation.prepare_coarsening_and_refinement();
-    temperature_transfer.prepare_for_coarsening_and_refinement(x_temperature);
     stokes_transfer.prepare_for_coarsening_and_refinement(x_stokes);
+
+    if (parameters.magnetism)
+    {
+        // preparing temperature solution transfer
+        std::vector<const LA::BlockVector *> x_magnetic(6);
+        x_magnetic[0] = &magnetic_solution;
+        x_magnetic[1] = &old_magnetic_solution;
+        x_magnetic[2] = &old_old_magnetic_solution;
+        x_magnetic[3] = &phi_pseudo_pressure;
+        x_magnetic[4] = &old_phi_pseudo_pressure;
+        x_magnetic[5] = &old_old_phi_pseudo_pressure;
+
+        magnetic_transfer.prepare_serialization(x_magnetic);
+    }
 
     // refine triangulation
     triangulation.execute_coarsening_and_refinement();
@@ -639,6 +711,42 @@ void BuoyantFluidSolver<dim>::refine_mesh()
         old_phi_pressure                = distributed_old_phi;
         old_old_phi_pressure            = distributed_old_old_phi;
         }
+
+        // transfer of magnetic solution
+        if (parameters.magnetism)
+        {
+            LA::BlockVector     distributed_magnetic(magnetic_rhs);
+            LA::BlockVector     old_distributed_magnetic(magnetic_rhs);
+            LA::BlockVector     old_old_distributed_magnetic(magnetic_rhs);
+            LA::BlockVector     distributed_phi_pseudo_pressure(magnetic_rhs);
+            LA::BlockVector     old_distributed_phi_pseudo_pressure(magnetic_rhs);
+            LA::BlockVector     old_old_distributed_phi_pseudo_pressure(magnetic_rhs);
+
+            std::vector<LA::BlockVector *>  tmp_magnetic(6);
+            tmp_magnetic[0] = &distributed_magnetic;
+            tmp_magnetic[1] = &old_distributed_magnetic;
+            tmp_magnetic[2] = &old_old_distributed_magnetic;
+            tmp_magnetic[3] = &distributed_phi_pseudo_pressure;
+            tmp_magnetic[4] = &old_distributed_phi_pseudo_pressure;
+            tmp_magnetic[5] = &old_old_distributed_phi_pseudo_pressure;
+
+            magnetic_transfer.interpolate(tmp_magnetic);
+
+            magnetic_constraints.distribute(distributed_magnetic);
+            magnetic_constraints.distribute(old_distributed_magnetic);
+            magnetic_constraints.distribute(old_old_distributed_magnetic);
+            magnetic_constraints.distribute(distributed_phi_pseudo_pressure);
+            magnetic_constraints.distribute(old_distributed_phi_pseudo_pressure);
+            magnetic_constraints.distribute(old_old_distributed_phi_pseudo_pressure);
+
+            magnetic_solution = distributed_magnetic;
+            old_magnetic_solution = old_distributed_magnetic;
+            old_old_magnetic_solution = old_old_distributed_magnetic;
+            phi_pseudo_pressure = distributed_phi_pseudo_pressure;
+            old_phi_pseudo_pressure = old_distributed_phi_pseudo_pressure;
+            old_old_phi_pseudo_pressure = old_distributed_phi_pseudo_pressure;
+        }
+
     }
 }
 
@@ -772,6 +880,9 @@ void BuoyantFluidSolver<dim>::run()
         // evolve velocity and pressure
         navier_stokes_step();
 
+        if (parameters.magnetism)
+            magnetic_step();
+
         // compute rms values
         if (timestep_number % parameters.global_avg_frequency == 0)
         {
@@ -785,8 +896,24 @@ void BuoyantFluidSolver<dim>::run()
                   << "   Temperature rms value: "
                   << global_avg[2]
                   << std::endl;
+            if (parameters.magnetism)
+            {
+                AssertDimension(global_avg.size(), 5);
+
+                pcout << "   Magnetic field rms value: "
+                      << global_avg[3]
+                      << std::endl;
+            }
 
             pcout << "   Kinetic energy: " << global_avg[1] << std::endl;
+            if (parameters.magnetism)
+            {
+                AssertDimension(global_avg.size(), 5);
+
+                pcout << "   Magnetic energy: "
+                      << global_avg[4]
+                      << std::endl;
+            }
 
             // add values to table
             global_avg_table.add_value("timestep", timestep_number);
@@ -794,6 +921,11 @@ void BuoyantFluidSolver<dim>::run()
             global_avg_table.add_value("velocity rms", global_avg[0]);
             global_avg_table.add_value("kinetic energy", global_avg[1]);
             global_avg_table.add_value("temperature rms", global_avg[2]);
+            if (parameters.magnetism)
+            {
+                global_avg_table.add_value("magnetic rms", global_avg[3]);
+                global_avg_table.add_value("magnetic energy", global_avg[4]);
+            }
         }
 
         // compute benchmark results
