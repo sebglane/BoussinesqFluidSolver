@@ -109,20 +109,13 @@ void BuoyantFluidSolver<dim>::copy_local_to_global_magnetic_matrix
             magnetic_stabilization_matrix);
 }
 
-template<>
-void BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
-(const typename DoFHandler<2>::active_cell_iterator   &cell,
- MagneticAssembly::Scratch::RightHandSide<2>          &scratch,
- MagneticAssembly::CopyData::RightHandSide<2>         &data)
+template<int dim>
+void BuoyantFluidSolver<dim>::local_assemble_magnetic_rhs
+(const typename DoFHandler<dim>::active_cell_iterator   &cell,
+ MagneticAssembly::Scratch::RightHandSide<dim>          &scratch,
+ MagneticAssembly::CopyData::RightHandSide<dim>         &data)
 {
     scratch.magnetic_fe_values.reinit(cell);
-
-    typename DoFHandler<2>::active_cell_iterator
-    stokes_cell(&triangulation,
-                cell->level(),
-                cell->index(),
-                &navier_stokes_dof_handler);
-    scratch.stokes_fe_values.reinit(stokes_cell);
 
     scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
     (old_magnetic_solution, scratch.old_magnetic_values);
@@ -134,84 +127,22 @@ void BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
     scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
     (old_old_magnetic_solution, scratch.old_old_magnetic_curls);
 
-    scratch.stokes_fe_values[scratch.velocity].get_function_values
-    (old_navier_stokes_solution, scratch.old_velocity_values);
-    scratch.stokes_fe_values[scratch.velocity].get_function_values
-    (old_old_navier_stokes_solution, scratch.old_old_velocity_values);
 
-    cell->get_dof_indices(data.local_dof_indices);
-
-    data.local_rhs = 0;
-
-    for (unsigned int q=0; q<scratch.n_q_points; ++q)
+    if (parameters.magnetic_induction)
     {
-        for (unsigned int k=0; k<scratch.dofs_per_cell; ++k)
-        {
-            scratch.phi_magnetic_field[k]     = scratch.magnetic_fe_values[scratch.magnetic_field].value(k, q);
-            scratch.curl_phi_magnetic_field[k]= scratch.magnetic_fe_values[scratch.magnetic_field].curl(k, q);
-        }
-
-        const Tensor<1,2> time_derivative_magnetic_field
-            = scratch.alpha[1] / timestep * scratch.old_magnetic_values[q]
-            + scratch.alpha[2] / timestep * scratch.old_old_magnetic_values[q];
-
-        const typename FEValuesViews::Vector<2>::curl_type
-        linear_term_magnetic_field
-            = scratch.gamma[1] * scratch.old_magnetic_curls[q]
-            + scratch.gamma[2] * scratch.old_old_magnetic_curls[q];
-
-        typename FEValuesViews::Vector<2>::curl_type
-        nonlinear_term_magnetic_field;
-        nonlinear_term_magnetic_field[0]
-            = scratch.beta[0] *
-            ( scratch.old_magnetic_values[q][1] * scratch.old_velocity_values[q][0]
-            - scratch.old_magnetic_values[q][0] * scratch.old_velocity_values[q][1])
-            + scratch.beta[1] *
-            ( scratch.old_old_magnetic_values[q][1] * scratch.old_old_velocity_values[q][0]
-            - scratch.old_old_magnetic_values[q][0] * scratch.old_old_velocity_values[q][1]);
+        typename DoFHandler<dim>::active_cell_iterator
+        stokes_cell(&triangulation,
+                    cell->level(),
+                    cell->index(),
+                    &navier_stokes_dof_handler);
+        scratch.stokes_fe_values.reinit(stokes_cell);
 
 
-        for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
-            data.local_rhs(i) += (
-                    - time_derivative_magnetic_field * scratch.phi_magnetic_field[i]
-                    + (parameters.magnetic_induction?
-                            nonlinear_term_magnetic_field * scratch.curl_phi_magnetic_field[i]:
-                            0.0)
-                    - equation_coefficients[5] * linear_term_magnetic_field * scratch.curl_phi_magnetic_field[i]
-                    ) * scratch.magnetic_fe_values.JxW(q);
+        scratch.stokes_fe_values[scratch.velocity].get_function_values
+        (old_navier_stokes_solution, scratch.old_velocity_values);
+        scratch.stokes_fe_values[scratch.velocity].get_function_values
+        (old_old_navier_stokes_solution, scratch.old_old_velocity_values);
     }
-}
-
-
-template<>
-void BuoyantFluidSolver<3>::local_assemble_magnetic_rhs
-(const typename DoFHandler<3>::active_cell_iterator   &cell,
- MagneticAssembly::Scratch::RightHandSide<3>          &scratch,
- MagneticAssembly::CopyData::RightHandSide<3>         &data)
-{
-    scratch.magnetic_fe_values.reinit(cell);
-
-    typename DoFHandler<3>::active_cell_iterator
-    stokes_cell(&triangulation,
-                cell->level(),
-                cell->index(),
-                &navier_stokes_dof_handler);
-    scratch.stokes_fe_values.reinit(stokes_cell);
-
-    scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
-    (old_magnetic_solution, scratch.old_magnetic_values);
-    scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
-    (old_old_magnetic_solution, scratch.old_old_magnetic_values);
-
-    scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
-    (old_magnetic_solution, scratch.old_magnetic_curls);
-    scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
-    (old_old_magnetic_solution, scratch.old_old_magnetic_curls);
-
-    scratch.stokes_fe_values[scratch.velocity].get_function_values
-    (old_navier_stokes_solution, scratch.old_velocity_values);
-    scratch.stokes_fe_values[scratch.velocity].get_function_values
-    (old_old_navier_stokes_solution, scratch.old_old_velocity_values);
 
     cell->get_dof_indices(data.local_dof_indices);
 
@@ -225,21 +156,56 @@ void BuoyantFluidSolver<3>::local_assemble_magnetic_rhs
             scratch.curl_phi_magnetic_field[k]= scratch.magnetic_fe_values[scratch.magnetic_field].curl(k, q);
         }
 
-        const Tensor<1,3> time_derivative_magnetic_field
+        const Tensor<1,dim> time_derivative_magnetic_field
             = scratch.alpha[1] / timestep * scratch.old_magnetic_values[q]
             + scratch.alpha[2] / timestep * scratch.old_old_magnetic_values[q];
 
-        const typename FEValuesViews::Vector<3>::curl_type
+        const typename FEValuesViews::Vector<dim>::curl_type
         linear_term_magnetic_field
             = scratch.gamma[1] * scratch.old_magnetic_curls[q]
             + scratch.gamma[2] * scratch.old_old_magnetic_curls[q];
 
-        const Tensor<1,3>
-        nonlinear_term_magnetic_field
-            = scratch.beta[0] * cross_product_3d(scratch.old_velocity_values[q],
-                                                 scratch.old_magnetic_values[q])
-            + scratch.beta[1] * cross_product_3d(scratch.old_old_velocity_values[q],
-                                                 scratch.old_old_magnetic_values[q]);
+        typename FEValuesViews::Vector<dim>::curl_type
+        nonlinear_term_magnetic_field;
+        switch (dim)
+        {
+        case 2:
+            // explicit computation of the cross product
+            // term from last timestep
+            nonlinear_term_magnetic_field[0] = scratch.beta[0] *
+                ( scratch.old_magnetic_values[q][1] * scratch.old_velocity_values[q][0]
+                - scratch.old_magnetic_values[q][0] * scratch.old_velocity_values[q][1]);
+            // term from second last timestep
+            nonlinear_term_magnetic_field[0] += scratch.beta[1] *
+                ( scratch.old_old_magnetic_values[q][1] * scratch.old_old_velocity_values[q][0]
+                - scratch.old_old_magnetic_values[q][0] * scratch.old_old_velocity_values[q][1]);
+            break;
+        case 3:
+            // explicit computation of the cross product
+            // term from last timestep
+            nonlinear_term_magnetic_field[0] = scratch.beta[0] *
+                ( scratch.old_velocity_values[q][1]*scratch.old_magnetic_values[q][2]
+                - scratch.old_velocity_values[q][2]*scratch.old_magnetic_values[q][1]);
+            nonlinear_term_magnetic_field[1] = scratch.beta[0] *
+                ( scratch.old_velocity_values[q][2]*scratch.old_magnetic_values[q][0]
+                - scratch.old_velocity_values[q][0]*scratch.old_magnetic_values[q][2]);
+            nonlinear_term_magnetic_field[2] = scratch.beta[0] *
+                ( scratch.old_velocity_values[q][0]*scratch.old_magnetic_values[q][1]
+                - scratch.old_velocity_values[q][1]*scratch.old_magnetic_values[q][0]);
+            // term from second last timestep
+            nonlinear_term_magnetic_field[0] += scratch.beta[1] *
+                ( scratch.old_old_velocity_values[q][1]*scratch.old_old_magnetic_values[q][2]
+                - scratch.old_old_velocity_values[q][2]*scratch.old_old_magnetic_values[q][1]);
+            nonlinear_term_magnetic_field[1] += scratch.beta[1] *
+                ( scratch.old_old_velocity_values[q][2]*scratch.old_old_magnetic_values[q][0]
+                - scratch.old_old_velocity_values[q][0]*scratch.old_old_magnetic_values[q][2]);
+            nonlinear_term_magnetic_field[2] += scratch.beta[1] *
+                ( scratch.old_old_velocity_values[q][0]*scratch.old_old_magnetic_values[q][1]
+                - scratch.old_old_velocity_values[q][1]*scratch.old_old_magnetic_values[q][0]);
+            break;
+        default:
+            Assert(false, ExcImpossibleInDim(dim));
+        }
 
         for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
             data.local_rhs(i) += (
@@ -281,6 +247,17 @@ BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_magnetic_matrix
 template void
 BuoyantFluid::BuoyantFluidSolver<3>::copy_local_to_global_magnetic_matrix
 (const MagneticAssembly::CopyData::Matrix<3> &);
+
+template void
+BuoyantFluid::BuoyantFluidSolver<2>::local_assemble_magnetic_rhs
+(const typename DoFHandler<2>::active_cell_iterator   &,
+ MagneticAssembly::Scratch::RightHandSide<2>          &,
+ MagneticAssembly::CopyData::RightHandSide<2>         &);
+template void
+BuoyantFluid::BuoyantFluidSolver<3>::local_assemble_magnetic_rhs
+(const typename DoFHandler<3>::active_cell_iterator   &,
+ MagneticAssembly::Scratch::RightHandSide<3>          &,
+ MagneticAssembly::CopyData::RightHandSide<3>         &);
 
 template void
 BuoyantFluid::BuoyantFluidSolver<2>::copy_local_to_global_magnetic_rhs

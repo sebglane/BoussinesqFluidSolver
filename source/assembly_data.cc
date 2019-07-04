@@ -227,6 +227,8 @@ RightHandSide<dim>::RightHandSide
  const UpdateFlags           stokes_update_flags,
  const FiniteElement<dim>   &temperature_fe,
  const UpdateFlags           temperature_update_flags,
+ const FiniteElement<dim>   &magnetic_fe,
+ const UpdateFlags           magnetic_update_flags,
  const std::vector<double>  &alpha,
  const std::vector<double>  &beta,
  const std::vector<double>  &gamma,
@@ -248,6 +250,14 @@ temperature_fe_values(mapping,
                       temperature_update_flags),
 old_temperature_values(stokes_quadrature.size()),
 old_old_temperature_values(stokes_quadrature.size()),
+magnetic_fe_values(mapping,
+                   magnetic_fe,
+                   stokes_quadrature,
+                   magnetic_update_flags),
+old_magnetic_values(stokes_quadrature.size()),
+old_old_magnetic_values(stokes_quadrature.size()),
+old_magnetic_curls(stokes_quadrature.size()),
+old_old_magnetic_curls(stokes_quadrature.size()),
 alpha(alpha),
 beta(beta),
 gamma(gamma),
@@ -255,7 +265,8 @@ gravity_function(gravity_profile),
 gravity_values(stokes_quadrature.size()),
 dofs_per_cell(stokes_fe.dofs_per_cell),
 n_q_points(stokes_quadrature.size()),
-velocity(0)
+velocity(0),
+magnetic_field(0)
 {}
 
 template <int dim>
@@ -277,6 +288,14 @@ temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
                       scratch.temperature_fe_values.get_update_flags()),
 old_temperature_values(scratch.old_temperature_values),
 old_old_temperature_values(scratch.old_old_temperature_values),
+magnetic_fe_values(scratch.magnetic_fe_values.get_mapping(),
+                   scratch.magnetic_fe_values.get_fe(),
+                   scratch.magnetic_fe_values.get_quadrature(),
+                   scratch.magnetic_fe_values.get_update_flags()),
+old_magnetic_values(scratch.old_magnetic_values),
+old_old_magnetic_values(scratch.old_old_magnetic_values),
+old_magnetic_curls(scratch.old_magnetic_curls),
+old_old_magnetic_curls(scratch.old_old_magnetic_curls),
 alpha(scratch.alpha),
 beta(scratch.beta),
 gamma(scratch.gamma),
@@ -284,7 +303,8 @@ gravity_function(scratch.gravity_function.get_profile_type()),
 gravity_values(scratch.gravity_values),
 dofs_per_cell(scratch.dofs_per_cell),
 n_q_points(scratch.n_q_points),
-velocity(0)
+velocity(0),
+magnetic_field(0)
 {}
 
 }  // namespace Scratch

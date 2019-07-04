@@ -171,6 +171,8 @@ struct RightHandSide
                   const UpdateFlags          stokes_update_flags,
                   const FiniteElement<dim>  &temperature_fe,
                   const UpdateFlags          temperature_update_flags,
+                  const FiniteElement<dim>  &magnetic_fe,
+                  const UpdateFlags          magnetic_update_flags,
                   const std::vector<double> &alpha,
                   const std::vector<double> &beta,
                   const std::vector<double> &gamma,
@@ -191,6 +193,12 @@ struct RightHandSide
     std::vector<double>         old_temperature_values;
     std::vector<double>         old_old_temperature_values;
 
+    FEValues<dim>               magnetic_fe_values;
+    std::vector<Tensor<1,dim>>  old_magnetic_values;
+    std::vector<Tensor<1,dim>>  old_old_magnetic_values;
+    std::vector<typename FEValuesViews::Vector<dim>::curl_type>  old_magnetic_curls;
+    std::vector<typename FEValuesViews::Vector<dim>::curl_type>  old_old_magnetic_curls;
+
     const std::vector<double>   alpha;
     const std::vector<double>   beta;
     const std::vector<double>   gamma;
@@ -202,7 +210,7 @@ struct RightHandSide
     const unsigned int          n_q_points;
 
     const FEValuesExtractors::Vector    velocity;
-
+    const FEValuesExtractors::Vector    magnetic_field;
 };
 
 

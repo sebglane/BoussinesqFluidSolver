@@ -397,6 +397,10 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         update_gradients,
                         temperature_fe,
                         update_values,
+                        magnetic_fe,
+                        (parameters.magnetic_induction?
+                                update_values|update_gradients:
+                                update_default),
                         alpha,
                         (timestep_number != 0?
                                 imex_coefficients.beta(timestep/old_timestep):
@@ -428,6 +432,10 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         update_gradients,
                         temperature_fe,
                         update_values,
+                        magnetic_fe,
+                        (parameters.magnetic_induction?
+                                update_values|update_gradients:
+                                update_default),
                         alpha,
                         (timestep_number != 0?
                                 imex_coefficients.beta(timestep/old_timestep):
