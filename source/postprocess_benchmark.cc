@@ -20,10 +20,10 @@ DeclException0(ExcBoostNoConvergence);
 
 namespace BuoyantFluid {
 template<>
-double BuoyantFluidSolver<2>::compute_radial_velocity_locally(
-        const double    &radius,
-        const double    &phi,
-        const double    &/* theta */) const
+double BuoyantFluidSolver<2>::compute_radial_velocity_locally
+(const double    &radius,
+ const double    &phi,
+ const double    &/* theta */) const
 {
     const unsigned dim = 2;
 
@@ -468,15 +468,12 @@ double BuoyantFluidSolver<dim>::compute_azimuthal_gradient_of_radial_velocity
 }
 
 template<>
-std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally
-(const double &radius,
- const double &phi,
- const double &/* theta */) const
+std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const
 {
     const unsigned int dim = 2;
 
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
-
+    const double radius = 0.5 * (1. + parameters.aspect_ratio),
+                 phi = phi_benchmark;
     Assert((phi < 0.?
            (phi >= -numbers::PI && phi <= numbers::PI):
            (phi >= 0. && phi <= 2. * numbers::PI)),
@@ -543,18 +540,14 @@ std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_local
 
 
 template<>
-std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally
-(const double &radius,
- const double &phi,
- const double &theta) const
+std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const
 {
     const unsigned int dim = 3;
 
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
+    const double radius = 0.5 * (1. + parameters.aspect_ratio),
+                 theta = numbers::PI / 2.;
 
-    Assert(theta >= 0. && theta <= numbers::PI,
-           ExcPolarAngleRange(theta));
-
+    const double phi = phi_benchmark;
     Assert((phi < 0.?
            (phi >= -numbers::PI && phi <= numbers::PI):
            (phi >= 0. && phi <= 2. * numbers::PI)),
@@ -621,13 +614,10 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
 }
 
 template<int dim>
-std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests
-(const double    &radius,
- const double    &phi,
- const double    &theta) const
+std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests() const
 {
     const std::pair<double,double> local_benchmark_requests
-    = compute_benchmark_requests_locally(radius, phi, theta);
+    = compute_benchmark_requests_locally();
 
     std::vector<std::pair<double,double>> all_benchmark_requests
     = Utilities::MPI::gather(mpi_communicator,
@@ -708,8 +698,8 @@ double  BuoyantFluidSolver<dim>::compute_zero_of_radial_velocity
            (phi_guess >= 0. && phi_guess <= 2. * numbers::PI)),
            ExcAzimuthalAngleRange(phi_guess));
 
-    const double radius = 0.5 * (1. + parameters.aspect_ratio);
-    const double theta = numbers::PI / 2.;
+    const double radius = 0.5 * (1. + parameters.aspect_ratio),
+                 theta = numbers::PI / 2.;
 
     auto boost_max_iter = boost::numeric_cast<boost::uintmax_t>(max_iter);
 
@@ -928,26 +918,14 @@ BuoyantFluid::BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_veloci
  const double &) const;
 
 template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests_locally
-(const double &,
- const double &,
- const double &) const;
+BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const;
 template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests_locally
-(const double &,
- const double &,
- const double &) const;
+BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const;
 
 template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests
-(const double &,
- const double &,
- const double &) const;
+BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests() const;
 template std::pair<double,double>
-BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests
-(const double &,
- const double &,
- const double &) const;
+BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests() const;
 
 template double
 BuoyantFluid::BuoyantFluidSolver<2>::compute_zero_of_radial_velocity

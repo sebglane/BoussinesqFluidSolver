@@ -23,7 +23,6 @@ omega[-1] = (phi[-1] - phi[-2]) / (time[-1] - time[-2])
 import matplotlib.pyplot as plt
 fig, ax = plt.subplots(nrows=4, sharex=True)
 ax[0].plot(time, phi)
-ax[0].plot(time[139], phi[139], 'x')
 ax[1].plot(time, temperature)
 ax[2].plot(time, v_phi)
 ax[3].plot(time, omega)
