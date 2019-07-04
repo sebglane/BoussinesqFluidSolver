@@ -468,7 +468,7 @@ double BuoyantFluidSolver<dim>::compute_azimuthal_gradient_of_radial_velocity
 }
 
 template<>
-std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const
+std::vector<double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const
 {
     const unsigned int dim = 2;
 
@@ -500,8 +500,7 @@ std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_local
     }
     catch (VectorTools::ExcPointNotAvailableHere    &exc)
     {
-        return std::pair<double,double>(std::numeric_limits<double>::quiet_NaN(),
-                                        std::numeric_limits<double>::quiet_NaN());
+        return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
     }
     catch (std::exception &exc)
     {
@@ -535,12 +534,12 @@ std::pair<double,double> BuoyantFluidSolver<2>::compute_benchmark_requests_local
 
     const double azimuthal_velocity = azimuthal_basis_vector * velocity;
 
-    return std::pair<double,double>(temperature_value, azimuthal_velocity);
+    return std::vector<double>{temperature_value, azimuthal_velocity};
 }
 
 
 template<>
-std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const
+std::vector<double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const
 {
     const unsigned int dim = 3;
 
@@ -559,9 +558,9 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
 
     Vector<double>  velocity_values(navier_stokes_fe.n_components());
     double          temperature_value(temperature_fe.n_components());
+    Vector<double>  magnetic_values(magnetic_fe.n_components());
     try
     {
-
         VectorTools::point_value(mapping,
                                  navier_stokes_dof_handler,
                                  navier_stokes_solution,
@@ -572,11 +571,20 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
                                                      temperature_dof_handler,
                                                      temperature_solution,
                                                      x);
+
+        if (parameters.magnetism && dim == 3)
+            VectorTools::point_value(mapping,
+                                     magnetic_dof_handler,
+                                     magnetic_solution,
+                                     x,
+                                     velocity_values);
     }
     catch (VectorTools::ExcPointNotAvailableHere    &exc)
     {
-        return std::pair<double,double>(std::numeric_limits<double>::quiet_NaN(),
-                                        std::numeric_limits<double>::quiet_NaN());
+        if (parameters.magnetism && dim == 3)
+            return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
+        else
+            return std::vector<double>(3, std::numeric_limits<double>::quiet_NaN());
     }
     catch (std::exception &exc)
     {
@@ -607,34 +615,53 @@ std::pair<double,double> BuoyantFluidSolver<3>::compute_benchmark_requests_local
         velocity[d] = velocity_values[d];
 
     const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi) , 0.});
-
     const double azimuthal_velocity = azimuthal_basis_vector * velocity;
 
-    return std::pair<double,double>(temperature_value, azimuthal_velocity);
+    if (parameters.magnetism && dim == 3)
+    {
+        Tensor<1,dim>   magnetic_field;
+        for (unsigned int d=0; d<dim; ++d)
+            magnetic_field = magnetic_values[d];
+
+        const Tensor<1,dim>   polar_basis_vector({cos(theta)*cos(phi),
+                                                  cos(theta)*sin(phi),
+                                                  -sin(theta)});
+
+        const double polar_magnetic_field = polar_basis_vector * magnetic_field;
+
+        return std::vector<double>{temperature_value,
+                                   azimuthal_velocity,
+                                   polar_magnetic_field};
+    }
+    else
+        return std::vector<double>{temperature_value, azimuthal_velocity};
 }
 
 template<int dim>
-std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests() const
+std::vector<double>  BuoyantFluidSolver<dim>::compute_benchmark_requests() const
 {
-    const std::pair<double,double> local_benchmark_requests
+    const std::vector<double> local_benchmark_requests
     = compute_benchmark_requests_locally();
 
-    std::vector<std::pair<double,double>> all_benchmark_requests
+    std::vector<std::vector<double>> all_benchmark_requests
     = Utilities::MPI::gather(mpi_communicator,
                              local_benchmark_requests);
 
-    std::map<unsigned int, std::pair<double,double>> benchmark_request_to_send;
+    std::map<unsigned int, std::vector<double>> benchmark_request_to_send;
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
     {
-        std::pair<double,double>
-        benchmark_requests(std::numeric_limits<double>::quiet_NaN(),
-                           std::numeric_limits<double>::quiet_NaN());
+        std::vector<double> benchmark_requests;
+
+        if (parameters.magnetism && dim == 3)
+            benchmark_requests.resize(3, std::numeric_limits<double>::quiet_NaN());
+        else
+            benchmark_requests.resize(2, std::numeric_limits<double>::quiet_NaN());
 
         unsigned int    nan_counter = 0;
         for (const auto v: all_benchmark_requests)
         {
-            if (std::isnan(v.first) || std::isnan(v.second))
+            if (std::all_of(v.begin(), v.end(), [](double d){return std::isnan(d);}))
                 nan_counter += 1;
             else
                 benchmark_requests = v;
@@ -646,19 +673,19 @@ std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests() 
         Assert(nan_counter == (n_mpi_processes - 1),
                ExcDimensionMismatch(nan_counter, n_mpi_processes - 1));
 
-        AssertIsFinite(benchmark_requests.first);
-        AssertIsFinite(benchmark_requests.second);
+        for (const auto v: benchmark_requests)
+            AssertIsFinite(v);
 
         for (unsigned int p=1; p<n_mpi_processes; ++p)
             benchmark_request_to_send[p] = benchmark_requests;
     }
 
-    const std::map<unsigned int, std::pair<double,double>>
+    const std::map<unsigned int, std::vector<double>>
     benchmark_request_received
     = Utilities::MPI::some_to_some(mpi_communicator,
                                    benchmark_request_to_send);
 
-    std::pair<double,double>   benchmark_requests;
+    std::vector<double>   benchmark_requests;
     if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
     {
         AssertDimension(benchmark_request_received.size(), 1);
@@ -668,8 +695,8 @@ std::pair<double,double>  BuoyantFluidSolver<dim>::compute_benchmark_requests() 
 
         benchmark_requests = benchmark_request_received.begin()->second;
 
-        AssertIsFinite(benchmark_requests.first);
-        AssertIsFinite(benchmark_requests.second);
+        for (const auto v: benchmark_requests)
+            AssertIsFinite(v);
     }
     else
     {
@@ -917,14 +944,14 @@ BuoyantFluid::BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_veloci
  const double &,
  const double &) const;
 
-template std::pair<double,double>
+template std::vector<double>
 BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const;
-template std::pair<double,double>
+template std::vector<double>
 BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const;
 
-template std::pair<double,double>
+template std::vector<double>
 BuoyantFluid::BuoyantFluidSolver<2>::compute_benchmark_requests() const;
-template std::pair<double,double>
+template std::vector<double>
 BuoyantFluid::BuoyantFluidSolver<3>::compute_benchmark_requests() const;
 
 template double

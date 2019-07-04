@@ -192,7 +192,8 @@ phi_benchmark(-2.*numbers::PI)
 
     if (parameters.magnetism)
     {
-        benchmark_table.declare_column("polar magnetic field");
+        if (dim == 3)
+            benchmark_table.declare_column("polar magnetic field");
 
         global_avg_table.declare_column("magnetic rms");
         global_avg_table.declare_column("magnetic energy");
@@ -949,19 +950,23 @@ void BuoyantFluidSolver<dim>::run()
                   << radial_velocity
                   << std::endl;
 
-            std::pair<double,double> benchmark_results
+            std::vector<double> benchmark_results
             = compute_benchmark_requests();
 
-            pcout << "   Benchmark requests:  T = " << benchmark_results.first
-                  << ", v_phi = " << benchmark_results.second
-                  << std::endl;
+            pcout << "   Benchmark requests:  T = " << benchmark_results[0]
+                  << ", v_phi = " << benchmark_results[1];
+            if (parameters.magnetism && dim == 3)
+                pcout << ", B_theta = " << benchmark_results[2];
+            pcout << std::endl;
 
             // add values to table
             benchmark_table.add_value("timestep", timestep_number);
             benchmark_table.add_value("time", time);
             benchmark_table.add_value("phi", phi_benchmark);
-            benchmark_table.add_value("temperature", benchmark_results.first);
-            benchmark_table.add_value("azimuthal velocity", benchmark_results.second);
+            benchmark_table.add_value("temperature", benchmark_results[0]);
+            benchmark_table.add_value("azimuthal velocity", benchmark_results[1]);
+            if (parameters.magnetism && dim == 3)
+                benchmark_table.add_value("polar magnetic field", benchmark_results[2]);
         }
 
         // write vtk output
