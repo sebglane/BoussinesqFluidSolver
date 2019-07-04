@@ -979,20 +979,7 @@ void BuoyantFluidSolver<dim>::run()
                 && parameters.adaptive_refinement)
         {
             refine_mesh();
-
             mesh_refined = true;
-
-            const std::vector<double> global_avg = compute_global_averages();
-
-            pcout << "   Velocity rms value: "
-                  << global_avg[0]
-                  << std::endl
-                  << "   Temperature rms value: "
-                  << global_avg[2]
-                  << std::endl;
-
-            pcout << "   Kinetic energy: " << global_avg[1] << std::endl;
-
         }
 
         // compute Courant number

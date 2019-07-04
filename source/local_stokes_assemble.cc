@@ -198,16 +198,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit
  NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
     scratch.stokes_fe_values.reinit(cell);
-    cell->get_dof_indices(data.local_dof_indices);
-
-    typename DoFHandler<dim>::active_cell_iterator
-    temperature_cell(&triangulation,
-                     cell->level(),
-                     cell->index(),
-                     &temperature_dof_handler);
-    scratch.temperature_fe_values.reinit(temperature_cell);
-
-    data.local_rhs = 0;
 
     scratch.stokes_fe_values[scratch.velocity].get_function_values
     (old_navier_stokes_solution,
@@ -222,11 +212,51 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit
     (old_old_navier_stokes_solution,
      scratch.old_old_velocity_gradients);
 
-    scratch.temperature_fe_values.get_function_values(old_temperature_solution,
-                                                      scratch.old_temperature_values);
-    scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
-                                                      scratch.old_old_temperature_values);
+    // pre-compute buoyancy term
+    if (parameters.buoyancy)
+    {
+        typename DoFHandler<dim>::active_cell_iterator
+        temperature_cell(&triangulation,
+                         cell->level(),
+                         cell->index(),
+                         &temperature_dof_handler);
+        scratch.temperature_fe_values.reinit(temperature_cell);
 
+        scratch.temperature_fe_values.get_function_values(old_temperature_solution,
+                                                          scratch.old_temperature_values);
+        scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                          scratch.old_old_temperature_values);
+
+        scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
+                                            scratch.gravity_values);
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const double extrapolated_temperature
+                = (timestep_number != 0 ?
+                    (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_temperature_values[q] * timestep/old_timestep)
+                            : scratch.old_temperature_values[q]);
+
+            scratch.buoyancy_term[q] = extrapolated_temperature * scratch.gravity_values[q];
+        }
+    }
+
+    // pre-compute coriolis term
+    if (parameters.rotation)
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const Tensor<1,dim> extrapolated_velocity
+            = (timestep_number != 0 ?
+                    (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                            : scratch.old_velocity_values[q]);
+
+            scratch.coriolis_term[q] = (dim == 2?
+                    cross_product_2d(extrapolated_velocity):
+                    cross_product_3d(rotation_vector, extrapolated_velocity));
+        }
+
+    // pre-compute lorentz force term
     if (parameters.magnetic_induction)
     {
         typename DoFHandler<dim>::active_cell_iterator
@@ -248,10 +278,51 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit
         scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
         (old_old_magnetic_solution,
          scratch.old_old_magnetic_curls);
+
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const Tensor<1,dim> extrapolated_magnetic_field
+            = (timestep_number != 0 ?
+                    (scratch.old_magnetic_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_magnetic_values[q] * timestep/old_timestep)
+                            : scratch.old_magnetic_values[q]);
+
+            const typename FEValuesViews::Vector<dim>::curl_type
+            extrapolated_magnetic_curl
+            = (timestep_number != 0 ?
+                    (scratch.old_magnetic_curls[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_magnetic_curls[q] * timestep/old_timestep)
+                            : scratch.old_magnetic_curls[q]);
+
+            switch (dim)
+            {
+            case 2:
+                scratch.lorentz_force_term[q][0]
+                = - extrapolated_magnetic_curl[0] * extrapolated_magnetic_field[1];
+                scratch.lorentz_force_term[q][1]
+                = extrapolated_magnetic_curl[0] * extrapolated_magnetic_field[0];
+                break;
+            case 3:
+                scratch.lorentz_force_term[q][0]
+                = extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[2]
+                - extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[1];
+                scratch.lorentz_force_term[q][1]
+                = extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[0]
+                - extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[2];
+                scratch.lorentz_force_term[q][2]
+                = extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[1]
+                - extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[0];
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+            }
+        }
+
     }
 
-    scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
-                                        scratch.gravity_values);
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_rhs = 0;
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -268,52 +339,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit
         const Tensor<2,dim> linear_term_velocity
             = scratch.gamma[1] * scratch.old_velocity_gradients[q]
                 + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
-
-        const double extrapolated_temperature
-            = (timestep_number != 0 ?
-                (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_temperature_values[q] * timestep/old_timestep)
-                        : scratch.old_temperature_values[q]);
-
-        const Tensor<1,dim> extrapolated_velocity
-        = (timestep_number != 0 ?
-                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
-                        : scratch.old_velocity_values[q]);
-
-        const Tensor<1,dim> extrapolated_magnetic_field
-        = (timestep_number != 0 ?
-                (scratch.old_magnetic_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_magnetic_values[q] * timestep/old_timestep)
-                        : scratch.old_magnetic_values[q]);
-
-        const typename FEValuesViews::Vector<dim>::curl_type
-        extrapolated_magnetic_curl
-        = (timestep_number != 0 ?
-                (scratch.old_magnetic_curls[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_magnetic_curls[q] * timestep/old_timestep)
-                        : scratch.old_magnetic_curls[q]);
-
-        Tensor<1,dim> lorentz_force_term;
-        switch (dim)
-        {
-        case 2:
-            lorentz_force_term[0] = - extrapolated_magnetic_curl[0]
-                                    * extrapolated_magnetic_field[1];
-            lorentz_force_term[1] = extrapolated_magnetic_curl[0]
-                                  * extrapolated_magnetic_field[0];
-            break;
-        case 3:
-            lorentz_force_term[0] = extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[2]
-                                  - extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[1];
-            lorentz_force_term[1] = extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[0]
-                                  - extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[2];
-            lorentz_force_term[2] = extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[1]
-                                  - extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[0];
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-        }
 
         Tensor<1,dim> nonlinear_term_velocity;
         bool skew = false;
@@ -353,13 +378,14 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_explicit
                             * scratch.old_old_velocity_values[q]) * scratch.old_old_velocity_values[q]:
                             0)
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
-                    - (parameters.rotation ? equation_coefficients[0] *
-                            (dim == 2? cross_product_2d(extrapolated_velocity)
-                                    : cross_product_3d(rotation_vector, extrapolated_velocity))
-                            * scratch.phi_velocity[i]: 0)
-                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_values[q] * scratch.phi_velocity[i]
+                    - (parameters.rotation ?
+                            equation_coefficients[0] * scratch.coriolis_term[q] * scratch.phi_velocity[i]:
+                            0)
+                    - (parameters.buoyancy?
+                            equation_coefficients[2] * scratch.buoyancy_term[q] * scratch.phi_velocity[i]:
+                            0)
                     + (parameters.magnetic_induction?
-                            equation_coefficients[4] * lorentz_force_term * scratch.phi_velocity[i]:
+                            equation_coefficients[4] * scratch.lorentz_force_term[q] * scratch.phi_velocity[i]:
                             0)
                     ) * scratch.stokes_fe_values.JxW(q);
     }
@@ -373,16 +399,6 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
         NavierStokesAssembly::CopyData::RightHandSide<dim> &data)
 {
     scratch.stokes_fe_values.reinit(cell);
-    cell->get_dof_indices(data.local_dof_indices);
-
-    typename DoFHandler<dim>::active_cell_iterator
-    temperature_cell(&triangulation,
-                     cell->level(),
-                     cell->index(),
-                     &temperature_dof_handler);
-    scratch.temperature_fe_values.reinit(temperature_cell);
-
-    data.local_rhs = 0;
 
     scratch.stokes_fe_values[scratch.velocity].get_function_values
     (old_navier_stokes_solution,
@@ -397,13 +413,117 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
     (old_old_navier_stokes_solution,
      scratch.old_old_velocity_gradients);
 
-    scratch.temperature_fe_values.get_function_values(old_temperature_solution,
-                                                      scratch.old_temperature_values);
-    scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
-                                                      scratch.old_old_temperature_values);
+    // pre-compute buoyancy term
+    if (parameters.buoyancy)
+    {
+        typename DoFHandler<dim>::active_cell_iterator
+        temperature_cell(&triangulation,
+                         cell->level(),
+                         cell->index(),
+                         &temperature_dof_handler);
+        scratch.temperature_fe_values.reinit(temperature_cell);
 
-    scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
-                                        scratch.gravity_values);
+        scratch.temperature_fe_values.get_function_values(old_temperature_solution,
+                                                          scratch.old_temperature_values);
+        scratch.temperature_fe_values.get_function_values(old_old_temperature_solution,
+                                                          scratch.old_old_temperature_values);
+
+        scratch.gravity_function.value_list(scratch.stokes_fe_values.get_quadrature_points(),
+                                            scratch.gravity_values);
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const double extrapolated_temperature
+                = (timestep_number != 0 ?
+                    (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_temperature_values[q] * timestep/old_timestep)
+                            : scratch.old_temperature_values[q]);
+
+            scratch.buoyancy_term[q] = extrapolated_temperature * scratch.gravity_values[q];
+        }
+    }
+
+    // pre-compute coriolis term
+    if (parameters.rotation)
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const Tensor<1,dim> extrapolated_velocity
+            = (timestep_number != 0 ?
+                    (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_velocity_values[q] * timestep/old_timestep)
+                            : scratch.old_velocity_values[q]);
+
+            scratch.coriolis_term[q] = (dim == 2?
+                    cross_product_2d(extrapolated_velocity):
+                    cross_product_3d(rotation_vector, extrapolated_velocity));
+        }
+
+    // pre-compute lorentz force term
+    if (parameters.magnetic_induction)
+    {
+        typename DoFHandler<dim>::active_cell_iterator
+        magnetic_cell(&triangulation,
+                      cell->level(),
+                      cell->index(),
+                      &magnetic_dof_handler);
+        scratch.magnetic_fe_values.reinit(magnetic_cell);
+
+        scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
+        (old_magnetic_solution,
+         scratch.old_magnetic_values);
+        scratch.magnetic_fe_values[scratch.magnetic_field].get_function_values
+        (old_old_magnetic_solution,
+         scratch.old_old_magnetic_values);
+        scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
+        (old_magnetic_solution,
+         scratch.old_magnetic_curls);
+        scratch.magnetic_fe_values[scratch.magnetic_field].get_function_curls
+        (old_old_magnetic_solution,
+         scratch.old_old_magnetic_curls);
+
+        for (unsigned int q=0; q<scratch.n_q_points; ++q)
+        {
+            const Tensor<1,dim> extrapolated_magnetic_field
+            = (timestep_number != 0 ?
+                    (scratch.old_magnetic_values[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_magnetic_values[q] * timestep/old_timestep)
+                            : scratch.old_magnetic_values[q]);
+
+            const typename FEValuesViews::Vector<dim>::curl_type
+            extrapolated_magnetic_curl
+            = (timestep_number != 0 ?
+                    (scratch.old_magnetic_curls[q] * (1 + timestep/old_timestep)
+                            - scratch.old_old_magnetic_curls[q] * timestep/old_timestep)
+                            : scratch.old_magnetic_curls[q]);
+
+            switch (dim)
+            {
+            case 2:
+                scratch.lorentz_force_term[q][0]
+                = - extrapolated_magnetic_curl[0] * extrapolated_magnetic_field[1];
+                scratch.lorentz_force_term[q][1]
+                = extrapolated_magnetic_curl[0] * extrapolated_magnetic_field[0];
+                break;
+            case 3:
+                scratch.lorentz_force_term[q][0]
+                = extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[2]
+                - extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[1];
+                scratch.lorentz_force_term[q][1]
+                = extrapolated_magnetic_curl[2]*extrapolated_magnetic_field[0]
+                - extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[2];
+                scratch.lorentz_force_term[q][2]
+                = extrapolated_magnetic_curl[0]*extrapolated_magnetic_field[1]
+                - extrapolated_magnetic_curl[1]*extrapolated_magnetic_field[0];
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+            }
+        }
+
+    }
+
+    cell->get_dof_indices(data.local_dof_indices);
+
+    data.local_rhs = 0;
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -421,28 +541,20 @@ void BuoyantFluidSolver<dim>::local_assemble_stokes_rhs_implicit(
             = scratch.gamma[1] * scratch.old_velocity_gradients[q]
                 + scratch.gamma[2] * scratch.old_old_velocity_gradients[q];
 
-        const double extrapolated_temperature
-            = (timestep_number != 0 ?
-                (scratch.old_temperature_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_temperature_values[q] * timestep/old_timestep)
-                        : scratch.old_temperature_values[q]);
-
-        const Tensor<1,dim> extrapolated_velocity
-        = (timestep_number != 0 ?
-                (scratch.old_velocity_values[q] * (1 + timestep/old_timestep)
-                        - scratch.old_old_velocity_values[q] * timestep/old_timestep)
-                        : scratch.old_velocity_values[q]);
-
         for (unsigned int i=0; i<scratch.dofs_per_cell; ++i)
             data.local_rhs(i)
                 += (
                     - time_derivative_velocity * scratch.phi_velocity[i]
                     - equation_coefficients[1] * scalar_product(linear_term_velocity, scratch.grad_phi_velocity[i])
-                    - (parameters.rotation ? equation_coefficients[0] *
-                            (dim == 2? cross_product_2d(extrapolated_velocity)
-                                    : cross_product_3d(rotation_vector, extrapolated_velocity))
-                            * scratch.phi_velocity[i]: 0)
-                    - equation_coefficients[2] * extrapolated_temperature * scratch.gravity_values[q] * scratch.phi_velocity[i]
+                    - (parameters.rotation ?
+                            equation_coefficients[0] * scratch.coriolis_term[q] * scratch.phi_velocity[i]:
+                            0)
+                    - (parameters.buoyancy?
+                            equation_coefficients[2] * scratch.buoyancy_term[q] * scratch.phi_velocity[i]:
+                            0)
+                    + (parameters.magnetic_induction?
+                            equation_coefficients[4] * scratch.lorentz_force_term[q] * scratch.phi_velocity[i]:
+                            0)
                     ) * scratch.stokes_fe_values.JxW(q);
     }
 }

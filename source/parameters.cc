@@ -34,6 +34,7 @@ Ek(1.0e-3),
 Pm(5.0),
 gravity_profile(EquationData::GravityProfile::Linear),
 rotation(false),
+buoyancy(true),
 magnetism(false),
 magnetic_induction(false),
 // linear solver parameters
@@ -247,6 +248,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "true",
                 Patterns::Bool(),
                 "Turn rotation on or off.");
+
+        prm.declare_entry("buoyant_case",
+                "true",
+                Patterns::Bool(),
+                "Turn buoyancy on or off");
 
         prm.declare_entry("magnetic_case",
                 "false",
@@ -527,6 +533,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     prm.enter_subsection("Physics");
     {
         rotation = prm.get_bool("rotating_case");
+
+        buoyancy = prm.get_bool("buoyant_case");
 
         magnetism = prm.get_bool("magnetic_case");
 

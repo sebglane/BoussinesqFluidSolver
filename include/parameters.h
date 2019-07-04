@@ -89,6 +89,7 @@ struct Parameters
     EquationData::GravityProfile    gravity_profile;
 
     bool    rotation;
+    bool    buoyancy;
     bool    magnetism;
     bool    magnetic_induction;
 
