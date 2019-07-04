@@ -88,6 +88,7 @@ struct Parameters
     EquationData::GravityProfile    gravity_profile;
 
     bool    rotation;
+    bool    buoyancy;
 
     // initial conditions
     EquationData::TemperaturePerturbation   temperature_perturbation;

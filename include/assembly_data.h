@@ -179,7 +179,6 @@ struct RightHandSide
     RightHandSide(const RightHandSide<dim>  &scratch);
 
     FEValues<dim>               stokes_fe_values;
-
     std::vector<Tensor<1,dim>>  phi_velocity;
     std::vector<Tensor<2,dim>>  grad_phi_velocity;
     std::vector<Tensor<1,dim>>  old_velocity_values;
@@ -191,18 +190,20 @@ struct RightHandSide
     std::vector<double>         old_temperature_values;
     std::vector<double>         old_old_temperature_values;
 
+    const EquationData::GravityFunction<dim> gravity_function;
+    std::vector<Tensor<1,dim>>  gravity_values;
+
+    std::vector<Tensor<1,dim>>  buoyancy_term;
+    std::vector<Tensor<1,dim>>  coriolis_term;
+
     const std::vector<double>   alpha;
     const std::vector<double>   beta;
     const std::vector<double>   gamma;
-
-    const EquationData::GravityFunction<dim> gravity_function;
-    std::vector<Tensor<1,dim>>  gravity_values;
 
     const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;
 
     const FEValuesExtractors::Vector    velocity;
-
 };
 
 

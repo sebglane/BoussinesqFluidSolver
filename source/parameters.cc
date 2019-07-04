@@ -33,6 +33,7 @@ Ra(1.0e5),
 Ek(1.0e-3),
 gravity_profile(EquationData::GravityProfile::Linear),
 rotation(false),
+buoyancy(true),
 // linear solver parameters
 rel_tol(1e-6),
 abs_tol(1e-9),
@@ -232,6 +233,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "true",
                 Patterns::Bool(),
                 "Turn rotation on or off");
+
+        prm.declare_entry("buoyant_case",
+                "true",
+                Patterns::Bool(),
+                "Turn buoyancy on or off");
 
         prm.declare_entry("Pr",
                 "1.0",
@@ -484,6 +490,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     prm.enter_subsection("Physics");
     {
         rotation = prm.get_bool("rotating_case");
+
+        buoyancy = prm.get_bool("buoyant_case");
 
         Ra = prm.get_double("Ra");
         Assert(Ra > 0, ExcLowerRangeType<double>(Ra, 0));
