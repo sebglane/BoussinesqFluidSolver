@@ -207,14 +207,8 @@ private:
                                  const double &phi,
                                  const double &theta) const;
 
-    std::pair<double,double>    compute_benchmark_requests_locally
-                                (const double   &radius,
-                                 const double   &phi,
-                                 const double   &theta) const;
-    std::pair<double,double>    compute_benchmark_requests
-                                (const double   &radius,
-                                 const double   &phi,
-                                 const double   &theta) const;
+    std::pair<double,double>    compute_benchmark_requests_locally() const;
+    std::pair<double,double>    compute_benchmark_requests() const;
 
     /**
      * Computes a zero of the radial velocity $v_r(r=r_\mathrm{m},\theta=0,

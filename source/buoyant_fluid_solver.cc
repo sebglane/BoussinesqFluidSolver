@@ -722,9 +722,7 @@ void BuoyantFluidSolver<dim>::run()
                   << std::endl;
 
             std::pair<double,double> benchmark_results
-            = compute_benchmark_requests(0.5 * (1. + parameters.aspect_ratio),
-                                         phi_benchmark,
-                                         numbers::PI / 2.);
+            = compute_benchmark_requests();
 
             pcout << "   Benchmark requests:  T = " << benchmark_results.first
                   << ", v_phi = " << benchmark_results.second
