@@ -18,8 +18,8 @@
 // Sadly this include file is not found
 // #include <boost/filesystem.hpp>
 
-#include "buoyant_fluid_solver.h"
-#include "postprocessor.h"
+#include <buoyant_fluid_solver.h>
+#include <postprocessor.h>
 
 namespace BuoyantFluid {
 
@@ -399,7 +399,8 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
     // create post processor
     PostProcessor<dim>
     postprocessor(Utilities::MPI::this_mpi_process(mpi_communicator),
-                  parameters.magnetism);
+                  parameters.magnetism,
+                  parameters.output_flags);
 
     // prepare data out object
     DataOut<dim>    data_out;

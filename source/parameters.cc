@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "parameters.h"
+#include <parameters.h>
 
 namespace BuoyantFluid {
 
@@ -18,6 +18,9 @@ refinement_frequency(30),
 t_final(1.0),
 adaptive_refinement(true),
 resume_from_snapshot(false),
+// output parameters
+output_flags(OutputFlags::output_default),
+output_benchmark_results(false),
 // logging parameters
 vtk_frequency(10),
 global_avg_frequency(5),
@@ -32,7 +35,7 @@ Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
 Pm(5.0),
-gravity_profile(EquationData::GravityProfile::Linear),
+gravity_profile(EquationData::GravityProfile::linear),
 rotation(false),
 buoyancy(true),
 magnetism(false),
@@ -121,6 +124,55 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "false",
                 Patterns::Bool(),
                 "Flag to resume from a snapshot of an earlier simulation.");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Output parameters");
+    {
+        prm.declare_entry("output_values",
+                "true",
+                Patterns::Bool(),
+                "Flag to activate output of solution values.");
+        prm.declare_entry("output_scalar_gradients",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of gradients of scalar fields.");
+        prm.declare_entry("output_mpi_partition",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the MPI partition.");
+        prm.declare_entry("output_spherical_components",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of spherical components.");
+        prm.declare_entry("output_velocity_curl",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of vorticity (curl of the velocity).");
+        prm.declare_entry("output_magnetic_curl",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of curl of the magnetic field.");
+        prm.declare_entry("output_magnetic_helicity",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the magnetic helicity.");
+        prm.declare_entry("output_coriolis_force",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the Coriolis force.");
+        prm.declare_entry("output_lorentz_force",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the Lorentz force.");
+        prm.declare_entry("output_buoyancy_force",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the buoyancy force.");
+        prm.declare_entry("output_magnetic_induction",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate output of the magnetic induction term.");
     }
     prm.leave_subsection();
 
@@ -377,14 +429,42 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     }
     prm.leave_subsection();
 
+    prm.enter_subsection("Output parameters");
+    {
+        if (prm.get_bool("output_values"))
+            output_flags |= output_values;
+        if (prm.get_bool("output_scalar_gradients"))
+            output_flags |= output_scalar_gradients;
+        if (prm.get_bool("output_mpi_partition"))
+            output_flags |= output_mpi_partition;
+        if (prm.get_bool("output_spherical_components"))
+            output_flags |= output_spherical_components;
+        if (prm.get_bool("output_velocity_curl"))
+            output_flags |= output_velocity_curl;
+        if (prm.get_bool("output_magnetic_curl"))
+            output_flags |= output_magnetic_curl;
+        if (prm.get_bool("output_magnetic_helicity"))
+            output_flags |= output_magnetic_helicity;
+        if (prm.get_bool("output_coriolis_force"))
+            output_flags |= output_coriolis_force;
+        if (prm.get_bool("output_lorentz_force"))
+            output_flags |= output_lorentz_force;
+        if (prm.get_bool("output_buoyancy_force"))
+            output_flags |= output_buoyancy_force;
+        if (prm.get_bool("output_magnetic_induction"))
+            output_flags |= output_magnetic_induction;
+    }
+    prm.leave_subsection();
+
+
     prm.enter_subsection("Initial conditions");
     {
         std::string perturbation_string = prm.get("temperature_perturbation");
 
         if (perturbation_string == "None")
-            temperature_perturbation = EquationData::TemperaturePerturbation::None;
+            temperature_perturbation = EquationData::TemperaturePerturbation::none;
         else if (perturbation_string == "Sinusoidal")
-            temperature_perturbation = EquationData::TemperaturePerturbation::Sinusoidal;
+            temperature_perturbation = EquationData::TemperaturePerturbation::sinusoidal;
         else
             AssertThrow(false, ExcMessage("Unexpected string for temperature perturbation."));
     }
@@ -555,9 +635,9 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         std::string profile_string = prm.get("GravityProfile");
 
         if (profile_string == "Constant")
-            gravity_profile = EquationData::GravityProfile::Constant;
+            gravity_profile = EquationData::GravityProfile::constant;
         else if (profile_string == "Linear")
-            gravity_profile = EquationData::GravityProfile::Linear;
+            gravity_profile = EquationData::GravityProfile::linear;
         else
             AssertThrow(false, ExcMessage("Unexpected string for gravity profile."));
 

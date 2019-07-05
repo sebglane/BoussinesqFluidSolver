@@ -141,10 +141,10 @@ double TemperatureInitialValues<2>::value(
 
     switch (perturbation_type)
     {
-        case TemperaturePerturbation::None:
+        case TemperaturePerturbation::none:
             value = (log_ro - log_r) / (log_ro - log_ri);
             break;
-        case TemperaturePerturbation::Sinusoidal:
+        case TemperaturePerturbation::sinusoidal:
         {
             value = (log_ro - log_r) / (log_ro - log_ri);
 
@@ -182,10 +182,10 @@ double TemperatureInitialValues<3>::value(
 
     switch (perturbation_type)
     {
-        case TemperaturePerturbation::None:
+        case TemperaturePerturbation::none:
             value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
             break;
-        case TemperaturePerturbation::Sinusoidal:
+        case TemperaturePerturbation::sinusoidal:
         {
             value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
 
@@ -333,12 +333,12 @@ Tensor<1,dim> GravityFunction<dim>::value(const Point<dim> &point) const
 
     switch (profile_type)
     {
-        case GravityProfile::Constant:
+        case GravityProfile::constant:
         {
             value = -point / r;
             break;
         }
-        case GravityProfile::Linear:
+        case GravityProfile::linear:
         {
             value = -point / outer_radius;
             break;

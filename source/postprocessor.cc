@@ -12,110 +12,309 @@ namespace BuoyantFluid {
 template<int dim>
 PostProcessor<dim>::PostProcessor
 (const unsigned int partition,
- const bool magnetism)
+ const bool         magnetism,
+ const OutputFlags  output_flags)
 :
 partition(partition),
-magnetism(magnetism)
-{}
+magnetism(magnetism),
+output_flags(output_flags)
+{
+    Assert(
+       !((output_flags & output_magnetic_helicity)|
+         (output_flags & output_coriolis_force)|
+         (output_flags & output_lorentz_force) |
+         (output_flags & output_buoyancy_force)|
+         (output_flags & output_magnetic_induction)),
+         ExcNotImplemented());
+}
+
+template<int dim>
+unsigned int PostProcessor<dim>::n_data_components() const
+{
+    unsigned int n_components = 0;
+
+    if (output_flags & output_values)
+    {
+        // velocity
+        n_components += dim;
+        // pressure
+        n_components += 1;
+        // temperature
+        n_components += 1;
+
+        if (magnetism)
+        {
+            // magnetic_field
+            n_components += dim;
+            // magnetic_pressure
+            n_components += 1;
+        }
+    }
+
+    // MPI partition
+    if (output_flags & output_mpi_partition)
+       n_components += 1;
+
+    // spherical spherical components of velocity field
+    if (output_flags & output_spherical_components)
+    {
+        // velocity
+        n_components += dim;
+        // magnetic field
+        if (magnetism)
+            n_components += dim;
+    }
+    // vorticity
+    if (output_flags & output_velocity_curl)
+    {
+        switch (dim)
+        {
+            case 2:
+                n_components += 1;
+                break;
+            case 3:
+                n_components += dim;
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+                break;
+        }
+    }
+    // gradients of scalar fields
+    if (output_flags & output_scalar_gradients)
+    {
+        // temperature gradient
+        n_components += dim;
+        // pressure gradient
+        n_components += dim;
+        // magnetic pressure gradient
+        if (magnetism)
+            n_components += dim;
+    }
+    // spherical components of gradients of scalar fields
+    if ((output_flags & output_scalar_gradients) &&
+        (output_flags & output_spherical_components))
+    {
+        // pressure gradient
+        n_components += dim;
+
+        // temperature gradient
+        n_components += dim;
+
+        // magnetic pressure gradient
+        if (magnetism)
+            n_components += dim;
+    }
+    // curl of magnetic field
+    if (output_flags & output_magnetic_curl)
+        if (magnetism)
+            switch (dim)
+            {
+                case 2:
+                    n_components += 1;
+                    break;
+                case 3:
+                    n_components += dim;
+                    break;
+                default:
+                    Assert(false, ExcDimensionMismatch2(dim, 2, 3));
+                    break;
+            }
+
+    return n_components;
+}
 
 template<int dim>
 std::vector<std::string> PostProcessor<dim>::get_names() const
 {
-    std::vector<std::string> solution_names(dim, "velocity");
-    solution_names.emplace_back("pressure");
+    unsigned int n_components = 0;
 
-    solution_names.emplace_back("temperature");
+    std::vector<std::string> solution_names;
 
-    solution_names.emplace_back("partition");
-
-    solution_names.emplace_back("radial_velocity");
-    switch (dim)
-    {
-        case 2:
-            solution_names.emplace_back("azimuthal_velocity");
-            break;
-        case 3:
-            solution_names.emplace_back("polar_velocity");
-            solution_names.emplace_back("azimuthal_velocity");
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-    switch (dim)
-    {
-        case 2:
-            solution_names.emplace_back("vorticity");
-            break;
-        case 3:
-            for (unsigned int d=0; d<3; ++d)
-                solution_names.emplace_back("vorticity");
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    for (unsigned int d=0; d<dim; ++d)
-        solution_names.emplace_back("temperature_gradient");
-
-    solution_names.emplace_back("radial_temperature_gradient");
-    switch (dim)
-    {
-        case 2:
-            solution_names.emplace_back("azimuthal_temperature_gradient");
-            break;
-        case 3:
-            solution_names.emplace_back("polar_temperature_gradient");
-            solution_names.emplace_back("azimuthal_temperature_gradient");
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    AssertDimension(solution_names.size(),
-                    (dim==2? 4 * dim + 4: 5 * dim + 3))
-
-    if (magnetism)
+    if (output_flags & output_values)
     {
         for (unsigned int d=0; d<dim; ++d)
-            solution_names.emplace_back("magnetic_field");
+            solution_names.emplace_back("velocity");
+        n_components += dim;
 
-        solution_names.emplace_back("magnetic_pressure");
+        solution_names.emplace_back("pressure");
+        n_components += 1;
 
-        solution_names.emplace_back("radial_magnetic_field");
-        switch (dim)
+        solution_names.emplace_back("temperature");
+        n_components += 1;
+
+        if (magnetism)
         {
-            case 2:
-                solution_names.emplace_back("azimuthal_magnetic_field");
-                break;
-            case 3:
-                solution_names.emplace_back("polar_magnetic_field");
-                solution_names.emplace_back("azimuthal_magnetic_field");
-                break;
-            default:
-                Assert(false, ExcImpossibleInDim(dim));
-                break;
-        }
+            for (unsigned int d=0; d<dim; ++d)
+                solution_names.emplace_back("magnetic_field");
+            n_components += dim;
 
-        switch (dim)
-        {
-            case 2:
-                solution_names.emplace_back("curl_magnetic_field");
-                break;
-            case 3:
-                for (unsigned int d=0; d<3; ++d)
-                    solution_names.emplace_back("curl_magnetic_field");
-                break;
-            default:
-                Assert(false, ExcImpossibleInDim(dim));
-                break;
+            solution_names.emplace_back("magnetic_pressure");
+            n_components += 1;
         }
-
-        AssertDimension(solution_names.size(),
-                        (dim==2? 8 * dim + 6: 10 * dim + 4))
     }
+
+    // MPI partition
+    if (output_flags & output_mpi_partition)
+    {
+        solution_names.emplace_back("partition");
+        n_components += 1;
+    }
+
+    // spherical spherical components of velocity field
+    if (output_flags & output_spherical_components)
+    {
+        solution_names.emplace_back("velocity_radial");
+        switch (dim)
+        {
+            case 2:
+                solution_names.emplace_back("velocity_azimuthal");
+                break;
+            case 3:
+                solution_names.emplace_back("velocity_polar");
+                solution_names.emplace_back("velocity_azimuthal");
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+                break;
+        }
+        n_components += dim;
+
+        if (magnetism)
+        {
+            solution_names.emplace_back("magnetic_field_radial");
+            switch (dim)
+            {
+                case 2:
+                    solution_names.emplace_back("magnetic_field_azimuthal");
+                    break;
+                case 3:
+                    solution_names.emplace_back("magnetic_field_polar");
+                    solution_names.emplace_back("magnetic_field_azimuthal");
+                    break;
+                default:
+                    Assert(false, ExcDimensionMismatch2(dim, 2, 3));
+                    break;
+            }
+            n_components += dim;
+        }
+    }
+    // vorticity
+    if (output_flags & output_velocity_curl)
+    {
+        switch (dim)
+        {
+            case 2:
+                solution_names.emplace_back("vorticity");
+                n_components += 1;
+                break;
+            case 3:
+                for (unsigned int d=0; d<dim; ++d)
+                    solution_names.emplace_back("vorticity");
+                n_components += dim;
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+                break;
+        }
+    }
+    // gradients of scalar fields
+    if (output_flags & output_scalar_gradients)
+    {
+        for (unsigned int d=0; d<dim; ++d)
+            solution_names.emplace_back("temperature_gradient");
+        n_components += dim;
+
+        for (unsigned int d=0; d<dim; ++d)
+            solution_names.emplace_back("pressure_gradient");
+        n_components += dim;
+
+        if (magnetism)
+        {
+            for (unsigned int d=0; d<dim; ++d)
+                solution_names.emplace_back("magnetic_pressure_gradient");
+            n_components += dim;
+        }
+    }
+    // spherical components of gradients of scalar fields
+    if ((output_flags & output_scalar_gradients) &&
+        (output_flags & output_spherical_components))
+    {
+        solution_names.emplace_back("pressure_gradient_radial");
+        switch (dim)
+        {
+            case 2:
+                solution_names.emplace_back("pressure_gradient_azimuthal");
+                break;
+            case 3:
+                solution_names.emplace_back("pressure_gradient_polar");
+                solution_names.emplace_back("pressure_gradient_azimuthal");
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+                break;
+        }
+        n_components += dim;
+
+        solution_names.emplace_back("temperature_gradient_radial");
+        switch (dim)
+        {
+            case 2:
+                solution_names.emplace_back("temperature_gradient_azimuthal");
+                break;
+            case 3:
+                solution_names.emplace_back("temperature_gradient_polar");
+                solution_names.emplace_back("temperature_gradient_azimuthal");
+                break;
+            default:
+                Assert(false, ExcImpossibleInDim(dim));
+                break;
+        }
+        n_components += dim;
+
+        if (magnetism)
+        {
+            solution_names.emplace_back("magnetic_pressure_gradient_radial");
+            switch (dim)
+            {
+                case 2:
+                    solution_names.emplace_back("magnetic_pressure_gradient_azimuthal");
+                    break;
+                case 3:
+                    solution_names.emplace_back("magnetic_pressure_gradient_polar");
+                    solution_names.emplace_back("magnetic_pressure_gradient_azimuthal");
+                    break;
+                default:
+                    Assert(false, ExcImpossibleInDim(dim));
+                    break;
+            }
+            n_components += dim;
+        }
+
+    }
+    // curl of magnetic field
+    if (output_flags & output_magnetic_curl)
+        if (magnetism)
+        {
+            switch (dim)
+            {
+                case 2:
+                    solution_names.emplace_back("curl_magnetic_field");
+                    n_components += 1;
+                    break;
+                case 3:
+                    for (unsigned int d=0; d<dim; ++d)
+                        solution_names.emplace_back("curl_magnetic_field");
+                    n_components += dim;
+                    break;
+                default:
+                    Assert(false, ExcDimensionMismatch2(dim, 2, 3));
+                    break;
+            }
+        }
+
+    AssertDimension(n_data_components(), n_components);
+    AssertDimension(solution_names.size(), n_components);
 
     return solution_names;
 }
@@ -131,474 +330,395 @@ std::vector<DataComponentInterpretation::DataComponentInterpretation>
 PostProcessor<dim>::get_data_component_interpretation() const
 {
     std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    component_interpretation;
 
-    // velocity
-    component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-    // pressure
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    // temperature
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    // mpi partition
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-
-    // radial velocity
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    switch (dim)
+    if (output_flags & output_values)
     {
-        case 2:
-            // azimuthal velocity
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        case 3:
-            // azimuthal velocity
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            // polar velocity
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    // vorticity
-    switch (dim)
-    {
-        case 2:
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        case 3:
-            for (unsigned int d=0; d<dim; ++d)
-                component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    // temperature gradient
-    for (unsigned int d=0; d<dim; ++d)
-        component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
-
-    // spherical components of temperature gradient
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    switch (dim)
-    {
-        case 2:
-            // azimuthal temperature gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        case 3:
-            // azimuthal temperature gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            // polar temperature gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    // pressure gradient
-    for (unsigned int d=0; d<dim; ++d)
-        component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
-
-    // spherical components of pressure gradient
-    component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-    switch (dim)
-    {
-        case 2:
-            // azimuthal pressure gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        case 3:
-            // azimuthal pressure gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            // polar pressure gradient
-            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-            break;
-        default:
-            Assert(false, ExcImpossibleInDim(dim));
-            break;
-    }
-
-    AssertDimension(component_interpretation.size(),
-                    (dim==2? 6 * dim + 4: 7 * dim + 3))
-
-    if (magnetism)
-    {
-        // magnetic field
+        // velocity
         for (unsigned int d=0; d<dim; ++d)
             component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
-        // magnetic pressure
+        // pressure
         component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-        // radial magnetic field
+        // temperature
         component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-        switch (dim)
-        {
-            case 2:
-                // azimuthal magnetic field
-                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-                break;
-            case 3:
-                // polar magnetic field
-                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-                // azimuthal magnetic field
-                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
-                break;
-            default:
-                Assert(false, ExcImpossibleInDim(dim));
-                break;
-        }
 
+        if (magnetism)
+        {
+            // magnetic field
+            for (unsigned int d=0; d<dim; ++d)
+                component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
+            // magnetic pressure
+            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+        }
+    }
+
+    // MPI partition
+    if (output_flags & output_mpi_partition)
+        component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+
+    if (output_flags & output_spherical_components)
+    {
+        // spherical spherical components of velocity field
+        for (unsigned int d=0; d<dim; ++d)
+            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+        // spherical spherical components of magnetic field
+        if (magnetism)
+            for (unsigned int d=0; d<dim; ++d)
+                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+    }
+    // vorticity
+    if (output_flags & output_velocity_curl)
         switch (dim)
         {
             case 2:
-                // curl of magnetic field
                 component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
                 break;
             case 3:
-                // curl of magnetic field
-                for (unsigned int d=0; d<3; ++d)
+                for (unsigned int d=0; d<dim; ++d)
                     component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
                 break;
             default:
                 Assert(false, ExcImpossibleInDim(dim));
                 break;
         }
+    // gradients of scalar fields
+    if (output_flags & output_scalar_gradients)
+    {
+        for (unsigned int d=0; d<dim; ++d)
+            component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
+        for (unsigned int d=0; d<dim; ++d)
+            component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
 
-        AssertDimension(component_interpretation.size(),
-                        (dim==2? 8 * dim + 6: 10 * dim + 4))
+        if (magnetism)
+            for (unsigned int d=0; d<dim; ++d)
+                component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
     }
+    // spherical components of gradients of scalar fields
+    if ((output_flags & output_scalar_gradients) &&
+        (output_flags & output_spherical_components))
+    {
+        // pressure gradient
+        for (unsigned int d=0; d<dim; ++d)
+            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+        // temperature gradient
+        for (unsigned int d=0; d<dim; ++d)
+            component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+        // magnetic pressure gradient
+        if (magnetism)
+            for (unsigned int d=0; d<dim; ++d)
+                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+    }
+    // curl of magnetic field
+    if (output_flags & output_magnetic_curl)
+        if (magnetism)
+            switch (dim)
+            {
+            case 2:
+                component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
+                break;
+            case 3:
+                for (unsigned int d=0; d<dim; ++d)
+                    component_interpretation.push_back(DataComponentInterpretation::component_is_part_of_vector);
+                break;
+            default:
+                Assert(false, ExcDimensionMismatch2(dim, 2, 3));
+                break;
+            }
+
+    AssertDimension(component_interpretation.size(),n_data_components());
 
     return component_interpretation;
 }
 
+template<int dim>
+void PostProcessor<dim>::evaluate_vector_field
+(const DataPostprocessorInputs::Vector<dim> &inputs,
+ std::vector<Vector<double>>                &computed_quantities) const
+{
+    const unsigned int n_quadrature_points = inputs.solution_values.size();
+
+    Assert(computed_quantities.size() == n_quadrature_points,
+           ExcDimensionMismatch(computed_quantities.size(),
+                                n_quadrature_points));
+    Assert(computed_quantities[0].size() == n_data_components(),
+           ExcDimensionMismatch(computed_quantities[0].size(),
+                                n_data_components()));
+    Assert(inputs.solution_values[0].size() == (magnetism? 2*dim+3: dim + 2),
+           ExcDimensionMismatch(inputs.solution_values[0].size(),
+                                (magnetism? 2*dim+3: dim + 2)));
+    Assert(inputs.solution_gradients[0].size() == (magnetism? 2*dim+3: dim + 2),
+           ExcDimensionMismatch(inputs.solution_gradients[0].size(),
+                                (magnetism? 2*dim+3: dim + 2)));
+
+    for (unsigned int q=0; q<n_quadrature_points; ++q)
+    {
+        Tensor<1,dim>   spherical_basis_vectors[dim];
+        compute_spherical_basis_vectors(inputs.evaluation_points[q],
+                                        spherical_basis_vectors);
+
+        unsigned int quantity_index = 0;
+
+        if (output_flags & output_values)
+        {
+            // velocity
+            for (unsigned int d=0; d<dim; ++d)
+                computed_quantities[q](quantity_index+d) = inputs.solution_values[q](d);
+            quantity_index += dim;
+            // pressure
+            computed_quantities[q](quantity_index) = inputs.solution_values[q](dim);
+            quantity_index += 1;
+            // temperature
+            computed_quantities[q](quantity_index) = inputs.solution_values[q](dim+1);
+            quantity_index += 1;
+
+            if (magnetism)
+            {
+                // magnetic field
+                for (unsigned int d=0; d<dim; ++d)
+                    computed_quantities[q](quantity_index+d) = inputs.solution_values[q](dim+2+d);
+                quantity_index += dim;
+                // magnetic pseudo pressure
+                computed_quantities[q](quantity_index) = inputs.solution_values[q](2*dim+2);
+                quantity_index += 1;
+            }
+        }
+
+        // MPI partition
+        if (output_flags & output_mpi_partition)
+        {
+            computed_quantities[q](quantity_index) = partition;
+            quantity_index += 1;
+        }
+
+
+        if (output_flags & output_spherical_components)
+        {
+            // spherical spherical components of velocity field
+            evaluate_component_projection(inputs.solution_values[q],
+                                          0,
+                                          spherical_basis_vectors,
+                                          computed_quantities[q],
+                                          quantity_index);
+            // spherical components of magnetic field
+            if (magnetism)
+                evaluate_component_projection(inputs.solution_values[q],
+                                              dim+2,
+                                              spherical_basis_vectors,
+                                              computed_quantities[q],
+                                              quantity_index);
+
+        }
+        // vorticity
+        if (output_flags & output_velocity_curl)
+            evaluate_curl_component(inputs.solution_gradients[q],
+                                    0,
+                                    computed_quantities[q],
+                                    quantity_index);
+        // gradients of scalar fields
+        if (output_flags & output_scalar_gradients)
+        {
+            // pressure gradient
+            for (unsigned int d=0; d<dim; ++d)
+                computed_quantities[q](quantity_index) = inputs.solution_gradients[q][dim][d];
+            quantity_index += dim;
+            // temperature gradient
+            for (unsigned int d=0; d<dim; ++d)
+                computed_quantities[q](quantity_index) = inputs.solution_gradients[q][dim+1][d];
+            quantity_index += dim;
+            // magnetic pressure gradient
+            if (magnetism)
+            {
+                for (unsigned int d=0; d<dim; ++d)
+                    computed_quantities[q](quantity_index) = inputs.solution_gradients[q][2*dim+2][d];
+                quantity_index += dim;
+            }
+        }
+        // spherical components of gradients of scalar fields
+        if ((output_flags & output_scalar_gradients) &&
+            (output_flags & output_spherical_components))
+        {
+            // spherical components of pressure gradient
+            evaluate_gradient_projection(inputs.solution_gradients[q],
+                                         dim,
+                                         spherical_basis_vectors,
+                                         computed_quantities[q],
+                                         quantity_index);
+            // spherical components of temperature gradient
+            evaluate_gradient_projection(inputs.solution_gradients[q],
+                                         dim+1,
+                                         spherical_basis_vectors,
+                                         computed_quantities[q],
+                                         quantity_index);
+            // spherical components of magnetic pressure gradient
+            if (magnetism)
+                evaluate_gradient_projection(inputs.solution_gradients[q],
+                                             2*dim+2,
+                                             spherical_basis_vectors,
+                                             computed_quantities[q],
+                                             quantity_index);
+        }
+        // curl of magnetic field
+        if ((output_flags & output_magnetic_curl) && magnetism)
+            evaluate_curl_component(inputs.solution_gradients[q],
+                                    2*dim+2,
+                                    computed_quantities[q],
+                                    quantity_index);
+
+        AssertDimension(quantity_index, n_data_components());
+    }
+}
+
+template<int dim>
+void PostProcessor<dim>::evaluate_curl_component
+(const std::vector<Tensor<1,dim>>   &solution_gradients,
+ const unsigned int                  first_vector_component,
+ Vector<double>                     &computed_quantities,
+ unsigned int                       &first_quantity_component) const
+{
+    switch (dim)
+    {
+        case 2:
+            computed_quantities(first_quantity_component)
+            = solution_gradients[first_vector_component+1][0]
+            - solution_gradients[first_vector_component][1];
+            first_quantity_component += 1;
+            break;
+        case 3:
+            computed_quantities(first_quantity_component)
+            = solution_gradients[first_vector_component+2][first_vector_component+1]
+            - solution_gradients[first_vector_component+1][first_vector_component+2];
+            computed_quantities(first_quantity_component+1)
+            = solution_gradients[first_vector_component][first_vector_component+2]
+            - solution_gradients[first_vector_component+2][first_vector_component];
+            computed_quantities(first_quantity_component+2)
+            = solution_gradients[first_vector_component+1][first_vector_component]
+            - solution_gradients[first_vector_component][first_vector_component+1];
+            first_quantity_component += dim;
+            break;
+        default:
+            Assert(false, ExcImpossibleInDim(dim));
+            break;
+    }
+}
+
+template<int dim>
+void PostProcessor<dim>::evaluate_component_projection
+(const Vector<double>               &solution_values,
+ const unsigned int                  first_vector_component,
+ const Tensor<1,dim>                 spherical_basis[dim],
+ Vector<double>                     &computed_quantities,
+ unsigned int                       &first_quantity_index) const
+{
+    Assert(solution_values.size() >= first_vector_component + dim,
+           ExcLowerRange(solution_values.size(),
+                         first_vector_component + dim));
+
+    Assert(computed_quantities.size() >= first_quantity_index + dim,
+           ExcLowerRange(computed_quantities.size(),
+                         first_quantity_index + dim));
+
+    for (unsigned int c=0; c<dim; ++c)
+    {
+        computed_quantities(first_quantity_index+c) = 0;
+
+        double tensor_magnitude = 0;
+
+        for (unsigned int d=0; d<dim; ++d)
+        {
+            computed_quantities(first_quantity_index+c) += spherical_basis[c][d]
+                                                   * solution_values(first_vector_component+d);
+            tensor_magnitude += solution_values(first_vector_component+d)
+                              * solution_values(first_vector_component+d);
+        }
+        tensor_magnitude = sqrt(tensor_magnitude);
+
+        Assert(std::abs(computed_quantities(first_quantity_index+c)) -tensor_magnitude
+               <=  projection_tolerance,
+               ExcLowerRangeType<double>(computed_quantities(first_quantity_index+c),
+                                         tensor_magnitude));
+    }
+    first_quantity_index += dim;
+}
+
+template<int dim>
+void PostProcessor<dim>::evaluate_gradient_projection
+(const std::vector<Tensor<1,dim>>   &solution_gradients,
+ const unsigned int                  solution_component,
+ const Tensor<1,dim>                 spherical_basis[dim],
+ Vector<double>                     &computed_quantities,
+ unsigned int                       &first_quantity_index) const
+{
+    Assert(solution_gradients.size() >= solution_component,
+           ExcLowerRange(solution_gradients.size(),
+                         solution_component + dim));
+
+    Assert(computed_quantities.size() >= first_quantity_index + dim,
+           ExcLowerRange(computed_quantities.size(),
+                         first_quantity_index + dim));
+
+    for (unsigned int c=0; c<dim; ++c)
+    {
+        computed_quantities(first_quantity_index+c) = 0;
+
+        double tensor_magnitude = 0;
+
+        for (unsigned int d=0; d<dim; ++d)
+        {
+            computed_quantities(first_quantity_index+c) += spherical_basis[c][d]
+                                                   * solution_gradients[solution_component][d];
+            tensor_magnitude += solution_gradients[solution_component][d]
+                              * solution_gradients[solution_component][d];
+        }
+        tensor_magnitude = sqrt(tensor_magnitude);
+
+        Assert(std::abs(computed_quantities(first_quantity_index+c)) - tensor_magnitude
+               <=  projection_tolerance,
+               ExcLowerRangeType<double>(std::abs(computed_quantities(first_quantity_index+c)),
+                                         tensor_magnitude));
+    }
+    first_quantity_index += dim;
+}
+
 template<>
-void PostProcessor<2>::evaluate_vector_field(
-        const DataPostprocessorInputs::Vector<2>   &inputs,
-        std::vector<Vector<double>>                &computed_quantities) const
+void PostProcessor<2>::compute_spherical_basis_vectors
+(const Point<2> &point,
+ Tensor<1,2>     basis_vectors[2]) const
 {
     const unsigned int dim = 2;
 
-    const unsigned int n_quadrature_points = inputs.solution_values.size();
-    Assert(computed_quantities.size() == n_quadrature_points,
-           ExcDimensionMismatch(computed_quantities.size(),
-                                n_quadrature_points));
+    // spherical coordinates
+    const double phi = atan2(point[1], point[0]);
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
 
-    Assert(computed_quantities[0].size() == (magnetism? 8 * dim + 6 : 6 * dim + 4),
-           ExcDimensionMismatch(computed_quantities[0].size(),
-                                magnetism? 6 * dim + 6: 4 * dim + 4));
-
-    Assert(inputs.solution_values[0].size() == (magnetism? 2 * dim + 3 : dim + 2),
-           ExcDimensionMismatch(inputs.solution_values[0].size(),
-                                magnetism? 3 * dim + 3 : dim + 2));
-
-    Assert(inputs.solution_gradients[0].size() == (magnetism? 2 * dim + 3 : dim + 2),
-           ExcDimensionMismatch(inputs.solution_gradients[0].size(),
-                                magnetism? 3 * dim + 3 : dim + 2));
-
-    for (unsigned int q=0; q<n_quadrature_points; ++q)
-    {
-        // spherical coordinates
-        const Point<dim>    point = inputs.evaluation_points[q];
-        const double phi = atan2(point[1], point[0]);
-        Assert(phi >= -numbers::PI && phi <= numbers::PI,
-               ExcAzimuthalAngleRange(phi));
-
-        // spherical basis vectors
-        const Tensor<1,dim>   radial_basis_vector({cos(phi) , sin(phi)});
-        const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi)});
-
-        // velocity
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](d) = inputs.solution_values[q](d);
-        // pressure
-        computed_quantities[q](dim) = inputs.solution_values[q](dim);
-        // temperature
-        computed_quantities[q](dim+1) = inputs.solution_values[q](dim+1);
-        // mpi partition
-        computed_quantities[q](dim+2) = partition;
-
-        // spherical components of velocity
-        double velocity_magnitude = 0;
-        computed_quantities[q](dim+3) = 0;
-        computed_quantities[q](dim+4) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](dim+3) += radial_basis_vector[d] * inputs.solution_values[q](d);
-            computed_quantities[q](dim+4) += azimuthal_basis_vector[d] * inputs.solution_values[q](d);
-            velocity_magnitude += inputs.solution_values[q](d) * inputs.solution_values[q](d);
-        }
-        velocity_magnitude = sqrt(velocity_magnitude);
-
-        Assert(std::abs(computed_quantities[q](dim+3)) <= velocity_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](dim+3),
-                                         velocity_magnitude));
-        Assert(std::abs(computed_quantities[q](dim+4)) <= velocity_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](dim+4),
-                                         velocity_magnitude));
-        // vorticity
-        computed_quantities[q](2*dim+3) = inputs.solution_gradients[q][1][0]
-                                      - inputs.solution_gradients[q][0][1];
-
-        // temperature gradient
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](2*dim+4+d) = inputs.solution_gradients[q][dim+1][d];
-
-        // spherical components of temperature gradient
-        double temperature_gradient_magnitude = 0;
-        computed_quantities[q](3*dim+4) = 0;
-        computed_quantities[q](3*dim+5) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](3*dim+4) += radial_basis_vector[d] * inputs.solution_gradients[q][dim+1][d];
-            computed_quantities[q](3*dim+5) += azimuthal_basis_vector[d] * inputs.solution_gradients[q][dim+1][d];
-            temperature_gradient_magnitude += inputs.solution_gradients[q][dim+1][d] * inputs.solution_gradients[q][dim+1][d];
-        }
-        temperature_gradient_magnitude = sqrt(temperature_gradient_magnitude);
-
-        Assert(std::abs(computed_quantities[q](3*dim+4)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](3*dim+4),
-                                         temperature_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](3*dim+5)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](3*dim+5),
-                                         temperature_gradient_magnitude));
-
-        // pressure gradient
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](4*dim+4+d) = inputs.solution_gradients[q][dim][d];
-
-        // spherical components of temperature gradient
-        double pressure_gradient_magnitude = 0;
-        computed_quantities[q](5*dim+4) = 0;
-        computed_quantities[q](5*dim+5) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](5*dim+4) += radial_basis_vector[d] * inputs.solution_gradients[q][dim][d];
-            computed_quantities[q](5*dim+5) += azimuthal_basis_vector[d] * inputs.solution_gradients[q][dim][d];
-            pressure_gradient_magnitude += inputs.solution_gradients[q][dim][d] * inputs.solution_gradients[q][dim][d];
-        }
-        pressure_gradient_magnitude = sqrt(pressure_gradient_magnitude);
-
-        Assert(std::abs(computed_quantities[q](5*dim+4)) <= pressure_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(std::abs(computed_quantities[q](5*dim+4)),
-                                         pressure_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](5*dim+5)) <= pressure_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(std::abs(computed_quantities[q](5*dim+5)),
-                                         pressure_gradient_magnitude));
-
-        if (magnetism)
-        {
-            // magnetic field
-            for (unsigned int d=0; d<dim; ++d)
-                computed_quantities[q](6*dim+4+d) = inputs.solution_values[q](dim+2+d);
-            // magnetic pseudo pressure
-            computed_quantities[q](7*dim+4) = inputs.solution_values[q](2*dim+2);
-
-            // spherical components of magnetic field
-            double magnetic_magnitude = 0;
-            computed_quantities[q](7*dim+5) = 0;
-            computed_quantities[q](7*dim+6) = 0;
-            for (unsigned int d=0; d<dim; ++d)
-            {
-                computed_quantities[q](7*dim+5) += radial_basis_vector[d] * inputs.solution_values[q](dim+2+d);
-                computed_quantities[q](7*dim+6) += azimuthal_basis_vector[d] * inputs.solution_values[q](dim+2+d);
-                magnetic_magnitude += inputs.solution_values[q](dim+2+d) * inputs.solution_values[q](dim+2+d);
-            }
-            magnetic_magnitude = sqrt(magnetic_magnitude);
-
-            Assert(std::abs(computed_quantities[q](5*dim+5)) <= magnetic_magnitude + 1e-12,
-                   ExcLowerRangeType<double>(std::abs(computed_quantities[q](5*dim+5)),
-                                             magnetic_magnitude));
-            Assert(std::abs(computed_quantities[q](5*dim+6)) <= magnetic_magnitude + 1e-12,
-                   ExcLowerRangeType<double>(std::abs(computed_quantities[q](5*dim+6)),
-                                             magnetic_magnitude));
-
-            // curl of magnetic field
-            computed_quantities[q](8*dim+5) = inputs.solution_gradients[q][1][0]
-                                            - inputs.solution_gradients[q][0][1];
-        }
-
-    }
+    // spherical basis vectors
+    basis_vectors[0] = Tensor<1,dim>({cos(phi), sin(phi)});
+    basis_vectors[1] = Tensor<1,dim>({-sin(phi), cos(phi)});
 }
 
+
 template<>
-void PostProcessor<3>::evaluate_vector_field(
-        const DataPostprocessorInputs::Vector<3>   &inputs,
-        std::vector<Vector<double>>                &computed_quantities) const
+void PostProcessor<3>::compute_spherical_basis_vectors
+(const Point<3> &point,
+ Tensor<1,3>     basis_vectors[3]) const
 {
     const unsigned int dim = 3;
 
-    const unsigned int n_quadrature_points = inputs.solution_values.size();
-    Assert(computed_quantities.size() == n_quadrature_points,
-           ExcDimensionMismatch(computed_quantities.size(),
-                                n_quadrature_points));
+    // spherical coordinates
+    const double cylinder_radius = sqrt(  point[0] * point[0]
+                                        + point[1] * point[1]);
+    const double theta = atan2(cylinder_radius, point[2]);
+    Assert(theta >= 0. && theta <= numbers::PI,
+           ExcPolarAngleRange(theta));
+    const double phi = atan2(point[1], point[0]);
+    Assert(phi >= -numbers::PI && phi <= numbers::PI,
+           ExcAzimuthalAngleRange(phi));
 
-    Assert(computed_quantities[0].size() == (magnetism? 10 * dim + 4: 7 * dim + 3),
-           ExcDimensionMismatch(computed_quantities[0].size(),
-                                magnetism? 10 * dim + 4: 7 * dim + 3));
-
-    Assert(inputs.solution_values[0].size() == (magnetism? 2 * dim + 3: dim + 2),
-           ExcDimensionMismatch(inputs.solution_values[0].size(),
-                                magnetism? 2 * dim + 3: dim + 2));
-    for (unsigned int q=0; q<n_quadrature_points; ++q)
-    {
-        // spherical coordinates
-        const Point<dim>    point = inputs.evaluation_points[q];
-        const double cylinder_radius = sqrt(point[0]*point[0] + point[1]*point[1]);
-        const double theta = atan2(cylinder_radius, point[2]);
-        Assert(theta >= 0. && theta <= numbers::PI,
-               ExcPolarAngleRange(theta));
-        const double phi = atan2(point[1], point[0]);
-        Assert(phi >= -numbers::PI && phi <= numbers::PI,
-               ExcAzimuthalAngleRange(phi));
-
-        // spherical basis vectors
-        const Tensor<1,dim>   radial_basis_vector({cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)});
-        const Tensor<1,dim>   polar_basis_vector({cos(phi) * cos(theta), sin(phi) * cos(theta), sin(theta)});
-        const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi) , 0.});
-
-        // velocity
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](d) = inputs.solution_values[q](d);
-        // pressure
-        computed_quantities[q](dim) = inputs.solution_values[q](dim);
-        // temperature
-        computed_quantities[q](dim+1) = inputs.solution_values[q](dim+1);
-        // mpi partition
-        computed_quantities[q](dim+2) = partition;
-
-        // spherical components of velocity
-        double velocity_magnitude = 0;
-        computed_quantities[q](dim+3) = 0;
-        computed_quantities[q](dim+4) = 0;
-        computed_quantities[q](dim+5) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](dim+3) += radial_basis_vector[d] * inputs.solution_values[q](d);
-            computed_quantities[q](dim+4) += polar_basis_vector[d] * inputs.solution_values[q](d);
-            computed_quantities[q](dim+5) += azimuthal_basis_vector[d] * inputs.solution_values[q](d);
-            velocity_magnitude += inputs.solution_values[q](d) * inputs.solution_values[q](d);
-        }
-        velocity_magnitude = sqrt(velocity_magnitude);
-
-        Assert(std::abs(computed_quantities[q](dim+3)) <= velocity_magnitude,
-               ExcLowerRangeType<double>(computed_quantities[q](dim+3),
-                                         velocity_magnitude));
-        Assert(std::abs(computed_quantities[q](dim+4)) <= velocity_magnitude,
-               ExcLowerRangeType<double>(computed_quantities[q](dim+4),
-                                         velocity_magnitude));
-        Assert(std::abs(computed_quantities[q](dim+5)) <= velocity_magnitude,
-               ExcLowerRangeType<double>(computed_quantities[q](dim+5),
-                                         velocity_magnitude));
-
-        // vorticity
-        computed_quantities[q](2*dim+3) = inputs.solution_gradients[q][2][1]
-                                        - inputs.solution_gradients[q][1][2];
-        computed_quantities[q](2*dim+4) = inputs.solution_gradients[q][0][2]
-                                        - inputs.solution_gradients[q][2][0];
-        computed_quantities[q](2*dim+5) = inputs.solution_gradients[q][1][0]
-                                        - inputs.solution_gradients[q][0][1];
-
-        // temperature gradient
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](3*dim+3+d) = inputs.solution_gradients[q][dim+1][d];
-
-        // spherical components of temperature gradient
-        double temperature_gradient_magnitude = 0;
-        computed_quantities[q](4*dim+3) = 0;
-        computed_quantities[q](4*dim+4) = 0;
-        computed_quantities[q](4*dim+5) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](4*dim+3) += radial_basis_vector[d] * inputs.solution_gradients[q][dim+1][d];
-            computed_quantities[q](4*dim+4) += azimuthal_basis_vector[d] * inputs.solution_gradients[q][dim+1][d];
-            computed_quantities[q](4*dim+5) += polar_basis_vector[d] * inputs.solution_gradients[q][dim+1][d];
-            temperature_gradient_magnitude += inputs.solution_gradients[q][dim+1][d] * inputs.solution_gradients[q][dim+1][d];
-        }
-        temperature_gradient_magnitude = sqrt(temperature_gradient_magnitude);
-
-        Assert(std::abs(computed_quantities[q](4*dim+3)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](4*dim+3),
-                                         temperature_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](4*dim+4)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](4*dim+4),
-                                         temperature_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](4*dim+5)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(computed_quantities[q](4*dim+5),
-                                         temperature_gradient_magnitude));
-
-        // pressure gradient
-        for (unsigned int d=0; d<dim; ++d)
-            computed_quantities[q](5*dim+3+d) = inputs.solution_gradients[q][dim][d];
-
-        // spherical components of pressure gradient
-        double pressure_gradient_magnitude = 0;
-        computed_quantities[q](6*dim+3) = 0;
-        computed_quantities[q](6*dim+4) = 0;
-        computed_quantities[q](6*dim+5) = 0;
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities[q](6*dim+3) += radial_basis_vector[d] * inputs.solution_gradients[q][dim][d];
-            computed_quantities[q](6*dim+4) += azimuthal_basis_vector[d] * inputs.solution_gradients[q][dim][d];
-            computed_quantities[q](6*dim+5) += polar_basis_vector[d] * inputs.solution_gradients[q][dim][d];
-            pressure_gradient_magnitude += inputs.solution_gradients[q][dim][d] * inputs.solution_gradients[q][dim][d];
-        }
-        pressure_gradient_magnitude = sqrt(pressure_gradient_magnitude);
-
-        Assert(std::abs(computed_quantities[q](6*dim+3)) <= pressure_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(std::abs(computed_quantities[q](6*dim+3)),
-                                         pressure_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](6*dim+4)) <= pressure_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(std::abs(computed_quantities[q](6*dim+4)),
-                                         pressure_gradient_magnitude));
-        Assert(std::abs(computed_quantities[q](6*dim+5)) <= temperature_gradient_magnitude + 1e-12,
-               ExcLowerRangeType<double>(std::abs(computed_quantities[q](4*dim+5)),
-                                         pressure_gradient_magnitude));
-
-        if (magnetism)
-        {
-            // magnetic field
-            for (unsigned int d=0; d<dim; ++d)
-                computed_quantities[q](7*dim+3+d) = inputs.solution_values[q](dim+2+d);
-            // magnetic pseudo pressure
-            computed_quantities[q](8*dim+3) = inputs.solution_values[q](2*dim+2);
-
-            // spherical components of magnetic field
-            double magnetic_magnitude = 0;
-            computed_quantities[q](8*dim+4) = 0;
-            computed_quantities[q](8*dim+5) = 0;
-            computed_quantities[q](8*dim+6) = 0;
-            for (unsigned int d=0; d<dim; ++d)
-            {
-                computed_quantities[q](8*dim+4) += radial_basis_vector[d] * inputs.solution_values[q](dim+2+d);
-                computed_quantities[q](8*dim+5) += polar_basis_vector[d] * inputs.solution_values[q](dim+2+d);
-                computed_quantities[q](8*dim+6) += azimuthal_basis_vector[d] * inputs.solution_values[q](dim+2+d);
-                magnetic_magnitude += inputs.solution_values[q](d) * inputs.solution_values[q](dim+2+d);
-            }
-            magnetic_magnitude = sqrt(magnetic_magnitude);
-
-            Assert(std::abs(computed_quantities[q](6*dim+4)) <= magnetic_magnitude,
-                   ExcLowerRangeType<double>(std::abs(computed_quantities[q](6*dim+4)),
-                                             magnetic_magnitude));
-            Assert(std::abs(computed_quantities[q](6*dim+5)) <= magnetic_magnitude,
-                   ExcLowerRangeType<double>(std::abs(computed_quantities[q](6*dim+5)),
-                                             magnetic_magnitude));
-            Assert(std::abs(computed_quantities[q](6*dim+6)) <= magnetic_magnitude,
-                   ExcLowerRangeType<double>(std::abs(computed_quantities[q](6*dim+6)),
-                                             magnetic_magnitude));
-
-            // curl of magnetic field
-            computed_quantities[q](9*dim+4) = inputs.solution_gradients[q][dim+4][1]
-                                            - inputs.solution_gradients[q][dim+3][2];
-            computed_quantities[q](9*dim+5) = inputs.solution_gradients[q][dim+2][2]
-                                            - inputs.solution_gradients[q][dim+4][0];
-            computed_quantities[q](9*dim+6) = inputs.solution_gradients[q][dim+3][0]
-                                            - inputs.solution_gradients[q][dim+2][1];
-        }
-    }
+    // spherical basis vectors
+    basis_vectors[0] = Tensor<1,dim>({cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)});
+    basis_vectors[1] = Tensor<1,dim>({cos(phi) * cos(theta), sin(phi) * cos(theta), sin(theta)});
+    basis_vectors[2] = Tensor<1,dim>({-sin(phi), cos(phi) , 0.});
 }
-
 }  // namespace BuoyantFluid
 
 // explicit instantiation

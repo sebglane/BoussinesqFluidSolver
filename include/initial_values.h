@@ -24,8 +24,9 @@ namespace EquationData {
  */
 enum TemperaturePerturbation
 {
-    None,
-    Sinusoidal
+    none,
+    sinusoidal,
+    default_perturbation=none
 };
 
 /*
@@ -35,8 +36,9 @@ enum TemperaturePerturbation
  */
 enum GravityProfile
 {
-    Constant,
-    Linear
+    constant,
+    linear,
+    default_profile=linear
 };
 
 using namespace dealii;
@@ -65,7 +67,7 @@ class TemperatureInitialValues : public Function<dim>
 public:
     TemperatureInitialValues(const double inner_radius,
                              const double outer_radius,
-                             const TemperaturePerturbation  perturbation_type = TemperaturePerturbation::None);
+                             const TemperaturePerturbation  perturbation_type = TemperaturePerturbation::none);
 
     virtual double value(const Point<dim>   &point,
                          const unsigned int component = 0) const;
@@ -97,7 +99,7 @@ class GravityFunction : public TensorFunction<1,dim>
 {
 public:
     GravityFunction(const double    outer_radius = 1.0,
-                    const GravityProfile    profile_type = GravityProfile::Constant);
+                    const GravityProfile    profile_type = GravityProfile::constant);
 
     virtual Tensor<1,dim>   value(const Point<dim> &p) const;
 

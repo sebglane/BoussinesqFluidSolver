@@ -10,8 +10,9 @@
 
 #include <deal.II/base/parameter_handler.h>
 
-#include "initial_values.h"
-#include "timestepping.h"
+#include <initial_values.h>
+#include <timestepping.h>
+#include <postprocessor.h>
 
 namespace BuoyantFluid {
 
@@ -67,6 +68,10 @@ struct Parameters
 
     bool            adaptive_refinement;
     bool            resume_from_snapshot;
+
+    // output parameters
+    OutputFlags     output_flags;
+    bool            output_benchmark_results;
 
     // logging parameters
     unsigned int    vtk_frequency;
