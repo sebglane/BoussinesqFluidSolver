@@ -169,7 +169,7 @@ void BuoyantFluidSolver<dim>::assemble_navier_stokes_matrices()
     navier_stokes_mass_matrix.compress(VectorOperation::add);
     navier_stokes_laplace_matrix.compress(VectorOperation::add);
 
-    // rebuild both preconditionerss
+    // rebuild both preconditioners
     rebuild_projection_preconditioner = true;
     rebuild_pressure_mass_preconditioner = true;
 
@@ -221,8 +221,8 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_matrices()
     magnetic_stabilization_matrix.compress(VectorOperation::add);
 
     // rebuild both preconditionerss
-    rebuild_projection_preconditioner = true;
-    rebuild_pressure_mass_preconditioner = true;
+    rebuild_magnetic_projection_preconditioner = true;
+    rebuild_magnetic_pressure_mass_preconditioner = true;
 
     // do not rebuild stokes matrices again
     rebuild_magnetic_matrices = false;
