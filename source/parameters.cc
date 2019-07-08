@@ -43,7 +43,9 @@ magnetic_induction(false),
 // linear solver parameters
 rel_tol(1e-6),
 abs_tol(1e-9),
-n_max_iter(50),
+max_iter_navier_stokes(50),
+max_iter_temperature(200),
+max_iter_magnetic(50),
 // time stepping parameters
 imex_scheme(TimeStepping::CNAB),
 initial_timestep(1e-3),
@@ -314,7 +316,8 @@ void Parameters::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("magnetic_induction",
                 "false",
                 Patterns::Bool(),
-                "Turn the magnetic induction and the Lorentz force term on or off.");
+                "Turn the magnetic induction term and the Lorentz force term on or off "
+                "in the magnetic induction equation and the momentum equation.");
 
         prm.declare_entry("Pr",
                 "1.0",
@@ -348,17 +351,27 @@ void Parameters::declare_parameters(ParameterHandler &prm)
         prm.declare_entry("tol_rel",
                 "1e-6",
                 Patterns::Double(),
-                "Relative tolerance for the stokes solver.");
+                "Relative tolerance for all linear solvers.");
 
         prm.declare_entry("tol_abs",
                 "1e-9",
                 Patterns::Double(),
-                "Absolute tolerance for the stokes solver.");
+                "Absolute tolerance for all linear solvers.");
 
-        prm.declare_entry("n_max_iter",
+        prm.declare_entry("max_iter_navier_stokes",
                 "50",
                 Patterns::Integer(0),
-                "Maximum number of iterations for the stokes solver.");
+                "Maximum number of iterations for the Navier-Stokes solver.");
+
+        prm.declare_entry("max_iter_temperature",
+                "200",
+                Patterns::Integer(0),
+                "Maximum number of iterations for the temperature solver.");
+
+        prm.declare_entry("max_iter_magnetic",
+                "50",
+                Patterns::Integer(0),
+                "Maximum number of iterations for the magnetic solver.");
     }
     prm.leave_subsection();
 
@@ -508,6 +521,7 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         Assert(magnetic_degree > 1, ExcLowerRange(magnetic_degree, 1));
 
         aspect_ratio = prm.get_double("aspect_ratio");
+        Assert(aspect_ratio > 0., ExcLowerRangeType<double>(0., aspect_ratio));
         Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
 
         prm.declare_entry("convective_discretization_type",
@@ -619,6 +633,12 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         magnetism = prm.get_bool("magnetic_case");
 
         magnetic_induction = prm.get_bool("magnetic_induction");
+        if (magnetic_induction)
+            Assert(magnetic_induction && magnetism,
+                   ExcMessage("The parameter magnetic_induction cannot be active "
+                              "unless the parameter magnetism is active, "
+                              "because the magnetic field needs to be solved "
+                              "in order to compute the Lorentz force."));
 
         Ra = prm.get_double("Ra");
         Assert(Ra > 0, ExcLowerRangeType<double>(Ra, 0));
@@ -699,8 +719,14 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         abs_tol = prm.get_double("tol_abs");
         Assert(abs_tol > 0, ExcLowerRangeType<double>(abs_tol, 0));
 
-        n_max_iter = prm.get_integer("n_max_iter");
-        Assert(n_max_iter > 0, ExcLowerRange(n_max_iter, 0));
+        max_iter_navier_stokes = prm.get_integer("max_iter_navier_stokes");
+        Assert(max_iter_navier_stokes > 0, ExcLowerRange(max_iter_navier_stokes, 0));
+
+        max_iter_temperature = prm.get_integer("max_iter_temperature");
+        Assert(max_iter_temperature > 0, ExcLowerRange(max_iter_temperature, 0));
+
+        max_iter_magnetic = prm.get_integer("max_iter_magnetic");
+        Assert(max_iter_temperature > 0, ExcLowerRange(max_iter_magnetic, 0));
     }
     prm.leave_subsection();
 }

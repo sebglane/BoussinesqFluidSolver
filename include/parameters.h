@@ -105,8 +105,9 @@ struct Parameters
     double          rel_tol;
     double          abs_tol;
 
-    unsigned int    n_max_iter;
-
+    unsigned int    max_iter_navier_stokes;
+    unsigned int    max_iter_temperature;
+    unsigned int    max_iter_magnetic;
     // time stepping parameters
     TimeStepping::IMEXType  imex_scheme;
 

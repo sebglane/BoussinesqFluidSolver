@@ -8,7 +8,7 @@
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
 
-#include "buoyant_fluid_solver.h"
+#include <buoyant_fluid_solver.h>
 
 namespace BuoyantFluid {
 
@@ -36,13 +36,12 @@ void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
 
     TimerOutput::Scope timer_section(computing_timer, "build preconditioner temperature");
 
-    preconditioner_temperature.reset(new LA::PreconditionSSOR());
+    preconditioner_temperature.reset(new LA::PreconditionJacobi());
 
-    LA::PreconditionSSOR::AdditionalData     data;
-    data.omega = 0.6;
+    LA::PreconditionJacobi::AdditionalData     data;
 
     preconditioner_temperature->initialize(temperature_matrix,
-                                 data);
+                                           data);
 
     rebuild_temperature_preconditioner = false;
 }
@@ -59,7 +58,7 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
     LA::Vector  distributed_solution(temperature_rhs);
     distributed_solution = temperature_solution;
 
-    SolverControl solver_control(parameters.n_max_iter,
+    SolverControl solver_control(parameters.max_iter_temperature,
                                  std::max(parameters.rel_tol * temperature_rhs.l2_norm(),
                                           parameters.abs_tol));
 

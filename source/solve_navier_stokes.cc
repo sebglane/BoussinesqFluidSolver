@@ -133,7 +133,7 @@ void BuoyantFluidSolver<dim>::solve_diffusion_system()
     TimerOutput::Scope  timer_section(computing_timer, "solve diffusion");
 
     // solve linear system
-    SolverControl   solver_control(parameters.n_max_iter,
+    SolverControl   solver_control(parameters.max_iter_navier_stokes,
                                    std::max(parameters.rel_tol * navier_stokes_rhs.block(0).l2_norm(),
                                             parameters.abs_tol));;
 
@@ -206,7 +206,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
     TimerOutput::Scope  timer_section(computing_timer, "solve projection");
 
     // solve linear system for pressure update
-    SolverControl   solver_control(parameters.n_max_iter,
+    SolverControl   solver_control(parameters.max_iter_navier_stokes,
                                    std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
                                    parameters.abs_tol));
 
@@ -315,7 +315,7 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
         navier_stokes_rhs.compress(VectorOperation::add);
 
         // solve linear system for irrotational update
-        SolverControl   solver_control(parameters.n_max_iter,
+        SolverControl   solver_control(parameters.max_iter_navier_stokes,
                                        std::max(parameters.rel_tol * navier_stokes_rhs.block(1).l2_norm(),
                                                 parameters.abs_tol));
 

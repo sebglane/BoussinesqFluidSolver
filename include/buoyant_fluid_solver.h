@@ -404,7 +404,7 @@ private:
     /*
      * preconditioner pointers
      */
-    std::shared_ptr<LA::PreconditionSSOR>
+    std::shared_ptr<LA::PreconditionJacobi>
     preconditioner_temperature;
 
     std::shared_ptr<LA::PreconditionAMG>

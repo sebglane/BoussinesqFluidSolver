@@ -114,7 +114,7 @@ void BuoyantFluidSolver<dim>::solve_magnetic_diffusion_system()
     TimerOutput::Scope  timer_section(computing_timer, "solve diffusion");
 
     // solve linear system
-    SolverControl   solver_control(parameters.n_max_iter,
+    SolverControl   solver_control(parameters.max_iter_magnetic,
                                    std::max(parameters.rel_tol * magnetic_rhs.block(0).l2_norm(),
                                             parameters.abs_tol));;
 
@@ -175,7 +175,7 @@ void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
     TimerOutput::Scope  timer_section(computing_timer, "solve magnetic projection");
 
     // solve linear system for irrotational pseudo pressure update
-    SolverControl   solver_control(parameters.n_max_iter,
+    SolverControl   solver_control(parameters.max_iter_magnetic,
                                    std::max(parameters.rel_tol * magnetic_rhs.block(1).l2_norm(),
                                    parameters.abs_tol));
 
@@ -272,7 +272,7 @@ void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
         magnetic_rhs.compress(VectorOperation::add);
 
         // solve linear system for irrotational update
-        SolverControl   solver_control(parameters.n_max_iter,
+        SolverControl   solver_control(parameters.max_iter_magnetic,
                                        std::max(parameters.rel_tol * magnetic_rhs.block(1).l2_norm(),
                                                 parameters.abs_tol));
 
