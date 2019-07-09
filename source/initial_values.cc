@@ -243,7 +243,9 @@ Tensor<1,2> MagneticFieldInitialValues<2>::value
            ExcAzimuthalAngleRange(phi));
 
     const double B_phi
-    = 15. / (8. * sqrt(2)) * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius));
+    = 15. / (8. * sqrt(2))
+    * sin(numbers::PI * scaling_factors[1] * scaling_factors[1] *
+          (radius -  inner_radius) * (radius - outer_radius) );
     AssertIsFinite(B_phi);
 
     return Tensor<1,dim>({- B_phi * sin(phi), B_phi * cos(phi)});
@@ -271,22 +273,24 @@ Tensor<1,3> MagneticFieldInitialValues<3>::value
 
     const double B_r
     = 5. / (8. * sqrt(2))
-    * (  -48. * inner_radius * outer_radius
-       + (4. * outer_radius + inner_radius * (4. + 3. * outer_radius)) * 6. * radius
-       - 4. * (4. + 3. *(outer_radius + inner_radius)) * radius * radius
-       + 9. * radius * radius * radius) / radius
+    * (  coefficients[0] / radius
+       + coefficients[1]
+       + coefficients[2] * radius
+       + coefficients[3] * radius * radius )
     * cos(theta);
     AssertIsFinite(B_r);
 
     const double B_theta
-    = -15. / (4. * sqrt(2))
-    * (radius - inner_radius) * (radius - outer_radius) * (3. * radius - 4.) / radius
+    = -15. / (4. * sqrt(2)) * scaling_factors[1]
+    * (radius - inner_radius) * (radius - outer_radius)
+    * (3. * scaling_factors[1] * radius - 4.) / radius
     * sin(theta);
     AssertIsFinite(B_theta);
 
     const double B_phi
     = 15. / (8. * sqrt(2))
-    * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius))
+    * sin(numbers::PI * scaling_factors[1] * scaling_factors[1] *
+          (radius -  inner_radius) * (radius - outer_radius) )
     * sin(2. * theta);
     AssertIsFinite(B_phi);
 

@@ -91,6 +91,17 @@ public:
 private:
     const double inner_radius;
     const double outer_radius;
+
+    const double scaling_factors[2] = {7. / 13., 20. / 13.};
+
+    const double coefficients[4]
+    =
+    {
+            -48. * scaling_factors[0],
+            6. * (4. * scaling_factors[1] + scaling_factors[0] * (4. + 3. * scaling_factors[1])),
+            -4. * (4. + 3. * (scaling_factors[0] + scaling_factors[1])) * scaling_factors[1],
+            9. * scaling_factors[1] * scaling_factors[1]
+    };
 };
 
 template <int dim>

@@ -101,7 +101,7 @@ phi_benchmark(-2.*numbers::PI)
 
     std::stringstream ss;
 
-    if (parameters.rotation && !parameters.rotation)
+    if (parameters.rotation && !parameters.magnetism)
     {
         rotation_vector[dim-1] = 1.0;
 
@@ -123,7 +123,7 @@ phi_benchmark(-2.*numbers::PI)
         ss << " | ";
         ss << "\n+----------+----------+----------+----------+\n";
     }
-    else if (parameters.rotation && parameters.rotation)
+    else if (parameters.rotation && parameters.magnetism)
     {
         rotation_vector[dim-1] = 1.0;
 

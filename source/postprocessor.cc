@@ -625,8 +625,8 @@ void PostProcessor<dim>::evaluate_component_projection
 
         for (unsigned int d=0; d<dim; ++d)
         {
-            computed_quantities(first_quantity_index+c) += spherical_basis[c][d]
-                                                   * solution_values(first_vector_component+d);
+            computed_quantities(first_quantity_index+c)
+            += spherical_basis[c][d] * solution_values(first_vector_component+d);
             tensor_magnitude += solution_values(first_vector_component+d)
                               * solution_values(first_vector_component+d);
         }
@@ -664,8 +664,8 @@ void PostProcessor<dim>::evaluate_gradient_projection
 
         for (unsigned int d=0; d<dim; ++d)
         {
-            computed_quantities(first_quantity_index+c) += spherical_basis[c][d]
-                                                   * solution_gradients[solution_component][d];
+            computed_quantities(first_quantity_index+c)
+            += spherical_basis[c][d] * solution_gradients[solution_component][d];
             tensor_magnitude += solution_gradients[solution_component][d]
                               * solution_gradients[solution_component][d];
         }
@@ -716,7 +716,7 @@ void PostProcessor<3>::compute_spherical_basis_vectors
 
     // spherical basis vectors
     basis_vectors[0] = Tensor<1,dim>({cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)});
-    basis_vectors[1] = Tensor<1,dim>({cos(phi) * cos(theta), sin(phi) * cos(theta), sin(theta)});
+    basis_vectors[1] = Tensor<1,dim>({cos(phi) * cos(theta), sin(phi) * cos(theta), -sin(theta)});
     basis_vectors[2] = Tensor<1,dim>({-sin(phi), cos(phi) , 0.});
 }
 }  // namespace BuoyantFluid
