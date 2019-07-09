@@ -17,7 +17,7 @@ void BuoyantFluidSolver<dim>::project_magnetic_field()
     assemble_magnetic_matrices();
 
     // assemble right-hand side vector
-    QGauss<dim> quadrature(parameters.magnetic_degree + 2);
+    QGauss<dim> quadrature(parameters.magnetic_degree + 4);
 
     FEValues<dim>   magnetic_fe_values(mapping,
                                        magnetic_fe,

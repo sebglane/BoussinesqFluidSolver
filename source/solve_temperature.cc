@@ -18,7 +18,7 @@ void BuoyantFluidSolver<dim>::project_temperature_field()
     assemble_temperature_system();
 
     // assemble right-hand side vector
-    QGauss<dim> quadrature(parameters.temperature_degree + 2);
+    QGauss<dim> quadrature(parameters.temperature_degree + 4);
 
     FEValues<dim>   temperature_fe_values(mapping,
                                           temperature_fe,
