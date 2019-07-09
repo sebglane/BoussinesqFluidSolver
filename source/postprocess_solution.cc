@@ -99,7 +99,7 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
             }
             for (unsigned int q=0; q<n_temperature_q_points; ++q)
             {
-                local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+                local_sum_temperature += temperature_values[q] * temperature_fe_values.JxW(q);
                 local_temperature_volume += temperature_fe_values.JxW(q);
             }
             for (unsigned int q=0; q<n_magnetic_q_points; ++q)
@@ -131,11 +131,11 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 
         const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
         const double kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
-        const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
+        const double avg_temperature = global_sums[1] / global_sums[3];
         const double rms_magnetic_field = std::sqrt(global_sums[4] / global_sums[5]);
         const double magnetic_energy = 0.5 * global_sums[4] / global_sums[5];
 
-        return std::vector<double>{rms_velocity, kinetic_energy, rms_temperature,
+        return std::vector<double>{rms_velocity, kinetic_energy, avg_temperature,
                                    rms_magnetic_field, magnetic_energy};
     }
     else
@@ -159,7 +159,7 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
             }
             for (unsigned int q=0; q<n_temperature_q_points; ++q)
             {
-                local_sum_temperature += temperature_values[q] * temperature_values[q] * temperature_fe_values.JxW(q);
+                local_sum_temperature += temperature_values[q] * temperature_fe_values.JxW(q);
                 local_temperature_volume += temperature_fe_values.JxW(q);
             }
         }
@@ -184,9 +184,9 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 
         const double rms_velocity = std::sqrt(global_sums[0] / global_sums[2]);
         const double kinetic_energy = 0.5 * global_sums[0] / global_sums[2];
-        const double rms_temperature = std::sqrt(global_sums[1] / global_sums[3]);
+        const double avg_temperature = global_sums[1] / global_sums[3];
 
-        return std::vector<double>{rms_velocity, kinetic_energy, rms_temperature};
+        return std::vector<double>{rms_velocity, kinetic_energy, avg_temperature};
     }
 }
 

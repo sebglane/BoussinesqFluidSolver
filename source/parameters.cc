@@ -475,9 +475,9 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         std::string perturbation_string = prm.get("temperature_perturbation");
 
         if (perturbation_string == "None")
-            temperature_perturbation = EquationData::TemperaturePerturbation::none;
+            temperature_perturbation = EquationData::TemperaturePerturbation::None;
         else if (perturbation_string == "Sinusoidal")
-            temperature_perturbation = EquationData::TemperaturePerturbation::sinusoidal;
+            temperature_perturbation = EquationData::TemperaturePerturbation::Sinusoidal;
         else
             AssertThrow(false, ExcMessage("Unexpected string for temperature perturbation."));
     }

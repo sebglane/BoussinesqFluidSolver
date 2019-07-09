@@ -24,10 +24,10 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
-#include "buoyant_fluid_solver.h"
-#include "initial_values.h"
-#include "snapshot_information.h"
-#include "postprocessor.h"
+#include <buoyant_fluid_solver.h>
+#include <initial_values.h>
+#include <snapshot_information.h>
+#include <postprocessor.h>
 
 namespace BuoyantFluid {
 
@@ -188,7 +188,7 @@ phi_benchmark(-2.*numbers::PI)
     global_avg_table.declare_column("time");
     global_avg_table.declare_column("velocity rms");
     global_avg_table.declare_column("kinetic energy");
-    global_avg_table.declare_column("temperature rms");
+    global_avg_table.declare_column("temperature avg");
 
     if (parameters.magnetism)
     {
@@ -763,78 +763,28 @@ void BuoyantFluidSolver<dim>::run()
     {
         TimerOutput::Scope  timer_section(computing_timer, "compute initialization");
 
-        const EquationData::TemperatureInitialValues<dim>
-        initial_temperature(parameters.aspect_ratio,
-                            1.0,
-                            parameters.temperature_perturbation);
-
-        const EquationData::MagneticFieldInitialValues<dim>
-        initial_magnetic_field(parameters.aspect_ratio,
-                               1.0);
-
-        // initial condition for temperature
+        // initial conditions
         if (parameters.n_initial_refinements == 0)
         {
-            LA::Vector  distributed_temperature(temperature_rhs);
-
-            VectorTools::interpolate(mapping,
-                                     temperature_dof_handler,
-                                     initial_temperature,
-                                     distributed_temperature);
-            temperature_constraints.distribute(distributed_temperature);
-
-            old_temperature_solution = distributed_temperature;
+            // project initial conditions
+            project_temperature_field();
 
             if (parameters.magnetism)
-            {
-                // interpolate magnetic field
-                LA::BlockVector distributed_magnetic_field(magnetic_rhs);
-
-                VectorTools::interpolate(mapping,
-                                         magnetic_dof_handler,
-                                         initial_magnetic_field,
-                                         distributed_magnetic_field);
-
-                old_magnetic_solution = distributed_magnetic_field;
-            }
+                project_magnetic_field();
         }
         else
         {
             unsigned int cnt = 0;
             while (cnt < parameters.n_initial_refinements)
             {
-                // interpolate initial temperature
-                LA::Vector  distributed_temperature(temperature_rhs);
-
-                VectorTools::interpolate(mapping,
-                                         temperature_dof_handler,
-                                         initial_temperature,
-                                         distributed_temperature);
-                temperature_constraints.distribute(distributed_temperature);
-
-                old_temperature_solution = distributed_temperature;
-
-                // copy solution vectors for mesh refinement
-                temperature_solution = old_temperature_solution;
+                // project initial conditions
+                project_temperature_field();
 
                 if (parameters.magnetism)
-                {
-                    // interpolate magnetic field
-                    LA::BlockVector distributed_magnetic_field(magnetic_rhs);
+                    project_magnetic_field();
 
-                    VectorTools::interpolate(mapping,
-                                             magnetic_dof_handler,
-                                             initial_magnetic_field,
-                                             distributed_magnetic_field);
-
-                    old_magnetic_solution = distributed_magnetic_field;
-
-                    // copy solution vectors for mesh refinement
-                    magnetic_solution = old_magnetic_solution;
-                }
-
+                // refine the mesh
                 refine_mesh();
-
                 ++cnt;
             }
             pcout << "   Number of cells after "
@@ -843,12 +793,8 @@ void BuoyantFluidSolver<dim>::run()
                   << triangulation.n_global_active_cells()
                   << std::endl;
         }
-
         // compute consistent initial pressure
         compute_initial_pressure();
-
-        // copy solution vectors for output
-        navier_stokes_solution = old_navier_stokes_solution;
     }
     }
     else
@@ -860,6 +806,50 @@ void BuoyantFluidSolver<dim>::run()
 
     // output of the initial condition
     output_results(true);
+
+    // compute rms values
+    {
+        TimerOutput::Scope  timer_section(computing_timer, "compute global averages values");
+
+        const std::vector<double> global_avg = compute_global_averages();
+
+        pcout << "   Velocity rms value: "
+              << global_avg[0]
+              << std::endl
+              << "   Temperature globally average value: "
+              << global_avg[2]
+              << std::endl;
+        if (parameters.magnetism)
+        {
+            AssertDimension(global_avg.size(), 5);
+
+            pcout << "   Magnetic field rms value: "
+                  << global_avg[3]
+                  << std::endl;
+        }
+
+        pcout << "   Kinetic energy: " << global_avg[1] << std::endl;
+        if (parameters.magnetism)
+        {
+            AssertDimension(global_avg.size(), 5);
+
+            pcout << "   Magnetic energy: "
+                  << global_avg[4]
+                  << std::endl;
+        }
+
+        // add values to table
+        global_avg_table.add_value("timestep", timestep_number);
+        global_avg_table.add_value("time", 0.0);
+        global_avg_table.add_value("velocity rms", global_avg[0]);
+        global_avg_table.add_value("kinetic energy", global_avg[1]);
+        global_avg_table.add_value("temperature avg", global_avg[2]);
+        if (parameters.magnetism)
+        {
+            global_avg_table.add_value("magnetic rms", global_avg[3]);
+            global_avg_table.add_value("magnetic energy", global_avg[4]);
+        }
+    }
 
     double  time = 0;
     double  cfl_number = 0;
@@ -894,7 +884,7 @@ void BuoyantFluidSolver<dim>::run()
             pcout << "   Velocity rms value: "
                   << global_avg[0]
                   << std::endl
-                  << "   Temperature rms value: "
+                  << "   Temperature globally averaged value: "
                   << global_avg[2]
                   << std::endl;
             if (parameters.magnetism)
@@ -921,7 +911,7 @@ void BuoyantFluidSolver<dim>::run()
             global_avg_table.add_value("time", time);
             global_avg_table.add_value("velocity rms", global_avg[0]);
             global_avg_table.add_value("kinetic energy", global_avg[1]);
-            global_avg_table.add_value("temperature rms", global_avg[2]);
+            global_avg_table.add_value("temperature avg", global_avg[2]);
             if (parameters.magnetism)
             {
                 global_avg_table.add_value("magnetic rms", global_avg[3]);

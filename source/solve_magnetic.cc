@@ -7,9 +7,126 @@
 
 #include <deal.II/lac/solver_control.h>
 
-#include "buoyant_fluid_solver.h"
+#include <buoyant_fluid_solver.h>
 
 namespace BuoyantFluid {
+
+template<int dim>
+void BuoyantFluidSolver<dim>::project_magnetic_field()
+{
+    assemble_magnetic_matrices();
+
+    // assemble right-hand side vector
+    QGauss<dim> quadrature(parameters.magnetic_degree + 2);
+
+    FEValues<dim>   magnetic_fe_values(mapping,
+                                       magnetic_fe,
+                                       quadrature,
+                                       update_values|
+                                       update_quadrature_points|
+                                       update_JxW_values);
+    const unsigned int dofs_per_cell = magnetic_fe_values.dofs_per_cell,
+                       n_q_points = magnetic_fe_values.n_quadrature_points;
+
+    const FEValuesExtractors::Vector    magnetic_field(0);
+
+    std::vector<types::global_dof_index>    local_dof_indices(dofs_per_cell);
+
+    Vector<double>                          local_rhs(dofs_per_cell);
+    FullMatrix<double>                      local_matrix_for_bc(dofs_per_cell);
+
+    std::vector<Tensor<1,dim>>              magnetic_field_values(n_q_points);
+
+    LA::BlockVector     distributed_solution_vector(magnetic_rhs),
+                        distributed_rhs_vector(magnetic_rhs);
+    LA::Vector          &solution_vector = distributed_solution_vector.block(0);
+    LA::Vector          &rhs_vector = distributed_rhs_vector.block(0);
+
+    const EquationData::MagneticFieldInitialValues<dim>
+    initial_magnetic_field(parameters.aspect_ratio,
+                           1.0);
+
+    for (auto cell: magnetic_dof_handler.active_cell_iterators())
+        if (cell->is_locally_owned())
+        {
+            magnetic_fe_values.reinit(cell);
+
+            cell->get_dof_indices(local_dof_indices);
+
+            initial_magnetic_field.value_list(magnetic_fe_values.get_quadrature_points(),
+                                              magnetic_field_values);
+
+            local_rhs = 0;
+            local_matrix_for_bc = 0;
+
+            for (unsigned int q=0; q<n_q_points; ++q)
+                for (unsigned int i=0; i<dofs_per_cell; ++i)
+                {
+                    local_rhs(i) += magnetic_field_values[q] * magnetic_fe_values[magnetic_field].value(i,q)
+                                  * magnetic_fe_values.JxW(q);
+                    if (magnetic_constraints.is_inhomogeneously_constrained(local_dof_indices[i]))
+                    {
+                        for (unsigned int j=0; j<dofs_per_cell; ++j)
+                            local_matrix_for_bc(j,i) += magnetic_fe_values[magnetic_field].value(i,q)
+                                                      * magnetic_fe_values[magnetic_field].value(j,q)
+                                                      * magnetic_fe_values.JxW(q);
+                    }
+                }
+            magnetic_constraints.distribute_local_to_global(local_rhs,
+                                                            local_dof_indices,
+                                                            distributed_rhs_vector,
+                                                            local_matrix_for_bc);
+        }
+    distributed_rhs_vector.compress(VectorOperation::add);
+
+    // solve linear system
+    SolverControl   solver_control(rhs_vector.size(),
+                                   1e-12 * rhs_vector.l2_norm());
+
+    TrilinosWrappers::PreconditionJacobi::AdditionalData    data;
+    data.omega = 1.3;
+
+    TrilinosWrappers::PreconditionJacobi    preconditioner_mass;
+    preconditioner_mass.initialize(magnetic_mass_matrix.block(0,0), data);
+
+    try
+    {
+        LA::SolverCG    cg(solver_control);
+
+        cg.solve(magnetic_mass_matrix.block(0,0),
+                 solution_vector,
+                 rhs_vector,
+                 preconditioner_mass);
+    }
+    catch (std::exception &exc)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Exception in magnetic mass matrix solve: " << std::endl
+                << exc.what() << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::abort();
+    }
+    catch (...)
+    {
+        std::cerr << std::endl << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::cerr << "Unknown exception in magnetic mass matrix solve!" << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+        std::abort();
+    }
+    magnetic_constraints.distribute(distributed_solution_vector);
+
+    // assign initial condition to magnetic field
+    magnetic_solution.block(0) = solution_vector;
+    old_magnetic_solution.block(0) = solution_vector;
+}
 
 template<int dim>
 void BuoyantFluidSolver<dim>::magnetic_step()
@@ -343,6 +460,9 @@ void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
     }
 }
 }  // namespace BuoyantFluid
+
+template void BuoyantFluid::BuoyantFluidSolver<2>::project_magnetic_field();
+template void BuoyantFluid::BuoyantFluidSolver<3>::project_magnetic_field();
 
 template void BuoyantFluid::BuoyantFluidSolver<2>::magnetic_step();
 template void BuoyantFluid::BuoyantFluidSolver<3>::magnetic_step();

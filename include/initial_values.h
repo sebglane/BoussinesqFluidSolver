@@ -13,7 +13,7 @@
 #include <deal.II/base/point.h>
 #include <deal.II/lac/vector.h>
 
-#include "exceptions.h"
+#include <exceptions.h>
 
 namespace EquationData {
 
@@ -24,9 +24,9 @@ namespace EquationData {
  */
 enum TemperaturePerturbation
 {
-    none,
-    sinusoidal,
-    default_perturbation=none
+    None,
+    Sinusoidal,
+    default_perturbation=None
 };
 
 /*
@@ -67,7 +67,7 @@ class TemperatureInitialValues : public Function<dim>
 public:
     TemperatureInitialValues(const double inner_radius,
                              const double outer_radius,
-                             const TemperaturePerturbation  perturbation_type = TemperaturePerturbation::none);
+                             const TemperaturePerturbation  perturbation_type = TemperaturePerturbation::None);
 
     virtual double value(const Point<dim>   &point,
                          const unsigned int component = 0) const;
@@ -80,14 +80,13 @@ private:
 };
 
 template<int dim>
-class MagneticFieldInitialValues : public Function<dim>
+class MagneticFieldInitialValues : public TensorFunction<1,dim>
 {
 public:
     MagneticFieldInitialValues(const double inner_radius,
                                const double outer_radius);
 
-    virtual void vector_value(const Point<dim>  &point,
-                              Vector<double>    &values) const;
+    virtual Tensor<1,dim> value(const Point<dim>  &point) const;
 
 private:
     const double inner_radius;

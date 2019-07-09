@@ -203,6 +203,8 @@ private:
     (const IndexSet &locally_owned_dofs,
      const IndexSet &locally_relevant_dofs);
 
+    void project_temperature_field();
+
     void assemble_temperature_system();
     void build_temperature_preconditioner();
     void solve_temperature_system();
@@ -243,6 +245,8 @@ private:
     void setup_magnetic_system
     (const std::vector<IndexSet>    &locally_owned_dofs,
      const std::vector<IndexSet>    &locally_relevant_dofs);
+
+    void project_magnetic_field();
 
     void assemble_magnetic_matrices();
 

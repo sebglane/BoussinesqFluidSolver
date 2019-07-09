@@ -521,6 +521,7 @@ void BuoyantFluidSolver<dim>::compute_initial_pressure()
                                                               dim);
     distributed_solution.block(1).add(-mean_value);
     old_navier_stokes_solution.block(1) = distributed_solution.block(1);
+    navier_stokes_solution = old_navier_stokes_solution;
 }
 }  // namespace BuoyantFluid
 

@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "initial_values.h"
+#include <initial_values.h>
 
 namespace EquationData
 {
@@ -141,10 +141,10 @@ double TemperatureInitialValues<2>::value(
 
     switch (perturbation_type)
     {
-        case TemperaturePerturbation::none:
+        case TemperaturePerturbation::None:
             value = (log_ro - log_r) / (log_ro - log_ri);
             break;
-        case TemperaturePerturbation::sinusoidal:
+        case TemperaturePerturbation::Sinusoidal:
         {
             value = (log_ro - log_r) / (log_ro - log_ri);
 
@@ -182,10 +182,10 @@ double TemperatureInitialValues<3>::value(
 
     switch (perturbation_type)
     {
-        case TemperaturePerturbation::none:
+        case TemperaturePerturbation::None:
             value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
             break;
-        case TemperaturePerturbation::sinusoidal:
+        case TemperaturePerturbation::Sinusoidal:
         {
             value = (outer_radius - r) / (outer_radius - inner_radius) * inner_radius / r;
 
@@ -221,7 +221,6 @@ MagneticFieldInitialValues<dim>::MagneticFieldInitialValues
 (const double inner_radius,
  const double outer_radius)
 :
-Function<dim>(dim+1),
 inner_radius(inner_radius),
 outer_radius(outer_radius)
 {
@@ -231,13 +230,10 @@ outer_radius(outer_radius)
 }
 
 template<>
-void MagneticFieldInitialValues<2>::vector_value
-(const Point<2>    &point,
- Vector<double>    &value) const
+Tensor<1,2> MagneticFieldInitialValues<2>::value
+(const Point<2>    &point) const
 {
     const unsigned int dim = 2;
-
-    AssertDimension(value.size(), dim + 1);
 
     const double radius = point.distance(Point<dim>());
     Assert(radius> 0., ExcNegativeRadius(radius));
@@ -248,26 +244,17 @@ void MagneticFieldInitialValues<2>::vector_value
 
     const double B_phi
     = 15. / (8. * sqrt(2)) * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius));
+    AssertIsFinite(B_phi);
 
-
-    value[0] = - B_phi * sin(phi) ;
-    AssertIsFinite(value[0]);
-
-    value[1] = B_phi * cos(phi);
-    AssertIsFinite(value[1]);
-
-    value[2] = 0.0;
-    AssertIsFinite(value[2]);
+    return Tensor<1,dim>({- B_phi * sin(phi), B_phi * cos(phi)});
 }
 
+
 template<>
-void MagneticFieldInitialValues<3>::vector_value
-(const Point<3>    &point,
- Vector<double>    &value) const
+Tensor<1,3> MagneticFieldInitialValues<3>::value
+(const Point<3>    &point) const
 {
     const unsigned int dim = 3;
-
-    AssertDimension(value.size(), dim + 1);
 
     const double radius = point.distance(Point<dim>());
     Assert(radius> 0., ExcNegativeRadius(radius));
@@ -289,28 +276,23 @@ void MagneticFieldInitialValues<3>::vector_value
        - 4. * (4. + 3. *(outer_radius + inner_radius)) * radius * radius
        + 9. * radius * radius * radius) / radius
     * cos(theta);
+    AssertIsFinite(B_r);
 
     const double B_theta
     = -15. / (4. * sqrt(2))
     * (radius - inner_radius) * (radius - outer_radius) * (3. * radius - 4.) / radius
     * sin(theta);
+    AssertIsFinite(B_theta);
 
     const double B_phi
     = 15. / (8. * sqrt(2))
     * sin(numbers::PI * (radius -  inner_radius) * (radius - outer_radius))
     * sin(2. * theta);
+    AssertIsFinite(B_phi);
 
-
-    value[0] = (B_r * sin(theta) + B_theta * cos(theta)) * cos(phi) - B_phi * sin(phi) ;
-    AssertIsFinite(value[0]);
-
-    value[1] = (B_r * sin(theta) + B_theta * cos(theta)) * sin(phi) + B_phi * cos(phi);
-    AssertIsFinite(value[1]);
-
-    value[2] = B_r * cos(theta) - B_theta * sin(theta);
-    AssertIsFinite(value[2]);
-
-    value[3] = 0.0;
+    return Tensor<1,dim>({(B_r * sin(theta) + B_theta * cos(theta)) * cos(phi) - B_phi * sin(phi),
+                          (B_r * sin(theta) + B_theta * cos(theta)) * sin(phi) + B_phi * cos(phi),
+                           B_r * cos(theta) - B_theta * sin(theta)});
 }
 
 template<int dim>
