@@ -181,8 +181,8 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
 
         const double local_sums[4]  = { local_sum_velocity_sqrd,
                                         local_navier_stokes_volume,
-                                        local_temperature_volume,
-                                        local_sum_temperature};
+                                        local_sum_temperature,
+                                        local_temperature_volume};
         double global_sums[4];
 
         Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
