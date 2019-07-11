@@ -4,6 +4,7 @@
  *  Created on: Nov 8, 2018
  *      Author: sg
  */
+#include <deal.II/base/geometric_utilities.h>
 
 #include <parameters.h>
 
@@ -21,13 +22,20 @@ resume_from_snapshot(false),
 // output parameters
 output_flags(OutputFlags::output_default),
 output_benchmark_results(false),
+output_point_probe(false),
+// point probe parameters
+point_probe_frequency(10),
+point_coordinates({1.,0.,0.}),
+point_coordinate_system(CoordinateSystem::Cartesian),
+point_probe_spherical(false),
+// benchmark parameters
+benchmark_frequency(5),
+benchmark_start(100000),
 // logging parameters
 vtk_frequency(10),
 global_avg_frequency(5),
 cfl_frequency(5),
-benchmark_frequency(5),
 snapshot_frequency(100),
-benchmark_start(500),
 verbose(false),
 // physics parameters
 aspect_ratio(0.35),
@@ -131,6 +139,52 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Output parameters");
     {
+        prm.declare_entry("output_benchmark_results",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate benchmarking.");
+
+        prm.declare_entry("output_point_probe",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate point probe.");
+
+        prm.enter_subsection("Benchmarking");
+        {
+            prm.declare_entry("benchmark_freq",
+                    "5",
+                    Patterns::Integer(),
+                    "Output frequency of benchmark report.");
+            prm.declare_entry("benchmark_start",
+                    "500",
+                    Patterns::Integer(),
+                    "Time step after which benchmark values are reported.");
+        }
+        prm.leave_subsection();
+
+        prm.enter_subsection("Point probe");
+        {
+            prm.declare_entry("point_probe_freq",
+                              "5",
+                              Patterns::Integer(),
+                              "Output frequency of point probe.");
+            prm.declare_entry("point_coordinates",
+                              "1.0,0.0,0.0",
+                              Patterns::List(Patterns::Double(),2,3),
+                              "Coordinates of the point where the solution is probed.");
+            prm.declare_entry("coordinate_system",
+                              "Cartesian",
+                              Patterns::Selection("Cartesian|Spherical"),
+                              "Type of the coordinate system used for the "
+                              "coordinates of the point (None|Sinusoidal).");
+            prm.declare_entry("output_spherical_components",
+                              "false",
+                              Patterns::Bool(),
+                              "Flag to activate output of spherical components"
+                              "at the point where the solution is probed.");
+        }
+        prm.leave_subsection();
+
         prm.declare_entry("output_values",
                 "true",
                 Patterns::Bool(),
@@ -201,18 +255,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "10",
                 Patterns::Integer(),
                 "Output frequency of current cfl number.");
-        prm.declare_entry("benchmark_freq",
-                "5",
-                Patterns::Integer(),
-                "Output frequency of benchmark report.");
         prm.declare_entry("snapshot_freq",
                 "100",
                 Patterns::Integer(),
                 "Output frequency of snapshots.");
-        prm.declare_entry("benchmark_start",
-                "500",
-                Patterns::Integer(),
-                "Time step after which benchmark values are reported.");
         prm.declare_entry("verbose",
                 "false",
                 Patterns::Bool(),
@@ -444,6 +490,67 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Output parameters");
     {
+        output_benchmark_results = prm.get_bool("output_benchmark_results");
+
+        prm.enter_subsection("Benchmarking");
+        if (output_benchmark_results)
+        {
+            benchmark_frequency = prm.get_integer("benchmark_freq");
+            Assert(benchmark_frequency > 0, ExcLowerRange(0, benchmark_frequency));
+
+            benchmark_start = prm.get_integer("benchmark_start");
+            Assert(benchmark_start > 0, ExcLowerRange(0, benchmark_start));
+
+        }
+        prm.leave_subsection();
+
+        output_point_probe = prm.get_bool("output_point_probe");
+
+        prm.enter_subsection("Point probe");
+        if (output_point_probe)
+        {
+
+            point_probe_frequency = prm.get_integer("point_probe_freq");
+            Assert(point_probe_frequency > 0, ExcLowerRange(0, point_probe_frequency));
+
+            // get a single string which is comma-separated
+            const std::string point_coordinate_list = prm.get("point_coordinates");
+
+            // seperate the string
+            const std::vector<std::string> point_coordinate_strings
+            = Utilities::split_string_list(point_coordinate_list);
+            AssertDimension(point_coordinate_strings.size(),
+                            dim);
+
+            // resize the coordinate vector
+            point_coordinates.resize(dim, 0.);
+
+            // convert the coordinates to doubles
+            typename std::vector<std::string>::const_iterator
+            coord_str = point_coordinate_strings.begin();
+            typename std::vector<double>::iterator
+            coord = point_coordinates.begin();
+            for (; coord_str != point_coordinate_strings.end(); ++coord_str, ++coord)
+            {
+                *coord = Utilities::string_to_double(*coord_str);
+                AssertIsFinite(*coord);
+            }
+
+            const std::string coordinate_system_string
+            = prm.get("coordinate_system");
+
+            if (coordinate_system_string == "Cartesian")
+                point_coordinate_system = CoordinateSystem::Cartesian;
+            else if (coordinate_system_string == "Spherical")
+                point_coordinate_system = CoordinateSystem::Spherical;
+            else
+                AssertThrow(false, ExcMessage("Unexpected string for coordinate system."));
+
+            point_probe_spherical = prm.get_bool("output_spherical_components");
+
+        }
+        prm.leave_subsection();
+
         if (prm.get_bool("output_values"))
             output_flags |= output_values;
         if (prm.get_bool("output_scalar_gradients"))
@@ -495,15 +602,8 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         cfl_frequency = prm.get_integer("cfl_freq");
         Assert(cfl_frequency > 0, ExcLowerRange(0, cfl_frequency));
 
-        benchmark_frequency = prm.get_integer("benchmark_freq");
-        Assert(benchmark_frequency > 0, ExcLowerRange(0, benchmark_frequency));
-
         snapshot_frequency = prm.get_integer("snapshot_freq");
         Assert(snapshot_frequency > 0, ExcLowerRange(0, snapshot_frequency));
-
-
-        benchmark_start = prm.get_integer("benchmark_start");
-        Assert(benchmark_start > 0, ExcLowerRange(0, benchmark_start));
 
         verbose = prm.get_bool("verbose");
     }
@@ -730,5 +830,33 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     }
     prm.leave_subsection();
 }
+
+template<int dim>
+Point<dim> probe_point(const Parameters &parameters)
+{
+    AssertDimension(parameters.point_coordinates.size(), dim);
+
+    if (parameters.point_coordinate_system == CoordinateSystem::Spherical)
+    {
+        std::array<double,dim> scoord;
+        for (unsigned int d=0; d<dim; ++d)
+            scoord[d] = parameters.point_coordinates[d];
+        return GeometricUtilities::Coordinates::from_spherical(scoord);
+    }
+    else if (parameters.point_coordinate_system == CoordinateSystem::Cartesian)
+    {
+        Point<dim> probe_point;
+        for (unsigned d=0; d<dim; ++d)
+            probe_point[d] = parameters.point_coordinates[d];
+
+        return probe_point;
+    }
+    else
+        Assert(false, ExcInternalError());
+}
+
+// explicit instantiation
+template Point<2> probe_point<2>(const Parameters &);
+template Point<3> probe_point<3>(const Parameters &);
 
 } // namespace BuoyantFluid

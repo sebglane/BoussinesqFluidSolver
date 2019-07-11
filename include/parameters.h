@@ -20,6 +20,18 @@ using namespace dealii;
 
 /*
  *
+ * enumeration for the type of a coordinate system
+ *
+ */
+enum CoordinateSystem
+{
+    Cartesian,
+    Spherical
+};
+
+
+/*
+ *
  * enumeration for the type of the weak form of the convective term
  *
  */
@@ -72,15 +84,23 @@ struct Parameters
     // output parameters
     OutputFlags     output_flags;
     bool            output_benchmark_results;
+    bool            output_point_probe;
+
+    // point probe parameters
+    unsigned int        point_probe_frequency;
+    std::vector<double> point_coordinates;
+    CoordinateSystem    point_coordinate_system;
+    bool                point_probe_spherical;
+
+    // benchmark parameters
+    unsigned int    benchmark_frequency;
+    unsigned int    benchmark_start;
 
     // logging parameters
     unsigned int    vtk_frequency;
     unsigned int    global_avg_frequency;
     unsigned int    cfl_frequency;
-    unsigned int    benchmark_frequency;
     unsigned int    snapshot_frequency;
-
-    unsigned int    benchmark_start;
 
     bool            verbose;
 
@@ -140,6 +160,8 @@ struct Parameters
     unsigned int n_min_levels;
 };
 
+template<int dim>
+Point<dim>  probe_point(const Parameters  &parameters);
 
 }  // namespace BuoyantFluid
 

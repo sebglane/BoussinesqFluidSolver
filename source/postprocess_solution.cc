@@ -4,7 +4,7 @@
  *  Created on: Jan 10, 2019
  *      Author: sg
  */
-
+#include <deal.II/base/geometric_utilities.h>
 #include <deal.II/base/quadrature_lib.h>
 
 #include <deal.II/dofs/dof_tools.h>
@@ -14,12 +14,14 @@
 #include <deal.II/grid/grid_tools.h>
 
 #include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/vector_tools.h>
 
 // Sadly this include file is not found
 // #include <boost/filesystem.hpp>
 
 #include <buoyant_fluid_solver.h>
 #include <postprocessor.h>
+#include <geometric_utilities.h>
 
 namespace BuoyantFluid {
 
@@ -194,6 +196,178 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
         return std::vector<double>({rms_velocity, kinetic_energy,
                                     avg_temperature});
     }
+}
+
+template<int dim>
+std::vector<double> BuoyantFluidSolver<dim>::compute_point_value_locally
+(const Point<dim> &point) const
+{
+    std::vector<double> point_values((parameters.magnetism? 2*dim+3: dim+2),
+                                     std::numeric_limits<double>::quiet_NaN());
+
+    try
+    {
+        // velocity and pressure
+        Vector<double>  navier_stokes_values(navier_stokes_fe.n_components());
+        VectorTools::point_value(mapping,
+                                 navier_stokes_dof_handler,
+                                 navier_stokes_solution,
+                                 point,
+                                 navier_stokes_values);
+
+        for (unsigned int i=0; i<navier_stokes_fe.n_components(); ++i)
+            point_values[i] = navier_stokes_values[i];
+
+        // temperature
+        point_values[dim+1] = VectorTools::point_value(mapping,
+                                                        temperature_dof_handler,
+                                                        temperature_solution,
+                                                        point);
+        // magnetic field and magnetic pressure
+        if (parameters.magnetism)
+        {
+            Vector<double>  magnetic_values(magnetic_fe.n_components());
+
+            VectorTools::point_value(mapping,
+                                     magnetic_dof_handler,
+                                     navier_stokes_solution,
+                                     point,
+                                     navier_stokes_values);
+            for (unsigned int i=0; i<magnetic_fe.n_components(); ++i)
+                point_values[dim+2+i] = magnetic_values[i];
+        }
+
+        return point_values;
+    }
+    catch (VectorTools::ExcPointNotAvailableHere    &exc)
+    {
+        return point_values;
+    }
+    catch (std::exception &exc)
+    {
+        std::cerr << std::endl << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Exception on processing: " << std::endl
+                  << exc.what() << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::abort();
+    }
+    catch (...)
+    {
+        std::cerr << std::endl << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::cerr << "Unknown exception!" << std::endl
+                  << "Aborting!" << std::endl
+                  << "----------------------------------------------------"
+                  << std::endl;
+        std::abort();
+    }
+}
+
+template<int dim>
+std::vector<double> BuoyantFluidSolver<dim>::compute_point_value
+(const Point<dim> &point) const
+{
+    const std::vector<double> local_point_values
+    = compute_point_value_locally(point);
+
+    std::vector<std::vector<double>> all_local_point_values
+    = Utilities::MPI::gather(mpi_communicator,
+                             local_point_values);
+
+    std::map<unsigned int, std::vector<double>> point_values_to_send;
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    {
+        std::vector<double> point_values;
+
+        point_values.resize(parameters.magnetism? 2*dim+3: dim+2,
+                            std::numeric_limits<double>::quiet_NaN());
+
+        unsigned int    nan_counter = 0;
+        for (const auto v: all_local_point_values)
+        {
+            if (std::all_of(v.begin(), v.end(), [](double d){return std::isnan(d);}))
+                nan_counter += 1;
+            else
+                point_values = v;
+        }
+
+        const unsigned int n_mpi_processes
+        = Utilities::MPI::n_mpi_processes(mpi_communicator);
+
+        Assert(nan_counter == (n_mpi_processes - 1),
+               ExcDimensionMismatch(nan_counter, n_mpi_processes - 1));
+
+        for (const auto v: point_values)
+            AssertIsFinite(v);
+
+        for (unsigned int p=1; p<n_mpi_processes; ++p)
+            point_values_to_send[p] = point_values;
+    }
+
+    const std::map<unsigned int, std::vector<double>>
+    point_values_received
+    = Utilities::MPI::some_to_some(mpi_communicator,
+                                   point_values_to_send);
+
+    std::vector<double>   point_values;
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) != 0)
+    {
+        AssertDimension(point_values_received.size(), 1);
+
+        Assert(point_values_received.begin()->first == 0,
+               ExcInternalError());
+
+        point_values = point_values_received.begin()->second;
+
+        for (const auto v: point_values)
+            AssertIsFinite(v);
+    }
+    else
+    {
+        AssertDimension(point_values_received.size(), 0);
+
+        point_values = point_values_to_send[1];
+    }
+
+    if (parameters.point_probe_spherical)
+    {
+        const std::array<double,dim> scoord
+        = GeometricUtilities::Coordinates::to_spherical(point);
+
+        const std::array<Tensor<1,dim>,dim> sbasis
+        = CoordinateTransformation::spherical_basis(scoord);
+
+        Tensor<1,dim>   velocity_field;
+        for (unsigned int d=0; d<dim; ++d)
+            velocity_field[d] = point_values[d];
+
+        const std::array<double,dim> spherical_velocity
+        = CoordinateTransformation::spherical_projections(velocity_field,
+                                                          sbasis);
+        for (unsigned int d=0; d<dim; ++d)
+            point_values.push_back(spherical_velocity[d]);
+
+        if (parameters.magnetism)
+        {
+            Tensor<1,dim>   magnetic_field;
+            for (unsigned int d=0; d<dim; ++d)
+                magnetic_field[d] = point_values[dim+2+d];
+
+            const std::array<double,dim> spherical_magnetic_field
+            = CoordinateTransformation::spherical_projections(magnetic_field,
+                                                              sbasis);
+            for (unsigned int d=0; d<dim; ++d)
+                point_values.push_back(spherical_magnetic_field[d]);
+        }
+    }
+
+    return point_values;
 }
 
 template <int dim>
@@ -501,6 +675,16 @@ void BuoyantFluidSolver<dim>::output_results(const bool initial_condition) const
 }  // namespace BuoyantFluid
 
 // explicit instantiation
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<2>::compute_point_value_locally(const Point<2> &) const;
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<3>::compute_point_value_locally(const Point<3> &) const;
+
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<2>::compute_point_value(const Point<2> &) const;
+template std::vector<double>
+BuoyantFluid::BuoyantFluidSolver<3>::compute_point_value(const Point<3> &) const;
+
 template std::vector<double>
 BuoyantFluid::BuoyantFluidSolver<2>::compute_global_averages() const;
 template std::vector<double>

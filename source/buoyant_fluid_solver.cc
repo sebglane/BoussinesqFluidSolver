@@ -24,6 +24,8 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
+#include <array>
+
 #include <buoyant_fluid_solver.h>
 #include <initial_values.h>
 #include <snapshot_information.h>
@@ -178,27 +180,49 @@ phi_benchmark(-2.*numbers::PI)
     pcout << std::endl << ss.str()
           << std::endl << std::fixed << std::flush;
 
-    benchmark_table.declare_column("timestep");
-    benchmark_table.declare_column("time");
-    benchmark_table.declare_column("phi");
-    benchmark_table.declare_column("temperature");
-    benchmark_table.declare_column("azimuthal velocity");
-
     global_avg_table.declare_column("timestep");
     global_avg_table.declare_column("time");
     global_avg_table.declare_column("velocity rms");
     global_avg_table.declare_column("kinetic energy");
-    global_avg_table.declare_column("temperature avg");
-
+    global_avg_table.declare_column("avg temperature");
     if (parameters.magnetism)
     {
-        if (dim == 3)
-            benchmark_table.declare_column("polar magnetic field");
-
         global_avg_table.declare_column("magnetic rms");
         global_avg_table.declare_column("magnetic energy");
     }
 
+
+    if (parameters.output_benchmark_results)
+    {
+
+        benchmark_table.declare_column("timestep");
+        benchmark_table.declare_column("time");
+        benchmark_table.declare_column("phi");
+        benchmark_table.declare_column("temperature");
+        benchmark_table.declare_column("azimuthal velocity");
+
+        if (dim == 3)
+            benchmark_table.declare_column("polar magnetic field");
+    }
+
+    if (parameters.output_point_probe)
+    {
+        point_probe_table.declare_column("timestep");
+        point_probe_table.declare_column("time");
+        point_probe_table.declare_column("x-velocity");
+        point_probe_table.declare_column("y-velocity");
+        if (dim==3)
+            point_probe_table.declare_column("z-velocity");
+
+        if (parameters.magnetism)
+        {
+            point_probe_table.declare_column("x-magnetic field");
+            point_probe_table.declare_column("y-magnetic field");
+            if (dim == 3)
+                point_probe_table.declare_column("z-magnetic field");
+            point_probe_table.declare_column("magnetic pressure");
+        }
+    }
 }
 
 template<int dim>
@@ -843,7 +867,7 @@ void BuoyantFluidSolver<dim>::run()
         global_avg_table.add_value("time", 0.0);
         global_avg_table.add_value("velocity rms", global_avg[0]);
         global_avg_table.add_value("kinetic energy", global_avg[1]);
-        global_avg_table.add_value("temperature avg", global_avg[2]);
+        global_avg_table.add_value("avg temperature", global_avg[2]);
         if (parameters.magnetism)
         {
             global_avg_table.add_value("magnetic rms", global_avg[3]);
@@ -911,7 +935,7 @@ void BuoyantFluidSolver<dim>::run()
             global_avg_table.add_value("time", time);
             global_avg_table.add_value("velocity rms", global_avg[0]);
             global_avg_table.add_value("kinetic energy", global_avg[1]);
-            global_avg_table.add_value("temperature avg", global_avg[2]);
+            global_avg_table.add_value("avg temperature", global_avg[2]);
             if (parameters.magnetism)
             {
                 global_avg_table.add_value("magnetic rms", global_avg[3]);
@@ -920,7 +944,8 @@ void BuoyantFluidSolver<dim>::run()
         }
 
         // compute benchmark results
-        if (timestep_number >= parameters.benchmark_start &&
+        if (parameters.output_benchmark_results &&
+                timestep_number >= parameters.benchmark_start &&
                 timestep_number % parameters.benchmark_frequency == 0)
         {
             TimerOutput::Scope  timer_section(computing_timer, "compute benchmark requests");
@@ -957,6 +982,47 @@ void BuoyantFluidSolver<dim>::run()
             benchmark_table.add_value("azimuthal velocity", benchmark_results[1]);
             if (parameters.magnetism && dim == 3)
                 benchmark_table.add_value("polar magnetic field", benchmark_results[2]);
+        }
+
+        // compute benchmark results
+        if (parameters.output_point_probe &&
+                timestep_number % parameters.point_probe_frequency == 0)
+        {
+            std::vector<double> values
+            = compute_point_value(probe_point<dim>(parameters));
+
+            point_probe_table.add_value("timestep", timestep_number);
+            point_probe_table.add_value("time", time);
+
+            // add velocities
+            const std::array<std::string,3> velocity_strings =
+            {
+                    "x-velocity",
+                    "y-velocity",
+                    "z-velocity"
+            };
+            for (unsigned int d=0; d<dim; ++d)
+                point_probe_table.add_value(velocity_strings[d], values[d]);
+
+            // add pressure
+            point_probe_table.add_value("pressure", values[dim]);
+            // add temperature
+            point_probe_table.add_value("temperature", values[dim+1]);
+
+            // add magnetic field
+            if (parameters.magnetism)
+            {
+                const std::array<std::string,3> velocity_strings =
+                {
+                        "x-magnetic field",
+                        "y-magnetic field",
+                        "z-magnetic field"
+                };
+                for (unsigned int d=0; d<dim; ++d)
+                    point_probe_table.add_value(velocity_strings[d], values[dim+2+d]);
+
+                point_probe_table.add_value("magnetic pressure", values[2*dim+2]);
+            }
         }
 
         // write vtk output
@@ -1095,10 +1161,19 @@ void BuoyantFluidSolver<dim>::run()
     if (parameters.n_steps % parameters.snapshot_frequency != 0)
         create_snapshot(time);
 
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0 &&
+            parameters.output_benchmark_results)
     {
         std::ofstream   out_file("benchmark_report.txt");
         benchmark_table.write_text(out_file);
+        out_file.close();
+    }
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0 &&
+            parameters.output_point_probe)
+    {
+        std::ofstream   out_file("point_probe_report.txt");
+        point_probe_table.write_text(out_file);
         out_file.close();
     }
 

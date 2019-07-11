@@ -176,6 +176,9 @@ private:
 
     double              compute_cfl_number() const;
 
+    std::vector<double> compute_point_value_locally(const Point<dim> &point) const;
+    std::vector<double> compute_point_value(const Point<dim> &point) const;
+
     void update_timestep(const double current_cfl_number);
 
     void refine_mesh();
@@ -314,6 +317,7 @@ private:
     TimerOutput                     computing_timer;
 
     TableHandler                    global_avg_table;
+    TableHandler                    point_probe_table;
 
     /*
      * physics related objects
