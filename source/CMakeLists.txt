@@ -7,6 +7,7 @@ SET(TARGET_SRC
   assembly_data.cc
   buoyant_fluid_solver.cc
   geometric_utilities.cc
+  gravity_field.cc
   grid_factory.cc
   initial_values.cc
   local_temperature_assemble.cc
