@@ -7,6 +7,8 @@
 
 #include <postprocessor.h>
 
+#include <geometric_utilities.h>
+
 namespace BuoyantFluid {
 
 template<int dim>
@@ -452,9 +454,12 @@ void PostProcessor<dim>::evaluate_vector_field
 
     for (unsigned int q=0; q<n_quadrature_points; ++q)
     {
-        Tensor<1,dim>   spherical_basis_vectors[dim];
-        compute_spherical_basis_vectors(inputs.evaluation_points[q],
-                                        spherical_basis_vectors);
+
+        const std::array<double,dim> scoord
+        = GeometricUtilities::Coordinates::to_spherical(inputs.evaluation_points[q]);
+
+        std::array<Tensor<1,dim>,dim> spherical_basis_vectors
+        = CoordinateTransformation::spherical_basis(scoord);
 
         unsigned int quantity_index = 0;
 
@@ -603,11 +608,11 @@ void PostProcessor<dim>::evaluate_curl_component
 
 template<int dim>
 void PostProcessor<dim>::evaluate_component_projection
-(const Vector<double>               &solution_values,
- const unsigned int                  first_vector_component,
- const Tensor<1,dim>                 spherical_basis[dim],
- Vector<double>                     &computed_quantities,
- unsigned int                       &first_quantity_index) const
+(const Vector<double>                &solution_values,
+ const unsigned int                   first_vector_component,
+ const std::array<Tensor<1,dim>,dim> &spherical_basis,
+ Vector<double>                      &computed_quantities,
+ unsigned int                        &first_quantity_index) const
 {
     Assert(solution_values.size() >= first_vector_component + dim,
            ExcLowerRange(solution_values.size(),
@@ -617,36 +622,31 @@ void PostProcessor<dim>::evaluate_component_projection
            ExcLowerRange(computed_quantities.size(),
                          first_quantity_index + dim));
 
-    for (unsigned int c=0; c<dim; ++c)
+    Tensor<1,dim>   component;
+    for (unsigned int d=0; d<dim; ++d)
+        component[d] = solution_values(first_vector_component+d);
+
+    const double component_magnitude = component.norm();
+
+    for (unsigned int d=0; d<dim; ++d)
     {
-        computed_quantities(first_quantity_index+c) = 0;
+        computed_quantities(first_quantity_index+d) = spherical_basis[d] * component;
 
-        double tensor_magnitude = 0;
-
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities(first_quantity_index+c)
-            += spherical_basis[c][d] * solution_values(first_vector_component+d);
-            tensor_magnitude += solution_values(first_vector_component+d)
-                              * solution_values(first_vector_component+d);
-        }
-        tensor_magnitude = sqrt(tensor_magnitude);
-
-        Assert(std::abs(computed_quantities(first_quantity_index+c)) -tensor_magnitude
+        Assert(std::abs(computed_quantities(first_quantity_index+d)) - component_magnitude
                <=  projection_tolerance,
-               ExcLowerRangeType<double>(computed_quantities(first_quantity_index+c),
-                                         tensor_magnitude));
+               ExcLowerRangeType<double>(computed_quantities(first_quantity_index+d),
+                                         component_magnitude));
     }
     first_quantity_index += dim;
 }
 
 template<int dim>
 void PostProcessor<dim>::evaluate_gradient_projection
-(const std::vector<Tensor<1,dim>>   &solution_gradients,
- const unsigned int                  solution_component,
- const Tensor<1,dim>                 spherical_basis[dim],
- Vector<double>                     &computed_quantities,
- unsigned int                       &first_quantity_index) const
+(const std::vector<Tensor<1,dim>>     &solution_gradients,
+ const unsigned int                   solution_component,
+ const std::array<Tensor<1,dim>,dim> &spherical_basis,
+ Vector<double>                      &computed_quantities,
+ unsigned int                        &first_quantity_index) const
 {
     Assert(solution_gradients.size() >= solution_component,
            ExcLowerRange(solution_gradients.size(),
@@ -656,68 +656,19 @@ void PostProcessor<dim>::evaluate_gradient_projection
            ExcLowerRange(computed_quantities.size(),
                          first_quantity_index + dim));
 
+    const double component_magnitude = solution_gradients[solution_component].norm();
+
     for (unsigned int c=0; c<dim; ++c)
     {
-        computed_quantities(first_quantity_index+c) = 0;
+        computed_quantities(first_quantity_index+c)
+        = spherical_basis[c] * solution_gradients[solution_component];
 
-        double tensor_magnitude = 0;
-
-        for (unsigned int d=0; d<dim; ++d)
-        {
-            computed_quantities(first_quantity_index+c)
-            += spherical_basis[c][d] * solution_gradients[solution_component][d];
-            tensor_magnitude += solution_gradients[solution_component][d]
-                              * solution_gradients[solution_component][d];
-        }
-        tensor_magnitude = sqrt(tensor_magnitude);
-
-        Assert(std::abs(computed_quantities(first_quantity_index+c)) - tensor_magnitude
+        Assert(std::abs(computed_quantities(first_quantity_index+c)) - component_magnitude
                <=  projection_tolerance,
                ExcLowerRangeType<double>(std::abs(computed_quantities(first_quantity_index+c)),
-                                         tensor_magnitude));
+                       component_magnitude));
     }
     first_quantity_index += dim;
-}
-
-template<>
-void PostProcessor<2>::compute_spherical_basis_vectors
-(const Point<2> &point,
- Tensor<1,2>     basis_vectors[2]) const
-{
-    const unsigned int dim = 2;
-
-    // spherical coordinates
-    const double phi = atan2(point[1], point[0]);
-    Assert(phi >= -numbers::PI && phi <= numbers::PI,
-           ExcAzimuthalAngleRange(phi));
-
-    // spherical basis vectors
-    basis_vectors[0] = Tensor<1,dim>({cos(phi), sin(phi)});
-    basis_vectors[1] = Tensor<1,dim>({-sin(phi), cos(phi)});
-}
-
-
-template<>
-void PostProcessor<3>::compute_spherical_basis_vectors
-(const Point<3> &point,
- Tensor<1,3>     basis_vectors[3]) const
-{
-    const unsigned int dim = 3;
-
-    // spherical coordinates
-    const double cylinder_radius = sqrt(  point[0] * point[0]
-                                        + point[1] * point[1]);
-    const double theta = atan2(cylinder_radius, point[2]);
-    Assert(theta >= 0. && theta <= numbers::PI,
-           ExcPolarAngleRange(theta));
-    const double phi = atan2(point[1], point[0]);
-    Assert(phi >= -numbers::PI && phi <= numbers::PI,
-           ExcAzimuthalAngleRange(phi));
-
-    // spherical basis vectors
-    basis_vectors[0] = Tensor<1,dim>({cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)});
-    basis_vectors[1] = Tensor<1,dim>({cos(phi) * cos(theta), sin(phi) * cos(theta), -sin(theta)});
-    basis_vectors[2] = Tensor<1,dim>({-sin(phi), cos(phi) , 0.});
 }
 }  // namespace BuoyantFluid
 

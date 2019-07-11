@@ -5,6 +5,7 @@
  *      Author: sg
  */
 
+#include <deal.II/base/geometric_utilities.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #include <boost/math/tools/roots.hpp>
@@ -12,122 +13,54 @@
 
 #include <functional>
 #include <algorithm>
+#include <array>
 
-#include "buoyant_fluid_solver.h"
-#include "postprocessor.h"
+#include <buoyant_fluid_solver.h>
+#include <geometric_utilities.h>
+#include <postprocessor.h>
 
 DeclException0(ExcBoostNoConvergence);
 
 namespace BuoyantFluid {
-template<>
-double BuoyantFluidSolver<2>::compute_radial_velocity_locally
-(const double    &radius,
- const double    &phi,
- const double    &/* theta */) const
-{
-    const unsigned dim = 2;
 
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
-
-    if (phi < 0.)
-    {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
-
-    const Point<dim>    x(radius * cos(phi), radius * sin(phi));
-
-    Assert(std::abs(x.norm() - 0.5 * (1. + parameters.aspect_ratio)) <= 1e-12,
-           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
-
-    Vector<double>  values(navier_stokes_fe.n_components());
-
-    try
-    {
-        VectorTools::point_value(mapping,
-                                 navier_stokes_dof_handler,
-                                 navier_stokes_solution,
-                                 x,
-                                 values);
-    }
-    catch (VectorTools::ExcPointNotAvailableHere    &exc)
-    {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    catch (std::exception &exc)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Exception on processing: " << std::endl
-                  << exc.what() << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
-    catch (...)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Unknown exception!" << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
-
-    const double radial_component = values[0] * cos(phi) + values[1] * sin(phi);
-
-    return radial_component;
-}
-
-template<>
-double BuoyantFluidSolver<3>::compute_radial_velocity_locally
+template<int dim>
+double BuoyantFluidSolver<dim>::compute_radial_velocity_locally
 (const double    &radius,
  const double    &phi,
  const double    &theta) const
 {
-    const unsigned dim = 3;
+    std::array<double,dim> scoord;
+    scoord[0] = radius;
 
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
-
-    Assert(theta >= 0. && theta <= numbers::PI,
-           ExcPolarAngleRange(theta));
-
-    if (phi < 0.)
+    switch (dim)
     {
-        Assert((phi >= -numbers::PI) && (phi <= numbers::PI),
-               ExcAzimuthalAngleRange(phi));
+        case 2:
+            scoord[1] = phi;
+            break;
+        case 3:
+            scoord[1] = theta;
+            scoord[2] = phi;
+            break;
+        default:
+            Assert(false, ExcImpossibleInDim(dim));
+            break;
     }
-    else
-    {
-        Assert((phi >= 0.) && (phi <= 2. * numbers::PI),
-               ExcAzimuthalAngleRange(phi));
-    }
 
-    const Point<dim>    x(radius * cos(phi) * sin(theta),
-                          radius * sin(phi) * sin(theta),
-                          radius * cos(theta));
+    const Point<dim> x = GeometricUtilities::Coordinates::from_spherical(scoord);
 
-    Assert(std::abs(x.norm() - 0.5 * (1. + parameters.aspect_ratio)) <= 1e-12,
-           ExcLowerRangeType<double>(radius, 0.5 * (1. + parameters.aspect_ratio)));
-
-    Vector<double>  values(navier_stokes_fe.n_components());
-
+    Tensor<1,dim>   velocity;
     try
     {
+        Vector<double>  values(navier_stokes_fe.n_components());
+
         VectorTools::point_value(mapping,
                                  navier_stokes_dof_handler,
                                  navier_stokes_solution,
                                  x,
                                  values);
+
+        for (unsigned int d=dim; d<dim; ++d)
+            velocity[d] = values[d];
     }
     catch (VectorTools::ExcPointNotAvailableHere    &exc)
     {
@@ -157,12 +90,13 @@ double BuoyantFluidSolver<3>::compute_radial_velocity_locally
         std::abort();
     }
 
-    const double radial_component
-    = values[0] * cos(phi) * sin(theta)
-    + values[1] * sin(phi) * sin(theta)
-    + values[2] * cos(theta);
+    const std::array<Tensor<1,dim>, dim> sbasis
+    = CoordinateTransformation::spherical_basis(scoord);
 
-    return radial_component;
+    const std::array<double, dim> spherical_projections
+    = CoordinateTransformation::spherical_projections(velocity, sbasis);
+
+    return spherical_projections[0];
 }
 
 template<int dim>
@@ -234,115 +168,37 @@ double BuoyantFluidSolver<dim>::compute_radial_velocity
     return radial_velocity;
 }
 
-template<>
-double  BuoyantFluidSolver<2>::compute_azimuthal_gradient_of_radial_velocity_locally
-(const double    &radius,
- const double    &phi,
- const double    &/* theta */) const
-{
-    const unsigned dim = 2;
-
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
-
-    Assert((phi < 0.?
-           (phi >= -numbers::PI && phi <= numbers::PI):
-           (phi >= 0. && phi <= 2. * numbers::PI)),
-           ExcAzimuthalAngleRange(phi));
-
-    const Point<dim>    x(radius * cos(phi), radius * sin(phi));
-
-    Vector<double>              values(navier_stokes_fe.n_components());
-    std::vector<Tensor<1,dim>>  gradients(navier_stokes_fe.n_components());
-    try
-    {
-
-        VectorTools::point_value(mapping,
-                                 navier_stokes_dof_handler,
-                                 navier_stokes_solution,
-                                 x,
-                                 values);
-
-        VectorTools::point_gradient(mapping,
-                                    navier_stokes_dof_handler,
-                                    navier_stokes_solution,
-                                    x,
-                                    gradients);
-    }
-    catch (VectorTools::ExcPointNotAvailableHere    &exc)
-    {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    catch (std::exception &exc)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Exception on processing: " << std::endl
-                  << exc.what() << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
-    catch (...)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Unknown exception!" << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
-
-    Tensor<1,dim>   velocity;
-    Tensor<2,dim>   velocity_gradient;
-    for (unsigned int d=0; d<dim; ++d)
-    {
-        velocity[d] = values[d];
-        for (unsigned e=0; e<dim; ++e)
-            velocity_gradient[d][e] = gradients[d][e];
-    }
-
-    const Tensor<1,dim>   radial_basis_vector({cos(phi), sin(phi)});
-    const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi)});
-
-    const double azimuthal_velocity = azimuthal_basis_vector * velocity;
-
-    const double projected_gradient
-    = ( radial_basis_vector * (velocity_gradient * azimuthal_basis_vector) );
-
-    return radius * projected_gradient + azimuthal_velocity;
-}
-
-
-template<>
-double BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_velocity_locally
+template<int dim>
+double  BuoyantFluidSolver<dim>::compute_azimuthal_gradient_of_radial_velocity_locally
 (const double    &radius,
  const double    &phi,
  const double    &theta) const
 {
-    const unsigned dim = 3;
+    std::array<double,dim> scoord;
+    scoord[0] = radius;
 
-    Assert(radius > 0.0, ExcNegativeRadius(radius));
+    switch (dim)
+    {
+        case 2:
+            scoord[1] = phi;
+            break;
+        case 3:
+            scoord[1] = theta;
+            scoord[2] = phi;
+            break;
+        default:
+            Assert(false, ExcImpossibleInDim(dim));
+            break;
+    }
 
-    Assert(theta >= 0. && theta <= numbers::PI,
-           ExcPolarAngleRange(theta));
+    const Point<dim> x = GeometricUtilities::Coordinates::from_spherical(scoord);
 
-    Assert((phi < 0.?
-           (phi >= -numbers::PI && phi <= numbers::PI):
-           (phi >= 0. && phi <= 2. * numbers::PI)),
-           ExcAzimuthalAngleRange(phi));
-
-    const Point<dim>    x(radius * cos(phi) * sin(theta),
-                          radius * sin(phi) * sin(theta),
-                          radius * cos(theta));
-
-    Vector<double>              values(navier_stokes_fe.n_components());
-    std::vector<Tensor<1,dim>>  gradients(navier_stokes_fe.n_components());
+    Tensor<1,dim>   velocity;
+    Tensor<2,dim>   velocity_gradient;
     try
     {
+        Vector<double>              values(navier_stokes_fe.n_components());
+        std::vector<Tensor<1,dim>>  gradients(navier_stokes_fe.n_components());
 
         VectorTools::point_value(mapping,
                                  navier_stokes_dof_handler,
@@ -355,6 +211,14 @@ double BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_velocity_loca
                                     navier_stokes_solution,
                                     x,
                                     gradients);
+
+        for (unsigned int d=0; d<dim; ++d)
+        {
+            velocity[d] = values[d];
+            for (unsigned e=0; e<dim; ++e)
+                velocity_gradient[d][e] = gradients[d][e];
+        }
+
     }
     catch (VectorTools::ExcPointNotAvailableHere    &exc)
     {
@@ -384,25 +248,24 @@ double BuoyantFluidSolver<3>::compute_azimuthal_gradient_of_radial_velocity_loca
         std::abort();
     }
 
-    Tensor<1,dim>   velocity;
-    Tensor<2,dim>   velocity_gradient;
-    for (unsigned int d=0; d<dim; ++d)
-    {
-        velocity[d] = values[d];
-        for (unsigned e=0; e<dim; ++e)
-            velocity_gradient[d][e] = gradients[d][e];
-    }
+    const std::array<Tensor<1,dim>, dim> sbasis
+    = CoordinateTransformation::spherical_basis(scoord);
 
-    const Tensor<1,dim>   radial_basis_vector({cos(phi) * sin(theta), sin(phi) * sin(theta), cos(theta)});
-    const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi) , 0.});
+    const std::array<double, dim> spherical_velocity
+    = CoordinateTransformation::spherical_projections(velocity, sbasis);
 
-    const double azimuthal_velocity = azimuthal_basis_vector * velocity;
+    const double azimuthal_velocity = spherical_velocity.back();
 
-    const double projected_gradient
-    = ( radial_basis_vector * (velocity_gradient * azimuthal_basis_vector) );
+    const std::array<std::array<double, dim>,dim>
+    spherical_velocity_gradient
+    = CoordinateTransformation::spherical_projections(velocity_gradient,
+                                                      sbasis);
 
-    return radius * sin(theta) * projected_gradient + sin(phi) * azimuthal_velocity;
+    const double projected_gradient = spherical_velocity_gradient[0].back();
+
+    return radius * projected_gradient + azimuthal_velocity;
 }
+
 
 
 template<int dim>
@@ -467,105 +330,43 @@ double BuoyantFluidSolver<dim>::compute_azimuthal_gradient_of_radial_velocity
     return gradient;
 }
 
-template<>
-std::vector<double> BuoyantFluidSolver<2>::compute_benchmark_requests_locally() const
+template<int dim>
+std::vector<double> BuoyantFluidSolver<dim>::compute_benchmark_requests_locally() const
 {
-    const unsigned int dim = 2;
+    std::array<double,dim> scoord;
+    scoord[0] = 0.5 * (1. + parameters.aspect_ratio);
 
-    const double radius = 0.5 * (1. + parameters.aspect_ratio),
-                 phi = phi_benchmark;
-    Assert((phi < 0.?
-           (phi >= -numbers::PI && phi <= numbers::PI):
-           (phi >= 0. && phi <= 2. * numbers::PI)),
-           ExcAzimuthalAngleRange(phi));
-
-    const Point<dim>    x(radius * cos(phi),
-                          radius * sin(phi));
-
-    Vector<double>  velocity_values(navier_stokes_fe.n_components());
-    double          temperature_value(temperature_fe.n_components());
-    try
+    switch (dim)
     {
+        case 2:
+            scoord[1] = phi_benchmark;
+            break;
+        case 3:
+            scoord[1] = numbers::PI / 2.;
+            scoord[2] = phi_benchmark;
+            break;
+        default:
+            Assert(false, ExcImpossibleInDim(dim));
+            break;
+    }
 
-        VectorTools::point_value(mapping,
-                                 navier_stokes_dof_handler,
-                                 navier_stokes_solution,
-                                 x,
-                                 velocity_values);
-
-        temperature_value = VectorTools::point_value(mapping,
-                                                     temperature_dof_handler,
-                                                     temperature_solution,
-                                                     x);
-    }
-    catch (VectorTools::ExcPointNotAvailableHere    &exc)
-    {
-        return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
-    }
-    catch (std::exception &exc)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Exception on processing: " << std::endl
-                  << exc.what() << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
-    catch (...)
-    {
-        std::cerr << std::endl << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::cerr << "Unknown exception!" << std::endl
-                  << "Aborting!" << std::endl
-                  << "----------------------------------------------------"
-                  << std::endl;
-        std::abort();
-    }
+    const Point<dim> x = dealii::GeometricUtilities::Coordinates::from_spherical(scoord);
 
     Tensor<1,dim>   velocity;
-    for (unsigned int d=0; d<dim; ++d)
-        velocity[d] = velocity_values[d];
-
-    const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi)});
-
-    const double azimuthal_velocity = azimuthal_basis_vector * velocity;
-
-    return std::vector<double>{temperature_value, azimuthal_velocity};
-}
-
-
-template<>
-std::vector<double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() const
-{
-    const unsigned int dim = 3;
-
-    const double radius = 0.5 * (1. + parameters.aspect_ratio),
-                 theta = numbers::PI / 2.;
-
-    const double phi = phi_benchmark;
-    Assert((phi < 0.?
-           (phi >= -numbers::PI && phi <= numbers::PI):
-           (phi >= 0. && phi <= 2. * numbers::PI)),
-           ExcAzimuthalAngleRange(phi));
-
-    const Point<dim>    x(radius * cos(phi) * sin(theta),
-                          radius * sin(phi) * sin(theta),
-                          radius * cos(theta));
-
-    Vector<double>  velocity_values(navier_stokes_fe.n_components());
     double          temperature_value(temperature_fe.n_components());
-    Vector<double>  magnetic_values(magnetic_fe.n_components());
+    Tensor<1,dim>   magnetic_field;
     try
     {
+
+        Vector<double>  velocity_values(navier_stokes_fe.n_components());
+
         VectorTools::point_value(mapping,
                                  navier_stokes_dof_handler,
                                  navier_stokes_solution,
                                  x,
                                  velocity_values);
+        for (unsigned int d=0; d<dim; ++d)
+            velocity[d] = velocity_values[d];
 
         temperature_value = VectorTools::point_value(mapping,
                                                      temperature_dof_handler,
@@ -573,18 +374,24 @@ std::vector<double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() 
                                                      x);
 
         if (parameters.magnetism && dim == 3)
+        {
+            Vector<double>  magnetic_values(magnetic_fe.n_components());
             VectorTools::point_value(mapping,
                                      magnetic_dof_handler,
                                      magnetic_solution,
                                      x,
-                                     velocity_values);
+                                     magnetic_values);
+            for (unsigned int d=0; d<dim; ++d)
+                magnetic_field[d] = magnetic_values[d];
+        }
+
     }
     catch (VectorTools::ExcPointNotAvailableHere    &exc)
     {
         if (parameters.magnetism && dim == 3)
-            return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
-        else
             return std::vector<double>(3, std::numeric_limits<double>::quiet_NaN());
+        else
+            return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
     }
     catch (std::exception &exc)
     {
@@ -610,24 +417,20 @@ std::vector<double> BuoyantFluidSolver<3>::compute_benchmark_requests_locally() 
         std::abort();
     }
 
-    Tensor<1,dim>   velocity;
-    for (unsigned int d=0; d<dim; ++d)
-        velocity[d] = velocity_values[d];
+    const std::array<Tensor<1,dim>, dim> sbasis
+    = CoordinateTransformation::spherical_basis(scoord);
 
-    const Tensor<1,dim>   azimuthal_basis_vector({-sin(phi), cos(phi) , 0.});
-    const double azimuthal_velocity = azimuthal_basis_vector * velocity;
+    const std::array<double, dim> spherical_velocity
+    = CoordinateTransformation::spherical_projections(velocity, sbasis);
+
+    const double azimuthal_velocity = spherical_velocity.back();
 
     if (parameters.magnetism && dim == 3)
     {
-        Tensor<1,dim>   magnetic_field;
-        for (unsigned int d=0; d<dim; ++d)
-            magnetic_field = magnetic_values[d];
+        const std::array<double, dim> spherical_magnetic_field
+        = CoordinateTransformation::spherical_projections(velocity, sbasis);
 
-        const Tensor<1,dim>   polar_basis_vector({cos(theta)*cos(phi),
-                                                  cos(theta)*sin(phi),
-                                                  -sin(theta)});
-
-        const double polar_magnetic_field = polar_basis_vector * magnetic_field;
+        const double polar_magnetic_field = spherical_magnetic_field[1];
 
         return std::vector<double>{temperature_value,
                                    azimuthal_velocity,
