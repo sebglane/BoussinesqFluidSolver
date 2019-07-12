@@ -18,7 +18,7 @@
 #include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/vector.h>
 
-#include "initial_values.h"
+#include <gravity_field.h>
 
 #include <vector>
 
