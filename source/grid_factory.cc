@@ -5,7 +5,9 @@
  *      Author: sg
  */
 
-#include "grid_factory.h"
+#include <grid_factory.h>
+
+#include <cmath>
 
 namespace GridFactory {
 
@@ -809,6 +811,122 @@ void TopographyBox<dim>::create_coarse_mesh(Triangulation<dim> &coarse_grid)
     else
         Assert(false, ExcInternalError());
 }
+
+template<int dim>
+Cavity<dim>::Cavity(const double aspect_ratio_)
+:
+aspect_ratio(aspect_ratio_)
+{
+    Assert(aspect_ratio > 0, ExcLowerRangeType<double>(aspect_ratio, 0));
+}
+
+template<>
+void Cavity<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
+{
+    const unsigned int dim = 2;
+
+    std::vector<unsigned int>   repetitions(dim, 1);
+
+    if (aspect_ratio > 1.0)
+        repetitions[1] = std::round(aspect_ratio);
+    else
+        repetitions[1] = std::round(1. / aspect_ratio);
+
+    GridGenerator::subdivided_hyper_rectangle(coarse_grid,
+                                              repetitions,
+                                              Point<dim>(),
+                                              Point<dim>({1., aspect_ratio}));
+
+    const double tol = 1e-12;
+    for (auto cell: coarse_grid.active_cell_iterators())
+    {
+        cell->set_material_id(MaterialIds::Fluid);
+
+        if (cell->at_boundary())
+            for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                if (!cell->face(f)->at_boundary())
+                {
+                    std::vector<Point<dim>> boundary_vertices(GeometryInfo<dim>::vertices_per_face);
+                    for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                        boundary_vertices[v] = cell->face(f)->vertex(v);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[0]) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Left);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[1]) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Bottom);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[0] - 1.0) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Right);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[1] - aspect_ratio) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Top);
+                }
+    }
+}
+
+template<>
+void Cavity<3>::create_coarse_mesh(Triangulation<3> &coarse_grid)
+{
+    const unsigned int dim = 3;
+
+    std::vector<unsigned int>   repetitions(dim, 1);
+
+    if (aspect_ratio > 1.0)
+        repetitions[dim-1] = std::round(aspect_ratio);
+    else
+        repetitions[dim-1] = std::round(1. / aspect_ratio);
+
+    GridGenerator::subdivided_hyper_rectangle(coarse_grid,
+                                              repetitions,
+                                              Point<dim>(),
+                                              Point<dim>({1., 1., aspect_ratio}));
+
+    const double tol = 1e-12;
+    for (auto cell: coarse_grid.active_cell_iterators())
+    {
+        cell->set_material_id(MaterialIds::Fluid);
+
+        if (cell->at_boundary())
+            for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
+                if (!cell->face(f)->at_boundary())
+                {
+                    std::vector<Point<dim>> boundary_vertices(GeometryInfo<dim>::vertices_per_face);
+                    for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                        boundary_vertices[v] = cell->face(f)->vertex(v);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[0]) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Left);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[0] - 1.0) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Right);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[1]) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Front);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[1] - 1.0) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Back);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[2]) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Bottom);
+
+                    if (std::all_of(boundary_vertices.begin(), boundary_vertices.end(),
+                            [&](Point<dim> &point)->bool{return std::abs(point[2] - aspect_ratio) < tol;}))
+                        cell->face(f)->set_boundary_id(BoundaryIds::Top);
+                }
+    }
+}
+
+
 }  // namespace GridFactory
 
 template class GridFactory::SphericalShell<2>;
@@ -817,3 +935,5 @@ template class GridFactory::TopographyBox<2>;
 template class GridFactory::TopographyBox<3>;
 template class GridFactory::SinusoidalManifold<2>;
 template class GridFactory::SinusoidalManifold<3>;
+template class GridFactory::Cavity<2>;
+template class GridFactory::Cavity<3>;

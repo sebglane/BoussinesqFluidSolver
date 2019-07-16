@@ -89,16 +89,32 @@ types::global_dof_index BuoyantFluidSolver<dim>::setup_temperature_dofs()
                 temperature_dof_handler,
                 temperature_constraints);
 
-        const Functions::ConstantFunction<dim>  icb_temperature(1.0);
-        const Functions::ConstantFunction<dim>  cmb_temperature(0.0);
+        if (parameters.geometry == GeometryType::SphericalShell)
+        {
+            const Functions::ConstantFunction<dim>  icb_temperature(1.0);
+            const Functions::ConstantFunction<dim>  cmb_temperature(0.0);
 
-        const std::map<typename types::boundary_id, const Function<dim>*>
-        temperature_boundary_values = {{GridFactory::BoundaryIds::ICB, &icb_temperature},
-                                       {GridFactory::BoundaryIds::CMB, &cmb_temperature}};
+            const std::map<typename types::boundary_id, const Function<dim>*>
+            temperature_boundary_values = {{GridFactory::BoundaryIds::ICB, &icb_temperature},
+                                           {GridFactory::BoundaryIds::CMB, &cmb_temperature}};
 
-        VectorTools::interpolate_boundary_values(temperature_dof_handler,
-                                                 temperature_boundary_values,
-                                                 temperature_constraints);
+            VectorTools::interpolate_boundary_values(temperature_dof_handler,
+                                                     temperature_boundary_values,
+                                                     temperature_constraints);
+        }
+        else if (parameters.geometry == GeometryType::Cavity)
+        {
+            const Functions::ConstantFunction<dim>  left_temperature(-0.5);
+            const Functions::ConstantFunction<dim>  right_temperature(0.5);
+
+            const std::map<typename types::boundary_id, const Function<dim>*>
+            temperature_boundary_values = {{GridFactory::BoundaryIds::Left, &left_temperature},
+                                           {GridFactory::BoundaryIds::Right, &right_temperature}};
+
+            VectorTools::interpolate_boundary_values(temperature_dof_handler,
+                                                     temperature_boundary_values,
+                                                     temperature_constraints);
+        }
 
         temperature_constraints.close();
     }

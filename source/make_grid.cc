@@ -52,8 +52,18 @@ void BuoyantFluidSolver<dim>::make_grid()
 template<int dim>
 void BuoyantFluidSolver<dim>::make_coarse_grid()
 {
-    GridFactory::SphericalShell<dim> spherical_shell(parameters.aspect_ratio);
-    spherical_shell.create_coarse_mesh(triangulation);
+    if (parameters.geometry == GeometryType::SphericalShell)
+    {
+        GridFactory::SphericalShell<dim> spherical_shell(parameters.aspect_ratio);
+        spherical_shell.create_coarse_mesh(triangulation);
+    }
+    else if (parameters.geometry == GeometryType::Cavity)
+    {
+        GridFactory::Cavity<dim> cavity(parameters.aspect_ratio);
+        cavity.create_coarse_mesh(triangulation);
+    }
+    else
+        Assert(false, ExcInternalError());
 }
 }  // namespace BuoyantFluid
 

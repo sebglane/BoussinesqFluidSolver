@@ -37,8 +37,10 @@ global_avg_frequency(5),
 cfl_frequency(5),
 snapshot_frequency(100),
 verbose(false),
-// physics parameters
+// geometry parameters
+geometry(GeometryType::SphericalShell),
 aspect_ratio(0.35),
+// physics parameters
 Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
@@ -176,7 +178,7 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                               "Cartesian",
                               Patterns::Selection("Cartesian|Spherical"),
                               "Type of the coordinate system used for the "
-                              "coordinates of the point (None|Sinusoidal).");
+                              "coordinates of the point (Cartesian|Spherical).");
             prm.declare_entry("output_spherical_components",
                               "false",
                               Patterns::Bool(),
@@ -285,11 +287,6 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Polynomial degree of the magnetic field discretization. The polynomial "
                 "degree of the pseudo pressure is automatically set to one less than the magnetic field one.");
 
-        prm.declare_entry("aspect_ratio",
-                "0.35",
-                Patterns::Double(0.,1.),
-                "Ratio of inner to outer radius");
-
         prm.declare_entry("pressure_update_type",
                 "Standard",
                 Patterns::Selection("Standard|Irrotational"),
@@ -339,6 +336,20 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
         }
         prm.leave_subsection();
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Geometry");
+    {
+        prm.declare_entry("geometry_type",
+                          "SphericalShell",
+                          Patterns::Selection("SphericalShell|Cavity"),
+                          "Type of the geometry (SphericalShell|Cavity).");
+
+        prm.declare_entry("aspect_ratio",
+                          "0.35",
+                          Patterns::Double(0.,100.),
+                          "Ratio of inner to outer radius");
     }
     prm.leave_subsection();
 
@@ -468,6 +479,25 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
 void Parameters::parse_parameters(ParameterHandler &prm)
 {
+    prm.enter_subsection("Geometry");
+    {
+        const std::string coordinate_system_string
+        = prm.get("geometry_type");
+
+        if (coordinate_system_string == "SphericalShell")
+            geometry = GeometryType::SphericalShell;
+        else if (coordinate_system_string == "Cavity")
+            geometry = GeometryType::Cavity;
+        else
+            AssertThrow(false, ExcMessage("Unexpected string for type of the geometry."));
+
+        aspect_ratio = prm.get_double("aspect_ratio");
+        Assert(aspect_ratio > 0., ExcLowerRangeType<double>(0., aspect_ratio));
+        if (geometry == GeometryType::SphericalShell)
+            Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
+    }
+    prm.leave_subsection();
+
     prm.enter_subsection("Runtime parameters");
     {
         dim = prm.get_integer("dim");
@@ -491,6 +521,11 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     prm.enter_subsection("Output parameters");
     {
         output_benchmark_results = prm.get_bool("output_benchmark_results");
+
+        if (output_benchmark_results)
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("Benchmark output can only be request for a spherical"
+                              " shell geometry."));
 
         prm.enter_subsection("Benchmarking");
         if (output_benchmark_results)
@@ -542,7 +577,12 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             if (coordinate_system_string == "Cartesian")
                 point_coordinate_system = CoordinateSystem::Cartesian;
             else if (coordinate_system_string == "Spherical")
+            {
+                Assert(geometry == GeometryType::SphericalShell,
+                       ExcMessage("Spherical point probe coordinates only make"
+                                  "sense for a spherical shell geometry."));
                 point_coordinate_system = CoordinateSystem::Spherical;
+            }
             else
                 AssertThrow(false, ExcMessage("Unexpected string for coordinate system."));
 
@@ -558,7 +598,12 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         if (prm.get_bool("output_mpi_partition"))
             output_flags |= output_mpi_partition;
         if (prm.get_bool("output_spherical_components"))
+        {
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("Spherical component output only makes sense for a"
+                              " spherical shell geometry."));
             output_flags |= output_spherical_components;
+        }
         if (prm.get_bool("output_velocity_curl"))
             output_flags |= output_velocity_curl;
         if (prm.get_bool("output_magnetic_curl"))
@@ -576,7 +621,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     }
     prm.leave_subsection();
 
-
     prm.enter_subsection("Initial conditions");
     {
         std::string perturbation_string = prm.get("temperature_perturbation");
@@ -584,7 +628,13 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         if (perturbation_string == "None")
             temperature_perturbation = EquationData::TemperaturePerturbation::None;
         else if (perturbation_string == "Sinusoidal")
+        {
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("Sinusoidal temperature perturbation only makes"
+                              " sense for a spherical shell geometry."));
+
             temperature_perturbation = EquationData::TemperaturePerturbation::Sinusoidal;
+        }
         else
             AssertThrow(false, ExcMessage("Unexpected string for temperature perturbation."));
     }
@@ -619,10 +669,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         magnetic_degree = prm.get_integer("p_degree_magnetic");
         Assert(magnetic_degree > 1, ExcLowerRange(magnetic_degree, 1));
-
-        aspect_ratio = prm.get_double("aspect_ratio");
-        Assert(aspect_ratio > 0., ExcLowerRangeType<double>(0., aspect_ratio));
-        Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
 
         prm.declare_entry("convective_discretization_type",
                         "Standard",
@@ -727,10 +773,19 @@ void Parameters::parse_parameters(ParameterHandler &prm)
     prm.enter_subsection("Physics");
     {
         rotation = prm.get_bool("rotating_case");
+        if (rotation)
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("Rotation option only makes"
+                              " sense for a spherical shell geometry."));
 
         buoyancy = prm.get_bool("buoyant_case");
 
         magnetism = prm.get_bool("magnetic_case");
+        if (magnetism)
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("Magnetic option only makes"
+                              " sense for a spherical shell geometry."));
+
 
         magnetic_induction = prm.get_bool("magnetic_induction");
         if (magnetic_induction)
@@ -755,9 +810,19 @@ void Parameters::parse_parameters(ParameterHandler &prm)
         std::string profile_string = prm.get("GravityProfile");
 
         if (profile_string == "Constant")
+        {
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("A constant radial gravity profile only makes"
+                              " sense for a spherical shell geometry."));
             gravity_profile = EquationData::GravityProfile::constant;
+        }
         else if (profile_string == "Linear")
+        {
+            Assert(geometry == GeometryType::SphericalShell,
+                   ExcMessage("A linear radial gravity profile only makes"
+                              " sense for a spherical shell geometry."));
             gravity_profile = EquationData::GravityProfile::linear;
+        }
         else
             AssertThrow(false, ExcMessage("Unexpected string for gravity profile."));
 

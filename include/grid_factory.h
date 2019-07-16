@@ -35,7 +35,14 @@ enum BoundaryIds
     // core mantle boundary
     CMB,
     // fictitious vacuum boundary
-    FVB
+    FVB,
+    // cavity boundaries
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Back,
+    Front
 };
 
 /*
@@ -123,6 +130,18 @@ private:
     TransfiniteInterpolationManifold<dim> interpolation_manifold;
 
     const double    tol = 1e-12;
+};
+
+template<int dim>
+class Cavity
+{
+public:
+    Cavity(const double aspect_ratio = 8.0);
+
+    void create_coarse_mesh(Triangulation<dim> &coarse_grid);
+
+private:
+    const double aspect_ratio;
 };
 
 }  // namespace GridFactory

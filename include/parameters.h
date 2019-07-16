@@ -17,6 +17,16 @@
 namespace BuoyantFluid {
 
 using namespace dealii;
+/*
+ *
+ * enumeration for the type of the geometry
+ *
+ */
+enum GeometryType
+{
+    SphericalShell,
+    Cavity
+};
 
 /*
  *
@@ -104,8 +114,11 @@ struct Parameters
 
     bool            verbose;
 
+    // geometry parameters
+    GeometryType    geometry;
+    double          aspect_ratio;
+
     // physics parameters
-    double  aspect_ratio;
     double  Pr;
     double  Ra;
     double  Ek;
