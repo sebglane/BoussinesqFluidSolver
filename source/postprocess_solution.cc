@@ -119,7 +119,8 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
         AssertIsFinite(local_magnetic_volume);
 
         Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
-        Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+        if (parameters.geometry == GeometryType::SphericalShell)
+           Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
         Assert(local_sum_magnetic_field_sqrd >= 0, ExcLowerRangeType<double>(local_sum_magnetic_field_sqrd, 0));
         Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
         Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
@@ -177,7 +178,8 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
         AssertIsFinite(local_temperature_volume);
 
         Assert(local_sum_velocity_sqrd >= 0, ExcLowerRangeType<double>(local_sum_velocity_sqrd, 0));
-        Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
+        if (parameters.geometry == GeometryType::SphericalShell)
+           Assert(local_sum_temperature >= 0, ExcLowerRangeType<double>(local_sum_temperature, 0));
         Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
         Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
 

@@ -99,7 +99,7 @@ struct Parameters
 
     // point probe parameters
     unsigned int        point_probe_frequency;
-    std::vector<double> point_coordinates;
+    std::vector<std::vector<double>>    probe_points;
     CoordinateSystem    point_coordinate_system;
     bool                point_probe_spherical;
 
@@ -175,7 +175,7 @@ struct Parameters
 };
 
 template<int dim>
-Point<dim>  probe_point(const Parameters  &parameters);
+std::vector<Point<dim>> probe_points(const Parameters  &parameters);
 
 }  // namespace BuoyantFluid
 

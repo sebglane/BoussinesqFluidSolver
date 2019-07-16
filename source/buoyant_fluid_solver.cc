@@ -207,20 +207,32 @@ phi_benchmark(-2.*numbers::PI)
 
     if (parameters.output_point_probe)
     {
+        const unsigned int n_probe_points = parameters.probe_points.size();
+
         point_probe_table.declare_column("timestep");
         point_probe_table.declare_column("time");
-        point_probe_table.declare_column("x-velocity");
-        point_probe_table.declare_column("y-velocity");
-        if (dim==3)
-            point_probe_table.declare_column("z-velocity");
 
-        if (parameters.magnetism)
+        for (unsigned cnt=0; cnt < n_probe_points; ++cnt)
         {
-            point_probe_table.declare_column("x-magnetic field");
-            point_probe_table.declare_column("y-magnetic field");
-            if (dim == 3)
-                point_probe_table.declare_column("z-magnetic field");
-            point_probe_table.declare_column("magnetic pressure");
+            std::stringstream cnt_str;
+            cnt_str << cnt;
+
+            point_probe_table.declare_column(std::string("x-velocity ").append(cnt_str.str()));
+            point_probe_table.declare_column(std::string("y-velocity ").append(cnt_str.str()));
+            if (dim==3)
+                point_probe_table.declare_column(std::string("z-velocity ").append(cnt_str.str()));
+
+            point_probe_table.declare_column(std::string("pressure ").append(cnt_str.str()));
+            point_probe_table.declare_column(std::string("temperature ").append(cnt_str.str()));
+
+            if (parameters.magnetism)
+            {
+                point_probe_table.declare_column(std::string("x-magnetic field ").append(cnt_str.str()));
+                point_probe_table.declare_column(std::string("y-magnetic field ").append(cnt_str.str()));
+                if (dim == 3)
+                    point_probe_table.declare_column(std::string("z-magnetic field").append(cnt_str.str()));
+                point_probe_table.declare_column(std::string("magnetic pressure ").append(cnt_str.str()));
+            }
         }
     }
 }
@@ -988,40 +1000,54 @@ void BuoyantFluidSolver<dim>::run()
         if (parameters.output_point_probe &&
                 timestep_number % parameters.point_probe_frequency == 0)
         {
-            std::vector<double> values
-            = compute_point_value(probe_point<dim>(parameters));
-
             point_probe_table.add_value("timestep", timestep_number);
             point_probe_table.add_value("time", time);
 
-            // add velocities
-            const std::array<std::string,3> velocity_strings =
-            {
-                    "x-velocity",
-                    "y-velocity",
-                    "z-velocity"
-            };
-            for (unsigned int d=0; d<dim; ++d)
-                point_probe_table.add_value(velocity_strings[d], values[d]);
+            const std::vector<Point<dim> > points = probe_points<dim>(parameters);
 
-            // add pressure
-            point_probe_table.add_value("pressure", values[dim]);
-            // add temperature
-            point_probe_table.add_value("temperature", values[dim+1]);
+            typename std::vector<Point<dim>>::const_iterator
+            point = points.begin(),
+            point_end = points.end();
 
-            // add magnetic field
-            if (parameters.magnetism)
+            unsigned int cnt = 0;
+            for (; point != point_end; ++point, ++cnt)
             {
+                std::vector<double> values = compute_point_value(*point);
+
+                // add velocities
+                std::stringstream   cnt_str;
+                cnt_str << cnt;
                 const std::array<std::string,3> velocity_strings =
                 {
-                        "x-magnetic field",
-                        "y-magnetic field",
-                        "z-magnetic field"
+                        std::string("x-velocity ").append(cnt_str.str()),
+                        std::string("y-velocity ").append(cnt_str.str()),
+                        std::string("z-velocity ").append(cnt_str.str()),
                 };
                 for (unsigned int d=0; d<dim; ++d)
-                    point_probe_table.add_value(velocity_strings[d], values[dim+2+d]);
+                    point_probe_table.add_value(velocity_strings[d], values[d]);
 
-                point_probe_table.add_value("magnetic pressure", values[2*dim+2]);
+                // add pressure
+                point_probe_table.add_value(std::string("pressure ").append(cnt_str.str()),
+                                            values[dim]);
+                // add temperature
+                point_probe_table.add_value(std::string("temperature ").append(cnt_str.str()),
+                                            values[dim+1]);
+
+                // add magnetic field
+                if (parameters.magnetism)
+                {
+                    const std::array<std::string,3> velocity_strings =
+                    {
+                            std::string("x-magnetic field ").append(cnt_str.str()),
+                            std::string("y-magnetic field ").append(cnt_str.str()),
+                            std::string("z-magnetic field ").append(cnt_str.str()),
+                    };
+                    for (unsigned int d=0; d<dim; ++d)
+                        point_probe_table.add_value(velocity_strings[d], values[dim+2+d]);
+
+                    point_probe_table.add_value(std::string("magnetic pressure ").append(cnt_str.str()),
+                                                values[2*dim+2]);
+                }
             }
         }
 
