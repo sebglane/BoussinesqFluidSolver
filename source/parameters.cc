@@ -45,7 +45,7 @@ Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
 Pm(5.0),
-gravity_profile(EquationData::GravityProfile::linear),
+gravity_profile(EquationData::GravityProfile::LinearRadial),
 rotation(false),
 buoyancy(true),
 magnetism(false),
@@ -397,9 +397,9 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Magnetic Prandtl number of the fluid.");
 
         prm.declare_entry("GravityProfile",
-                "Linear",
-                Patterns::Selection("Constant|Linear"),
-                "Type of the gravity profile (Constant|Linear).");
+                "LinearRadial",
+                Patterns::Selection("ConstantRadial|LinearRadial|ConstantCartesian"),
+                "Type of the gravity profile (ConstantRadial|LinearRadial|ConstantCartesian).");
     }
     prm.leave_subsection();
 
@@ -809,19 +809,26 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         std::string profile_string = prm.get("GravityProfile");
 
-        if (profile_string == "Constant")
+        if (profile_string == "ConstantRadial")
         {
             Assert(geometry == GeometryType::SphericalShell,
                    ExcMessage("A constant radial gravity profile only makes"
                               " sense for a spherical shell geometry."));
-            gravity_profile = EquationData::GravityProfile::constant;
+            gravity_profile = EquationData::GravityProfile::ConstantRadial;
         }
-        else if (profile_string == "Linear")
+        else if (profile_string == "LinearRadial")
         {
             Assert(geometry == GeometryType::SphericalShell,
                    ExcMessage("A linear radial gravity profile only makes"
                               " sense for a spherical shell geometry."));
-            gravity_profile = EquationData::GravityProfile::linear;
+            gravity_profile = EquationData::GravityProfile::LinearRadial;
+        }
+        else if (profile_string == "ConstantCartesian")
+        {
+            Assert(geometry == GeometryType::Cavity,
+                   ExcMessage("A Cartesian gravity profile only makes"
+                              " sense for a cartesian geometry."));
+            gravity_profile = EquationData::GravityProfile::ConstantCartesian;
         }
         else
             AssertThrow(false, ExcMessage("Unexpected string for gravity profile."));

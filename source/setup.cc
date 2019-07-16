@@ -104,8 +104,8 @@ types::global_dof_index BuoyantFluidSolver<dim>::setup_temperature_dofs()
         }
         else if (parameters.geometry == GeometryType::Cavity)
         {
-            const Functions::ConstantFunction<dim>  left_temperature(-0.5);
-            const Functions::ConstantFunction<dim>  right_temperature(0.5);
+            const Functions::ConstantFunction<dim>  left_temperature(0.5);
+            const Functions::ConstantFunction<dim>  right_temperature(-0.5);
 
             const std::map<typename types::boundary_id, const Function<dim>*>
             temperature_boundary_values = {{GridFactory::BoundaryIds::Left, &left_temperature},
@@ -222,16 +222,41 @@ BuoyantFluidSolver<dim>::setup_navier_stokes_dofs()
 
         const Functions::ZeroFunction<dim> zero_function(dim+1);
 
-        const std::map<typename types::boundary_id, const Function<dim>*>
-        velocity_boundary_values = {{GridFactory::BoundaryIds::ICB, &zero_function},
-                                    {GridFactory::BoundaryIds::CMB, &zero_function}};
+        if (parameters.geometry == GeometryType::SphericalShell)
+        {
+            const std::map<typename types::boundary_id, const Function<dim>*>
+            velocity_boundary_values = {{GridFactory::BoundaryIds::ICB, &zero_function},
+                                        {GridFactory::BoundaryIds::CMB, &zero_function}};
 
-        const FEValuesExtractors::Vector velocities(0);
-        VectorTools::interpolate_boundary_values(
-                navier_stokes_dof_handler,
-                velocity_boundary_values,
-                navier_stokes_constraints,
-                navier_stokes_fe.component_mask(velocities));
+            const FEValuesExtractors::Vector velocities(0);
+            VectorTools::interpolate_boundary_values(
+                    navier_stokes_dof_handler,
+                    velocity_boundary_values,
+                    navier_stokes_constraints,
+                    navier_stokes_fe.component_mask(velocities));
+        }
+        else if (parameters.geometry == GeometryType::Cavity)
+        {
+            std::map<typename types::boundary_id, const Function<dim>*>
+            velocity_boundary_values = {{GridFactory::BoundaryIds::Left, &zero_function},
+                                        {GridFactory::BoundaryIds::Right, &zero_function},
+                                        {GridFactory::BoundaryIds::Top, &zero_function},
+                                        {GridFactory::BoundaryIds::Bottom, &zero_function}};
+            if (dim == 3)
+            {
+                velocity_boundary_values.insert
+                (std::pair<typename types::boundary_id, const Function<dim>*>(GridFactory::BoundaryIds::Front,&zero_function));
+                velocity_boundary_values.insert
+                (std::pair<typename types::boundary_id, const Function<dim>*>(GridFactory::BoundaryIds::Back,&zero_function));
+            }
+
+            const FEValuesExtractors::Vector velocities(0);
+            VectorTools::interpolate_boundary_values(
+                    navier_stokes_dof_handler,
+                    velocity_boundary_values,
+                    navier_stokes_constraints,
+                    navier_stokes_fe.component_mask(velocities));
+        }
 
         navier_stokes_constraints.close();
     }

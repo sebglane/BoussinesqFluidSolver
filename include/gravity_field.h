@@ -10,8 +10,6 @@
 
 #include <deal.II/base/tensor_function.h>
 
-#include <exceptions.h>
-
 namespace EquationData {
 
 /*
@@ -21,9 +19,10 @@ namespace EquationData {
  */
 enum GravityProfile
 {
-    constant,
-    linear,
-    default_profile=linear
+    ConstantRadial,
+    LinearRadial,
+    ConstantCartesian,
+    default_profile=LinearRadial
 };
 
 using namespace dealii;
@@ -33,7 +32,7 @@ class GravityFunction : public TensorFunction<1,dim>
 {
 public:
     GravityFunction(const double    outer_radius = 1.0,
-                    const GravityProfile    profile_type = GravityProfile::constant);
+                    const GravityProfile    profile_type = GravityProfile::ConstantRadial);
 
     virtual Tensor<1,dim>   value(const Point<dim> &p) const;
 

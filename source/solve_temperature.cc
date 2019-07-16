@@ -15,6 +15,9 @@ namespace BuoyantFluid {
 template<int dim>
 void BuoyantFluidSolver<dim>::project_temperature_field()
 {
+    if (parameters.geometry == GeometryType::Cavity)
+        return;
+
     assemble_temperature_system();
 
     // assemble right-hand side vector

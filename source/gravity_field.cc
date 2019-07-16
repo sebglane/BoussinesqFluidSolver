@@ -7,6 +7,8 @@
 
 #include <gravity_field.h>
 
+#include <exceptions.h>
+
 namespace EquationData
 {
 
@@ -24,20 +26,25 @@ template<int dim>
 Tensor<1,dim> GravityFunction<dim>::value(const Point<dim> &point) const
 {
     const double r = point.norm();
-    Assert(r > 0, ExcNegativeRadius(r));
+    Assert(r > 0, GeometryExceptions::ExcNegativeRadius(r));
 
     Tensor<1,dim> value;
 
     switch (profile_type)
     {
-        case GravityProfile::constant:
+        case GravityProfile::ConstantRadial:
         {
             value = -point / r;
             break;
         }
-        case GravityProfile::linear:
+        case GravityProfile::LinearRadial:
         {
             value = -point * scaling_factor / outer_radius;
+            break;
+        }
+        case GravityProfile::ConstantCartesian:
+        {
+            value[dim-1] = -1.0;
             break;
         }
         default:

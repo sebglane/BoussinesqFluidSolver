@@ -844,7 +844,7 @@ void Cavity<2>::create_coarse_mesh(Triangulation<2> &coarse_grid)
 
         if (cell->at_boundary())
             for (unsigned int f=0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-                if (!cell->face(f)->at_boundary())
+                if (cell->face(f)->at_boundary())
                 {
                     std::vector<Point<dim>> boundary_vertices(GeometryInfo<dim>::vertices_per_face);
                     for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
