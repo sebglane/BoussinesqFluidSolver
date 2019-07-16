@@ -632,8 +632,8 @@ void PostProcessor<dim>::evaluate_component_projection
     {
         computed_quantities(first_quantity_index+d) = spherical_basis[d] * component;
 
-        Assert(std::abs(computed_quantities(first_quantity_index+d)) - component_magnitude
-               <=  projection_tolerance,
+        Assert(std::abs(computed_quantities(first_quantity_index+d)) 
+               <= component_magnitude + projection_tolerance,
                ExcLowerRangeType<double>(computed_quantities(first_quantity_index+d),
                                          component_magnitude));
     }
@@ -642,7 +642,7 @@ void PostProcessor<dim>::evaluate_component_projection
 
 template<int dim>
 void PostProcessor<dim>::evaluate_gradient_projection
-(const std::vector<Tensor<1,dim>>     &solution_gradients,
+(const std::vector<Tensor<1,dim>>    &solution_gradients,
  const unsigned int                   solution_component,
  const std::array<Tensor<1,dim>,dim> &spherical_basis,
  Vector<double>                      &computed_quantities,
@@ -663,8 +663,8 @@ void PostProcessor<dim>::evaluate_gradient_projection
         computed_quantities(first_quantity_index+c)
         = spherical_basis[c] * solution_gradients[solution_component];
 
-        Assert(std::abs(computed_quantities(first_quantity_index+c)) - component_magnitude
-               <=  projection_tolerance,
+        Assert(std::abs(computed_quantities(first_quantity_index+c))
+               <= component_magnitude + projection_tolerance,
                ExcLowerRangeType<double>(std::abs(computed_quantities(first_quantity_index+c)),
                        component_magnitude));
     }

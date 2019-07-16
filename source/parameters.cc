@@ -25,7 +25,7 @@ output_benchmark_results(false),
 output_point_probe(false),
 // point probe parameters
 point_probe_frequency(10),
-point_coordinates({1.,0.,0.}),
+probe_points({{1.,0.,0.},}),
 point_coordinate_system(CoordinateSystem::Cartesian),
 point_probe_spherical(false),
 // benchmark parameters
@@ -168,9 +168,10 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                               "5",
                               Patterns::Integer(),
                               "Output frequency of point probe.");
+            Patterns::List  point(Patterns::Double(),2,3);
             prm.declare_entry("point_coordinates",
                               "1.0,0.0,0.0",
-                              Patterns::List(Patterns::Double(),2,3),
+                              Patterns::List(point,1,Patterns::List::max_int_value,";"),
                               "Coordinates of the point where the solution is probed.");
             prm.declare_entry("coordinate_system",
                               "Cartesian",
@@ -514,26 +515,37 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             Assert(point_probe_frequency > 0, ExcLowerRange(0, point_probe_frequency));
 
             // get a single string which is comma-separated
-            const std::string point_coordinate_list = prm.get("point_coordinates");
+            const std::string point_list = prm.get("point_coordinates");
 
             // seperate the string
-            const std::vector<std::string> point_coordinate_strings
-            = Utilities::split_string_list(point_coordinate_list);
-            AssertDimension(point_coordinate_strings.size(),
-                            dim);
+            const std::vector<std::string> point_strings
+            = Utilities::split_string_list(point_list, ";");
 
-            // resize the coordinate vector
-            point_coordinates.resize(dim, 0.);
-
-            // convert the coordinates to doubles
-            typename std::vector<std::string>::const_iterator
-            coord_str = point_coordinate_strings.begin();
-            typename std::vector<double>::iterator
-            coord = point_coordinates.begin();
-            for (; coord_str != point_coordinate_strings.end(); ++coord_str, ++coord)
+            std::vector<std::string>::const_iterator
+            point_str = point_strings.begin(),
+            end_str = point_strings.end();
+            for (; point_str != end_str; ++point_str)
             {
-                *coord = Utilities::string_to_double(*coord_str);
-                AssertIsFinite(*coord);
+                // seperate the string
+                const std::vector<std::string> coordinate_strings
+                = Utilities::split_string_list(*point_str);
+                AssertDimension(coordinate_strings.size(),
+                                dim);
+
+                std::vector<double>    point(dim, 0.);
+
+                // convert the coordinates to doubles
+                typename std::vector<std::string>::const_iterator
+                coord_str = coordinate_strings.begin();
+                typename std::vector<double>::iterator
+                coord = point.begin();
+                for (; coord_str != coordinate_strings.end(); ++coord_str, ++coord)
+                {
+                    *coord = Utilities::string_to_double(*coord_str);
+                    AssertIsFinite(*coord);
+                }
+
+                probe_points.push_back(point);
             }
 
             const std::string coordinate_system_string
@@ -832,31 +844,44 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 }
 
 template<int dim>
-Point<dim> probe_point(const Parameters &parameters)
+std::vector<Point<dim>> probe_points(const Parameters &parameters)
 {
-    AssertDimension(parameters.point_coordinates.size(), dim);
+    const unsigned int n_points = parameters.probe_points.size();
+
+    std::vector<Point<dim>> probe_points(n_points);
+
+    typename std::vector<std::vector<double>>::const_iterator
+    coord = parameters.probe_points.begin(),
+    end_coord = parameters.probe_points.end();
+    typename std::vector<Point<dim>>::iterator
+    point = probe_points.begin();
 
     if (parameters.point_coordinate_system == CoordinateSystem::Spherical)
-    {
-        std::array<double,dim> scoord;
-        for (unsigned int d=0; d<dim; ++d)
-            scoord[d] = parameters.point_coordinates[d];
-        return GeometricUtilities::Coordinates::from_spherical(scoord);
-    }
-    else if (parameters.point_coordinate_system == CoordinateSystem::Cartesian)
-    {
-        Point<dim> probe_point;
-        for (unsigned d=0; d<dim; ++d)
-            probe_point[d] = parameters.point_coordinates[d];
+        for (; coord != end_coord; ++coord, ++point)
+        {
+            AssertDimension(coord->size(), dim);
 
-        return probe_point;
-    }
+            std::array<double,dim> scoord;
+            for (unsigned int d=0; d<dim; ++d)
+                scoord[d] = coord->at(d);
+            *point = GeometricUtilities::Coordinates::from_spherical(scoord);
+        }
+    else if (parameters.point_coordinate_system == CoordinateSystem::Cartesian)
+        for (; coord != end_coord; ++coord, ++point)
+        {
+            AssertDimension(coord->size(), dim);
+
+            for (unsigned d=0; d<dim; ++d)
+                (*point)[d] = coord->at(d);
+        }
     else
         Assert(false, ExcInternalError());
+
+    return probe_points;
 }
 
 // explicit instantiation
-template Point<2> probe_point<2>(const Parameters &);
-template Point<3> probe_point<3>(const Parameters &);
+template std::vector<Point<2>> probe_points<2>(const Parameters &);
+template std::vector<Point<3>> probe_points<3>(const Parameters &);
 
 } // namespace BuoyantFluid

@@ -18,9 +18,9 @@ spherical_basis(const std::array<double,dim> &scoord)
     std::array<Tensor<1,dim>,dim> sbasis;
 
     Assert(scoord[0] >= 0.,
-           ExcNegativeRadius(scoord[0]));
+           GeometryExceptions::ExcNegativeRadius(scoord[0]));
     Assert(scoord[1] >= 0. && scoord[1] < 2.*numbers::PI,
-           ExcPolarAngleRange(scoord[1]));
+           GeometryExceptions::ExcPolarAngleRange(scoord[1]));
 
     switch (dim)
     {
@@ -37,7 +37,7 @@ spherical_basis(const std::array<double,dim> &scoord)
         case 3:
         {
             Assert(scoord[2] >= 0. && scoord[2] <= numbers::PI,
-                   ExcAzimuthalAngleRange(scoord[2]));
+                   GeometryExceptions::ExcAzimuthalAngleRange(scoord[2]));
 
             // radial basis vector
             sbasis[0][0] = std::cos(scoord[2]) * std::sin(scoord[1]);

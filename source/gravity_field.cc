@@ -24,7 +24,7 @@ template<int dim>
 Tensor<1,dim> GravityFunction<dim>::value(const Point<dim> &point) const
 {
     const double r = point.norm();
-    Assert(r > 0, ExcNegativeRadius(r));
+    Assert(r > 0, GeometryExceptions::ExcNegativeRadius(r));
 
     Tensor<1,dim> value;
 
