@@ -29,18 +29,6 @@ enum TemperaturePerturbation
     default_perturbation=None
 };
 
-/*
- *
- * enumeration for the type of the gravity profile
- *
- */
-enum GravityProfile
-{
-    constant,
-    linear,
-    default_profile=linear
-};
-
 using namespace dealii;
 
 using namespace GeometryExceptions;
@@ -104,28 +92,6 @@ private:
     };
 };
 
-template <int dim>
-class GravityFunction : public TensorFunction<1,dim>
-{
-public:
-    GravityFunction(const double    outer_radius = 1.0,
-                    const GravityProfile    profile_type = GravityProfile::constant);
-
-    virtual Tensor<1,dim>   value(const Point<dim> &p) const;
-
-    virtual void            value_list(const std::vector<Point<dim>>    &points,
-                                       std::vector<Tensor<1,dim>>       &values) const;
-
-    GravityProfile  get_profile_type() const;
-
-private:
-    const double outer_radius;
-
-    const GravityProfile    profile_type;
-};
-
 }  // namespace EquationData
-
-
 
 #endif /* INCLUDE_INITIAL_VALUES_H_ */

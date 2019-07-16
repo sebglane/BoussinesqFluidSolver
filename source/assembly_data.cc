@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "assembly_data.h"
+#include <assembly_data.h>
 
 namespace TemperatureAssembly {
 

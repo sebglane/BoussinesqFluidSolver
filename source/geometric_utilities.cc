@@ -5,7 +5,7 @@
  *      Author: sg
  */
 #include <geometric_utilities.h>
-#include <deal.II/base/exceptions.h>
+#include <exceptions.h>
 
 namespace CoordinateTransformation {
 
@@ -17,11 +17,10 @@ spherical_basis(const std::array<double,dim> &scoord)
 {
     std::array<Tensor<1,dim>,dim> sbasis;
 
-//    Assert (scoord[0] >= 0.,
-//            GeometricUtilities::Coordinates::NegativeRadius(scoord[0]));
-//
-//    Assert (scoord[1] >= 0. && scoord[1] < 2.*numbers::PI,
-//            SphericalAzimuth(scoord[1]));
+    Assert(scoord[0] >= 0.,
+           ExcNegativeRadius(scoord[0]));
+    Assert(scoord[1] >= 0. && scoord[1] < 2.*numbers::PI,
+           ExcPolarAngleRange(scoord[1]));
 
     switch (dim)
     {
@@ -37,8 +36,8 @@ spherical_basis(const std::array<double,dim> &scoord)
         }
         case 3:
         {
-//            Assert(scoord[2] >= 0. && scoord[2] <= numbers::PI,
-//                   SphericalPolar(scoord[2]));
+            Assert(scoord[2] >= 0. && scoord[2] <= numbers::PI,
+                   ExcAzimuthalAngleRange(scoord[2]));
 
             // radial basis vector
             sbasis[0][0] = std::cos(scoord[2]) * std::sin(scoord[1]);

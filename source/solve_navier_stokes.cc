@@ -9,11 +9,9 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
-#include "buoyant_fluid_solver.h"
-#include "initial_values.h"
+#include <buoyant_fluid_solver.h>
 
 namespace BuoyantFluid {
-
 
 template<int dim>
 void BuoyantFluidSolver<dim>::navier_stokes_step()

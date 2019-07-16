@@ -10,8 +10,7 @@
 
 #include <deal.II/numerics/matrix_tools.h>
 
-#include "buoyant_fluid_solver.h"
-
+#include <buoyant_fluid_solver.h>
 
 namespace BuoyantFluid {
 
