@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "timestepping.h"
+#include <timestepping.h>
 
 namespace TimeStepping
 {
@@ -13,16 +13,13 @@ namespace TimeStepping
 IMEXCoefficients::IMEXCoefficients(const IMEXType &type_)
 :
 type(type_),
-alpha_(3,0),
-beta_(2,0),
-gamma_(3,0),
 update_alpha(true),
 update_beta(true),
 update_gamma(true),
 omega(0)
 {}
 
-std::vector<double> IMEXCoefficients::alpha(const double    timestep_ratio)
+std::array<double,3> IMEXCoefficients::alpha(const double timestep_ratio)
 {
     if (timestep_ratio != omega)
     {
@@ -39,7 +36,7 @@ std::vector<double> IMEXCoefficients::alpha(const double    timestep_ratio)
     return alpha_;
 }
 
-std::vector<double> IMEXCoefficients::beta(const double timestep_ratio)
+std::array<double,2> IMEXCoefficients::beta(const double timestep_ratio)
 {
     if (timestep_ratio != omega)
     {
@@ -56,7 +53,7 @@ std::vector<double> IMEXCoefficients::beta(const double timestep_ratio)
     return beta_;
 }
 
-std::vector<double> IMEXCoefficients::gamma(const double    timestep_ratio)
+std::array<double,3> IMEXCoefficients::gamma(const double timestep_ratio)
 {
     if (timestep_ratio != omega)
     {
@@ -97,9 +94,9 @@ void IMEXCoefficients::compute_alpha()
     }
     else if (type == IMEXType::Euler)
     {
-        alpha_[0] = 1.;
-        alpha_[1] = -1.;
-        alpha_[2] = 0.;
+        alpha_[0] = 1.0;
+        alpha_[1] = -1.0;
+        alpha_[2] = 0.0;
     }
     else
     {

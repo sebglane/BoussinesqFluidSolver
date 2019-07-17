@@ -277,9 +277,9 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
      */
     {
 
-        const std::vector<double> alpha = (timestep_number != 0?
+        const std::array<double,3> alpha = (timestep_number != 0?
                                            imex_coefficients.alpha(timestep/old_timestep):
-                                           std::vector<double>({1.0,-1.0,0.0}));
+                                           std::array<double,3>({1.0,-1.0,0.0}));
 
         distributed_pressure_vector *= alpha[0] / timestep;
 
@@ -369,9 +369,9 @@ void BuoyantFluidSolver<dim>::solve_projection_system()
          *          to (\psi, p) = (div(v^n), p)
          */
         // scale the irrotational update
-        const std::vector<double> gamma = (timestep_number != 0?
-                                                imex_coefficients.gamma(timestep/old_timestep):
-                                                std::vector<double>({1.0,0.0,0.0}));
+        const std::array<double,3> gamma = (timestep_number != 0?
+                                            imex_coefficients.gamma(timestep/old_timestep):
+                                            std::array<double,3>({1.0,0.0,0.0}));
         distributed_pressure_vector *= -gamma[0] * equation_coefficients[0];
 
         navier_stokes_solution.block(1) = old_navier_stokes_solution.block(1);

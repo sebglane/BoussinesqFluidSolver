@@ -20,6 +20,7 @@
 
 #include <gravity_field.h>
 
+#include <array>
 #include <vector>
 
 namespace TemperatureAssembly {
@@ -37,9 +38,9 @@ struct RightHandSide
                   const UpdateFlags          temperature_update_flags,
                   const FiniteElement<dim>  &stokes_fe,
                   const UpdateFlags          stokes_update_flags,
-                  const std::vector<double> &alpha,
-                  const std::vector<double> &beta,
-                  const std::vector<double> &gamma);
+                  const std::array<double,3>&alpha,
+                  const std::array<double,2>&beta,
+                  const std::array<double,3>&gamma);
 
     RightHandSide(const RightHandSide<dim> &scratch);
 
@@ -55,9 +56,9 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  old_velocity_values;
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
 
-    const std::vector<double>   alpha;
-    const std::vector<double>   beta;
-    const std::vector<double>   gamma;
+    const std::array<double,3>  alpha;
+    const std::array<double,2>  beta;
+    const std::array<double,3>  gamma;
 
     const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;
@@ -173,9 +174,9 @@ struct RightHandSide
                   const UpdateFlags          temperature_update_flags,
                   const FiniteElement<dim>  &magnetic_fe,
                   const UpdateFlags          magnetic_update_flags,
-                  const std::vector<double> &alpha,
-                  const std::vector<double> &beta,
-                  const std::vector<double> &gamma,
+                  const std::array<double,3> &alpha,
+                  const std::array<double,2> &beta,
+                  const std::array<double,3> &gamma,
                   const EquationData::GravityProfile    gravity_profile);
 
     RightHandSide(const RightHandSide<dim>  &scratch);
@@ -205,9 +206,9 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  coriolis_term;
     std::vector<Tensor<1,dim>>  lorentz_force_term;
 
-    const std::vector<double>   alpha;
-    const std::vector<double>   beta;
-    const std::vector<double>   gamma;
+    const std::array<double,3>  alpha;
+    const std::array<double,2>  beta;
+    const std::array<double,3>  gamma;
 
     const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;
@@ -299,9 +300,9 @@ struct RightHandSide
                   const UpdateFlags          magnetic_update_flags,
                   const FiniteElement<dim>  &stokes_fe,
                   const UpdateFlags          stokes_update_flags,
-                  const std::vector<double> &alpha,
-                  const std::vector<double> &beta,
-                  const std::vector<double> &gamma);
+                  const std::array<double,3>&alpha,
+                  const std::array<double,2>&beta,
+                  const std::array<double,3>&gamma);
 
     RightHandSide(const RightHandSide<dim>  &scratch);
 
@@ -322,9 +323,9 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  old_velocity_values;
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
 
-    const std::vector<double>   alpha;
-    const std::vector<double>   beta;
-    const std::vector<double>   gamma;
+    const std::array<double,3>  alpha;
+    const std::array<double,2>  beta;
+    const std::array<double,3>  gamma;
 
     const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;

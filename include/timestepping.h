@@ -11,7 +11,7 @@
 #include <assert.h>
 #include <iomanip>
 #include <iostream>
-#include <vector>
+#include <array>
 
 namespace TimeStepping {
 /*
@@ -40,9 +40,9 @@ public:
 
     IMEXCoefficients(const IMEXType &type_);
 
-    std::vector<double> alpha(const double omega);
-    std::vector<double> beta(const double omega);
-    std::vector<double> gamma(const double omega);
+    std::array<double,3> alpha(const double omega);
+    std::array<double,2> beta(const double omega);
+    std::array<double,3> gamma(const double omega);
 
     void write(std::ostream &stream) const;
 
@@ -54,16 +54,15 @@ private:
 
     const IMEXType      type;
 
-    std::vector<double> alpha_;
-    std::vector<double> beta_;
-    std::vector<double> gamma_;
+    std::array<double,3> alpha_;
+    std::array<double,2> beta_;
+    std::array<double,3> gamma_;
 
     bool    update_alpha;
     bool    update_beta;
     bool    update_gamma;
 
     double  omega;
-
 };
 
 }  // namespace TimeStepping

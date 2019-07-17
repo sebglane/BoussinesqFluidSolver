@@ -354,9 +354,9 @@ void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
      * step 2: scale distributed solution with timestep
      */
     {
-        const std::vector<double> alpha = (timestep_number != 0?
+        const std::array<double,3> alpha = (timestep_number != 0?
                                            imex_coefficients.alpha(timestep/old_timestep):
-                                           std::vector<double>({1.0,-1.0,0.0}));
+                                           std::array<double,3>({1.0,-1.0,0.0}));
 
         distributed_solution_vector.block(1) *= alpha[0] / timestep;
     }
@@ -445,9 +445,9 @@ void BuoyantFluidSolver<dim>::solve_magnetic_projection_system()
          *          to (\psi, p) = (div(v^n), p)
          */
         // scale the irrotational update
-        const std::vector<double> gamma = (timestep_number != 0?
-                                                imex_coefficients.gamma(timestep/old_timestep):
-                                                std::vector<double>({1.0,0.0,0.0}));
+        const std::array<double,3> gamma = (timestep_number != 0?
+                                            imex_coefficients.gamma(timestep/old_timestep):
+                                            std::array<double,3>({1.0,0.0,0.0}));
         distributed_pseudo_pressure_vector *= -gamma[0] * equation_coefficients[5];
 
         magnetic_solution.block(1) = old_magnetic_solution.block(1);
