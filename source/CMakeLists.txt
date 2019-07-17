@@ -20,6 +20,7 @@ SET(TARGET_SRC
   postprocess_benchmark.cc
   setup.cc
   snapshot_information.cc
+  snapshot_restart.cc
   solve_magnetic.cc
   solve_navier_stokes.cc
   solve_temperature.cc
