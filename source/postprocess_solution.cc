@@ -126,15 +126,18 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
         Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
         Assert(local_magnetic_volume >= 0, ExcLowerRangeType<double>(local_magnetic_volume, 0));
 
-        const double local_sums[6]  = { local_sum_velocity_sqrd,
-                                        local_navier_stokes_volume,
-                                        local_sum_temperature,
-                                        local_temperature_volume,
-                                        local_sum_magnetic_field_sqrd,
-                                        local_magnetic_volume};
-        double global_sums[6];
+        const std::vector<double> local_sums({local_sum_velocity_sqrd,
+                                              local_navier_stokes_volume,
+                                              local_sum_temperature,
+                                              local_temperature_volume,
+                                              local_sum_magnetic_field_sqrd,
+                                              local_magnetic_volume});
 
-        Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+        std::vector<double> global_sums(local_sums.size());
+
+        Utilities::MPI::sum<std::vector<double>>(local_sums,
+                                                 mpi_communicator,
+                                                 global_sums);
 
         const double rms_velocity = std::sqrt(global_sums[0] / global_sums[1]);
         const double kinetic_energy = 0.5 * global_sums[0] / global_sums[1];
@@ -183,13 +186,16 @@ std::vector<double> BuoyantFluidSolver<dim>::compute_global_averages() const
         Assert(local_navier_stokes_volume >= 0, ExcLowerRangeType<double>(local_navier_stokes_volume, 0));
         Assert(local_temperature_volume >= 0, ExcLowerRangeType<double>(local_temperature_volume, 0));
 
-        const double local_sums[4]  = { local_sum_velocity_sqrd,
-                                        local_navier_stokes_volume,
-                                        local_sum_temperature,
-                                        local_temperature_volume};
-        double global_sums[4];
+        const std::vector<double> local_sums({local_sum_velocity_sqrd,
+                                              local_navier_stokes_volume,
+                                              local_sum_temperature,
+                                              local_temperature_volume});
 
-        Utilities::MPI::sum(local_sums, mpi_communicator, global_sums);
+        std::vector<double> global_sums(local_sums.size());
+
+        Utilities::MPI::sum<std::vector<double>>(local_sums,
+                                                 mpi_communicator,
+                                                 global_sums);
 
         const double rms_velocity = std::sqrt(global_sums[0] / global_sums[1]);
         const double kinetic_energy = 0.5 * global_sums[0] / global_sums[1];
@@ -415,7 +421,7 @@ double BuoyantFluidSolver<dim>::compute_cfl_number() const
     = double(std::max(parameters.temperature_degree,
                       parameters.velocity_degree));
 
-    const double local_cfl = max_cfl * timestep / max_polynomial_degree;
+    const double local_cfl = max_cfl * timestep * max_polynomial_degree;
 
     const double global_cfl
     = Utilities::MPI::max(local_cfl, mpi_communicator);

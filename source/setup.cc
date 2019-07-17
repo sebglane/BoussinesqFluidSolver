@@ -24,7 +24,6 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 
     TimerOutput::Scope timer_section(computing_timer, "setup dofs");
 
-
     const types::global_dof_index n_dofs_temperature = setup_temperature_dofs();
 
     const std::pair<types::global_dof_index,types::global_dof_index>
@@ -66,6 +65,9 @@ void BuoyantFluidSolver<dim>::setup_dofs()
 template<int dim>
 types::global_dof_index BuoyantFluidSolver<dim>::setup_temperature_dofs()
 {
+    if (parameters.verbose)
+        pcout << "   Setup temperature dofs..." << std::endl << std::flush;
+
     locally_owned_temperature_dofs.clear();
     locally_relevant_temperature_dofs.clear();
     temperature_dof_handler.distribute_dofs(temperature_fe);
@@ -172,6 +174,9 @@ template<int dim>
 std::pair<types::global_dof_index,types::global_dof_index>
 BuoyantFluidSolver<dim>::setup_navier_stokes_dofs()
 {
+    if (parameters.verbose)
+        pcout << "   Setup Navier-Stokes dofs..." << std::endl << std::flush;
+
     locally_owned_stokes_dofs.clear();
     locally_relevant_stokes_dofs.clear();
     navier_stokes_dof_handler.distribute_dofs(navier_stokes_fe);
@@ -427,6 +432,9 @@ template<int dim>
 std::pair<types::global_dof_index,types::global_dof_index>
 BuoyantFluidSolver<dim>::setup_magnetic_dofs()
 {
+    if (parameters.verbose)
+        pcout << "   Setup magnetic dofs..." << std::endl << std::flush;
+
     locally_owned_magnetic_dofs.clear();
     locally_relevant_magnetic_dofs.clear();
     magnetic_dof_handler.distribute_dofs(magnetic_fe);

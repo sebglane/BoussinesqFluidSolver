@@ -358,9 +358,11 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
              * present timestep.
              */
             aux_distributed_pressure = old_phi_pressure.block(1);
-            extrapolated_pressure.add(alpha[1]/old_alpha_zero, aux_distributed_pressure);
+            extrapolated_pressure.add(old_timestep/timestep*alpha[1]/old_alpha_zero,
+                                      aux_distributed_pressure);
             aux_distributed_pressure = old_old_phi_pressure.block(1);
-            extrapolated_pressure.add(alpha[2]/old_alpha_zero, aux_distributed_pressure);
+            extrapolated_pressure.add(old_old_timestep/timestep*alpha[2]/old_old_alpha_zero,
+                                      aux_distributed_pressure);
             break;
     }
 
@@ -562,9 +564,9 @@ void BuoyantFluidSolver<dim>::assemble_magnetic_diffusion_system()
              * present timestep.
              */
             aux_distributed_pressure = old_phi_pseudo_pressure.block(1);
-            extrapolated_pressure.add(alpha[1]/old_alpha_zero, aux_distributed_pressure);
+            extrapolated_pressure.add(old_timestep/timestep*alpha[1]/old_alpha_zero, aux_distributed_pressure);
             aux_distributed_pressure = old_old_phi_pseudo_pressure.block(1);
-            extrapolated_pressure.add(alpha[2]/old_alpha_zero, aux_distributed_pressure);
+            extrapolated_pressure.add(old_old_timestep/timestep*alpha[2]/old_old_alpha_zero, aux_distributed_pressure);
             break;
     }
 

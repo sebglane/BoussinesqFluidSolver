@@ -61,7 +61,9 @@ tau{parameters.magnetism ?
 imex_coefficients(parameters.imex_scheme),
 timestep(parameters.initial_timestep),
 old_timestep(parameters.initial_timestep),
+old_old_timestep(parameters.initial_timestep),
 old_alpha_zero(1.0),
+old_old_alpha_zero(1.0),
 // benchmarking
 phi_benchmark(-2.*numbers::PI)
 {
@@ -232,11 +234,14 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     if (parameters.verbose)
         pcout << "   Updating time step..." << std::endl;
 
+    old_old_alpha_zero = old_alpha_zero;
     old_alpha_zero = (timestep_number != 0?
                         imex_coefficients.alpha(timestep/old_timestep)[0]:
                         1.0);
 
+    old_old_timestep = old_timestep;
     old_timestep = timestep;
+
     timestep_modified = false;
 
     if (current_cfl_number > parameters.cfl_max || current_cfl_number < parameters.cfl_min)
@@ -268,16 +273,6 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
                    ExcLowerRangeType<double>(timestep, parameters.min_timestep));
         }
     }
-
-    if (timestep_modified)
-        pcout << (parameters.verbose? "   ": "")
-              << "   Time step changed from "
-              << std::setw(6) << std::scientific << old_timestep
-              << " to "
-              << std::setw(6) << std::scientific << timestep
-              << std::fixed << std::endl
-              << "   New cfl number: " << current_cfl_number / old_timestep * timestep
-              << std::endl;
 }
 
 template<int dim>
@@ -347,8 +342,6 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     else
         estimated_error_per_cell = estimated_temperature_error;
 
-
-
     // set refinement flags
     parallel::distributed::
     GridRefinement::refine_and_coarsen_fixed_fraction(triangulation,
@@ -416,18 +409,24 @@ void BuoyantFluidSolver<dim>::refine_mesh()
     triangulation.execute_coarsening_and_refinement();
     }
 
-    std::vector<unsigned int>   locally_active_cells(triangulation.n_global_levels());
-    for (unsigned int level=parameters.n_global_refinements; level < triangulation.n_levels(); ++level)
-        for (auto cell: triangulation.active_cell_iterators())
-            if ((unsigned int) cell->level() == level && cell->is_locally_owned())
-                locally_active_cells[level] += 1;
-    pcout << "   Number of cells (on level): ";
+    std::vector<unsigned int>   locally_active_cells(triangulation.n_global_levels(),0);
     for (unsigned int level=0; level < triangulation.n_levels(); ++level)
+        for (auto cell: triangulation.active_cell_iterators_on_level(level))
+            if (cell->is_locally_owned())
+                locally_active_cells[level] += 1;
+
+    std::vector<unsigned int>   globally_active_cells(triangulation.n_global_levels());
+    Utilities::MPI::sum<std::vector<unsigned int>>
+    (locally_active_cells,
+     mpi_communicator,
+     globally_active_cells);
+
+    pcout << "   Number of cells (on level): ";
+    for (unsigned int level=0; level < triangulation.n_global_levels(); ++level)
     {
-        pcout << Utilities::MPI::sum(locally_active_cells[level], mpi_communicator) << " (" << level << ")" << ", ";
+        pcout << level << ": " << globally_active_cells[level] << ", ";
     }
     pcout << std::endl;
-
 
     // setup dofs and constraints on refined mesh
     setup_dofs();
@@ -829,8 +828,18 @@ void BuoyantFluidSolver<dim>::run()
                 update_timestep(cfl_number);
                 mesh_refined = false;
             }
-            else if ((timestep_number - inital_timestep_number) > parameters.adaptive_timestep_barrier)
+            else if ((timestep_number - inital_timestep_number) >= parameters.adaptive_timestep_barrier)
                 update_timestep(cfl_number);
+
+            if (timestep_modified)
+                pcout << (parameters.verbose? "   ": "")
+                      << "   Time step changed from "
+                      << std::setw(6) << std::scientific << old_timestep
+                      << " to "
+                      << std::setw(6) << std::scientific << timestep
+                      << std::fixed << std::endl
+                      << "   New cfl number: " << cfl_number / old_timestep * timestep
+                      << std::endl;
         }
         /*
          * If computation is resumed from a snapshot and non-adaptive

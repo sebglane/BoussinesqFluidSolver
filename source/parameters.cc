@@ -777,6 +777,26 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
                 AssertThrow(false, ExcMessage(message.str().c_str()));
             }
+            if (n_min_levels > n_global_refinements + n_boundary_refinements + n_initial_refinements)
+            {
+                std::ostringstream message;
+                message << "Inconsistency in parameter file in the definition of "
+                           "the minimum number of levels and sum of the refinements "
+                           "during the initialization."
+                        << std::endl
+                        << "Minimum number of levels is: "
+                        << n_min_levels << ", "
+                        << "which is larger than the sum of the refinements during"
+                           "the initialization, "
+                        << std::endl
+                        << "which is "
+                        << n_global_refinements + n_boundary_refinements + n_initial_refinements
+                        << " for your parameter file."
+                        << std::endl;
+
+                AssertThrow(false, ExcMessage(message.str().c_str()));
+            }
+
         }
         prm.leave_subsection();
     }
