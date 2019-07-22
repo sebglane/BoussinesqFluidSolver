@@ -61,13 +61,23 @@ struct Parameters
 
     // runtime parameters
     unsigned int    dim;
-    unsigned int    n_steps;
+    bool            resume_from_snapshot;
+
+    bool            solve_temperature_equation;
+    bool            solve_momentum_equation;
+
+    // geometry parameters
+    double          aspect_ratio;
+
+    // mesh refinement parameters
+    bool            adaptive_refinement;
     unsigned int    refinement_frequency;
 
-    double          t_final;
-
-    bool            adaptive_refinement;
-    bool            resume_from_snapshot;
+    unsigned int    n_global_refinements;
+    unsigned int    n_initial_refinements;
+    unsigned int    n_boundary_refinements;
+    unsigned int    n_max_levels;
+    unsigned int    n_min_levels;
 
     // logging parameters
     unsigned int    vtk_frequency;
@@ -81,7 +91,6 @@ struct Parameters
     bool            verbose;
 
     // physics parameters
-    double  aspect_ratio;
     double  Pr;
     double  Ra;
     double  Ek;
@@ -97,21 +106,22 @@ struct Parameters
     // linear solver parameters
     double          rel_tol;
     double          abs_tol;
-
     unsigned int    n_max_iter;
 
     // time stepping parameters
     TimeStepping::IMEXType  imex_scheme;
 
+    unsigned int    n_steps;
+
+    bool            adaptive_timestep;
+    unsigned int    adaptive_timestep_barrier;
+
     double          initial_timestep;
     double          min_timestep;
     double          max_timestep;
+    double          final_time;
     double          cfl_min;
     double          cfl_max;
-
-    unsigned int    adaptive_timestep_barrier;
-
-    bool            adaptive_timestep;
 
     // discretization parameters
     PressureUpdateType              projection_scheme;
@@ -120,13 +130,6 @@ struct Parameters
 
     unsigned int temperature_degree;
     unsigned int velocity_degree;
-
-    // refinement parameters
-    unsigned int n_global_refinements;
-    unsigned int n_initial_refinements;
-    unsigned int n_boundary_refinements;
-    unsigned int n_max_levels;
-    unsigned int n_min_levels;
 };
 
 

@@ -5,19 +5,28 @@
  *      Author: sg
  */
 
-#include "parameters.h"
+#include <parameters.h>
 
-namespace BuoyantFluid {
+namespace BuoyantFluid
+{
 
 Parameters::Parameters(const std::string &parameter_filename)
 :
 // runtime parameters
 dim(2),
-n_steps(100),
-refinement_frequency(30),
-t_final(1.0),
-adaptive_refinement(true),
 resume_from_snapshot(false),
+solve_temperature_equation(true),
+solve_momentum_equation(true),
+// geometry parameters
+aspect_ratio(0.35),
+// refinement parameters
+adaptive_refinement(true),
+refinement_frequency(30),
+n_global_refinements(1),
+n_initial_refinements(4),
+n_boundary_refinements(1),
+n_max_levels(6),
+n_min_levels(3),
 // logging parameters
 vtk_frequency(10),
 global_avg_frequency(5),
@@ -27,7 +36,6 @@ snapshot_frequency(100),
 benchmark_start(500),
 verbose(false),
 // physics parameters
-aspect_ratio(0.35),
 Pr(1.0),
 Ra(1.0e5),
 Ek(1.0e-3),
@@ -40,9 +48,11 @@ abs_tol(1e-9),
 n_max_iter(50),
 // time stepping parameters
 imex_scheme(TimeStepping::CNAB),
+n_steps(100),
 initial_timestep(1e-3),
 min_timestep(1e-9),
 max_timestep(1e-3),
+final_time(1.0),
 cfl_min(0.3),
 cfl_max(0.7),
 adaptive_timestep_barrier(2),
@@ -52,13 +62,7 @@ projection_scheme(PressureUpdateType::StandardForm),
 convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
 convective_scheme(ConvectiveDiscretizationType::Explicit),
 temperature_degree(1),
-velocity_degree(2),
-// refinement parameters
-n_global_refinements(1),
-n_initial_refinements(4),
-n_boundary_refinements(1),
-n_max_levels(6),
-n_min_levels(3)
+velocity_degree(2)
 {
     ParameterHandler prm;
     declare_parameters(prm);
@@ -97,26 +101,30 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "2",
                 Patterns::Integer(2,3),
                 "Spatial dimension of the simulation");
-        prm.declare_entry("n_steps",
-                "1000",
-                Patterns::Integer(),
-                "Maximum number of time steps.");
-        prm.declare_entry("t_final",
-                "1.0",
-                Patterns::Double(0.),
-                "Final time.");
-        prm.declare_entry("refinement_freq",
-                "100",
-                Patterns::Integer(),
-                "Refinement frequency.");
-        prm.declare_entry("adaptive_refinement",
-                "false",
-                Patterns::Bool(),
-                "Flag to activate adaptive mesh refinement.");
+
         prm.declare_entry("resume_from_snapshot",
                 "false",
                 Patterns::Bool(),
                 "Flag to resume from a snapshot of an earlier simulation.");
+
+        prm.declare_entry("solve_temperature_equation",
+                "true",
+                Patterns::Bool(),
+                "Flag to enable/ disable solve of the temperature equation.");
+
+        prm.declare_entry("solve_momentum_equation",
+                "true",
+                Patterns::Bool(),
+                "Flag to enable/ disable solve of the Navier-Stokes equation.");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection("Geometry parameters");
+    {
+        prm.declare_entry("aspect_ratio",
+                "0.35",
+                Patterns::Double(0.,1.),
+                "Ratio of inner to outer radius");
     }
     prm.leave_subsection();
 
@@ -135,26 +143,32 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "10",
                 Patterns::Integer(),
                 "Output frequency for vtk-files.");
+
         prm.declare_entry("global_avg_freq",
                 "10",
                 Patterns::Integer(),
                 "Output frequency for global averages like rms values and energies.");
+
         prm.declare_entry("cfl_freq",
                 "10",
                 Patterns::Integer(),
                 "Output frequency of current cfl number.");
+
         prm.declare_entry("benchmark_freq",
                 "5",
                 Patterns::Integer(),
                 "Output frequency of benchmark report.");
+
         prm.declare_entry("snapshot_freq",
                 "100",
                 Patterns::Integer(),
                 "Output frequency of snapshots.");
+
         prm.declare_entry("benchmark_start",
                 "500",
                 Patterns::Integer(),
                 "Time step after which benchmark values are reported.");
+
         prm.declare_entry("verbose",
                 "false",
                 Patterns::Bool(),
@@ -175,11 +189,6 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 Patterns::Integer(1,2),
                 "Polynomial degree of the temperature discretization.");
 
-        prm.declare_entry("aspect_ratio",
-                "0.35",
-                Patterns::Double(0.,1.),
-                "Ratio of inner to outer radius");
-
         prm.declare_entry("pressure_update_type",
                 "Standard",
                 Patterns::Selection("Standard|Irrotational"),
@@ -194,36 +203,46 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "Explicit",
                 Patterns::Selection("Explicit|LinearImplicit"),
                 "Type of discretization scheme of convective term (Explicit|LinearImplicit).");
+    }
+    prm.leave_subsection();
 
-        prm.enter_subsection("Refinement parameters");
-        {
-            prm.declare_entry("n_global_refinements",
-                    "1",
-                    Patterns::Integer(),
-                    "Number of initial global refinements.");
+    prm.enter_subsection("Refinement parameters");
+    {
+        prm.declare_entry("adaptive_refinement",
+                "false",
+                Patterns::Bool(),
+                "Flag to activate adaptive mesh refinement.");
 
-            prm.declare_entry("n_initial_refinements",
-                    "1",
-                    Patterns::Integer(),
-                    "Number of initial refinements based on the initial condition.");
+        prm.declare_entry("refinement_freq",
+                "100",
+                Patterns::Integer(),
+                "Refinement frequency.");
 
-            prm.declare_entry("n_boundary_refinements",
-                    "1",
-                    Patterns::Integer(),
-                    "Number of initial boundary refinements.");
+        prm.declare_entry("n_global_refinements",
+                "1",
+                Patterns::Integer(),
+                "Number of initial global refinements.");
 
-            prm.declare_entry("n_max_levels",
-                    "1",
-                    Patterns::Integer(),
-                    "Total of number of refinements allowed during the run.");
+        prm.declare_entry("n_initial_refinements",
+                "1",
+                Patterns::Integer(),
+                "Number of initial refinements based on the initial condition.");
 
-            prm.declare_entry("n_min_levels",
-                    "1",
-                    Patterns::Integer(),
-                    "Minimum of number of refinements during the run.");
+        prm.declare_entry("n_boundary_refinements",
+                "1",
+                Patterns::Integer(),
+                "Number of initial boundary refinements.");
 
-        }
-        prm.leave_subsection();
+        prm.declare_entry("n_max_levels",
+                "1",
+                Patterns::Integer(),
+                "Total of number of refinements allowed during the run.");
+
+        prm.declare_entry("n_min_levels",
+                "1",
+                Patterns::Integer(),
+                "Minimum of number of refinements during the run.");
+
     }
     prm.leave_subsection();
 
@@ -282,6 +301,26 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Time stepping settings");
     {
+        prm.declare_entry("time_stepping_scheme",
+                "CNAB",
+                Patterns::Selection("Euler|CNAB|MCNAB|CNLF|SBDF"),
+                "Time stepping scheme applied.");
+
+        prm.declare_entry("n_steps",
+                "1000",
+                Patterns::Integer(),
+                "Maximum number of time steps.");
+
+        prm.declare_entry("adaptive_timestep",
+                "true",
+                Patterns::Bool(),
+                "Turn adaptive time stepping on or off");
+
+        prm.declare_entry("adaptive_timestep_barrier",
+                "2",
+                Patterns::Integer(),
+                "Time step after which adaptive time stepping is applied.");
+
         prm.declare_entry("dt_initial",
                 "1e-6",
                 Patterns::Double(),
@@ -297,6 +336,11 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 Patterns::Double(),
                 "Maximum time step.");
 
+        prm.declare_entry("final_time",
+                "1.0",
+                Patterns::Double(0.),
+                "Final time.");
+
         prm.declare_entry("cfl_min",
                 "0.3",
                 Patterns::Double(),
@@ -306,21 +350,6 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "0.7",
                 Patterns::Double(),
                 "Maximal value for the cfl number.");
-
-        prm.declare_entry("adaptive_timestep_barrier",
-                          "2",
-                          Patterns::Integer(),
-                          "Time step after which adaptive time stepping is applied.");
-
-        prm.declare_entry("adaptive_timestep",
-                "true",
-                Patterns::Bool(),
-                "Turn adaptive time stepping on or off");
-
-        prm.declare_entry("time_stepping_scheme",
-                        "CNAB",
-                        Patterns::Selection("Euler|CNAB|MCNAB|CNLF|SBDF"),
-                        "Time stepping scheme applied.");
     }
     prm.leave_subsection();
 }
@@ -334,12 +363,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         refinement_frequency = prm.get_integer("refinement_freq");
         Assert(refinement_frequency > 0, ExcLowerRange(0, refinement_frequency));
-
-        n_steps = prm.get_integer("n_steps");
-        Assert(n_steps > 0, ExcLowerRange(n_steps, 0));
-
-        t_final = prm.get_double("t_final");
-        Assert(t_final > 0.0, ExcLowerRangeType<double>(t_final, 0.0));
 
         adaptive_refinement = prm.get_bool("adaptive_refinement");
 
@@ -516,34 +539,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Time stepping settings");
     {
-        initial_timestep = prm.get_double("dt_initial");
-        Assert(initial_timestep > 0, ExcLowerRangeType<double>(initial_timestep, 0));
-        min_timestep = prm.get_double("dt_min");
-        Assert(min_timestep > 0, ExcLowerRangeType<double>(min_timestep, 0));
-        max_timestep = prm.get_double("dt_max");
-        Assert(max_timestep > 0, ExcLowerRangeType<double>(max_timestep, 0));
-
-        Assert(initial_timestep < t_final, ExcLowerRangeType<double>(initial_timestep, t_final));
-
-        Assert(min_timestep < max_timestep,
-               ExcLowerRangeType<double>(min_timestep, min_timestep));
-        Assert(min_timestep <= initial_timestep,
-               ExcLowerRangeType<double>(min_timestep, initial_timestep));
-        Assert(initial_timestep <= max_timestep,
-               ExcLowerRangeType<double>(initial_timestep, max_timestep));
-
-        cfl_min = prm.get_double("cfl_min");
-        Assert(cfl_min > 0, ExcLowerRangeType<double>(cfl_min, 0));
-        cfl_max = prm.get_double("cfl_max");
-        Assert(cfl_max > 0, ExcLowerRangeType<double>(cfl_max, 0));
-        Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
-
-        adaptive_timestep_barrier = prm.get_integer("adaptive_timestep_barrier");
-        Assert(adaptive_timestep_barrier > 0,
-               ExcLowerRange(adaptive_timestep_barrier, 2));
-
-        adaptive_timestep = prm.get_bool("adaptive_timestep");
-
         std::string imex_type_str;
         imex_type_str = prm.get("time_stepping_scheme");
 
@@ -559,6 +554,49 @@ void Parameters::parse_parameters(ParameterHandler &prm)
             imex_scheme = TimeStepping::IMEXType::Euler;
         else
             AssertThrow(false, ExcMessage("Unexpected string for IMEX scheme."));
+
+        adaptive_timestep = prm.get_bool("adaptive_timestep");
+        if (adaptive_timestep)
+            adaptive_timestep_barrier = prm.get_integer("adaptive_timestep_barrier");
+            Assert(adaptive_timestep_barrier > 0,
+                   ExcLowerRange(adaptive_timestep_barrier, 0));
+
+        n_steps = prm.get_integer("n_steps");
+        Assert(n_steps > 0, ExcLowerRange(n_steps, 0));
+
+        initial_timestep = prm.get_double("dt_initial");
+        Assert(initial_timestep > 0,
+               ExcLowerRangeType<double>(initial_timestep, 0));
+
+        if (adaptive_timestep)
+        {
+            min_timestep = prm.get_double("dt_min");
+            Assert(min_timestep > 0,
+                   ExcLowerRangeType<double>(min_timestep, 0));
+
+            max_timestep = prm.get_double("dt_max");
+            Assert(max_timestep > 0,
+                   ExcLowerRangeType<double>(max_timestep, 0));
+
+            Assert(min_timestep < max_timestep,
+                   ExcLowerRangeType<double>(min_timestep, min_timestep));
+            Assert(min_timestep <= initial_timestep,
+                   ExcLowerRangeType<double>(min_timestep, initial_timestep));
+            Assert(initial_timestep <= max_timestep,
+                   ExcLowerRangeType<double>(initial_timestep, max_timestep));
+        }
+
+        final_time = prm.get_double("t_final");
+        Assert(final_time > 0.0, ExcLowerRangeType<double>(final_time, 0.0));
+        Assert(initial_timestep < final_time,
+               ExcLowerRangeType<double>(initial_timestep, final_time));
+
+        cfl_min = prm.get_double("cfl_min");
+        Assert(cfl_min > 0, ExcLowerRangeType<double>(cfl_min, 0));
+
+        cfl_max = prm.get_double("cfl_max");
+        Assert(cfl_max > 0, ExcLowerRangeType<double>(cfl_max, 0));
+        Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
     }
     prm.leave_subsection();
 
