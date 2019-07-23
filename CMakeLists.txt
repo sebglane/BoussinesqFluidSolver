@@ -59,23 +59,29 @@ ENDIF()
 
 # Set the source files to be compiled
 SET( TARGET_SRC
-     source/assemble_system.cc
-     source/assembly_data.cc
-     source/buoyant_fluid_solver.cc
-     source/gravity_field.cc
-     source/grid_factory.cc
-     source/initial_values.cc
-     source/local_temperature_assemble.cc
-     source/local_stokes_assemble.cc
-     source/make_grid.cc
-     source/parameters.cc
-     source/postprocessor.cc
-     source/postprocess_solution.cc
-     source/postprocess_benchmark.cc
-     source/setup.cc
-     source/snapshot_information.cc
-     source/solve_navier_stokes.cc
-     source/solve_temperature.cc
+#     source/assemble_system.cc
+#     source/assembly_data.cc
+#     source/buoyant_fluid_solver.cc
+#     source/gravity_field.cc
+#     source/grid_factory.cc
+#     source/initial_values.cc
+#     source/local_temperature_assemble.cc
+#     source/local_stokes_assemble.cc
+#     source/make_grid.cc
+#     source/parameters.cc
+#     source/postprocessor.cc
+#     source/postprocess_solution.cc
+#     source/postprocess_benchmark.cc
+#     source/setup.cc
+#     source/snapshot_information.cc
+#     source/solve_navier_stokes.cc
+#     source/solve_temperature.cc
+     source/temperature_solver/assembly_data.cc
+     source/temperature_solver/assemble_system.cc
+     source/temperature_solver/setup.cc
+     source/temperature_solver/temperature_solver.cc
+     source/temperature_solver/solve_temperature.cc
+     source/temperature_solver/local_temperature_assemble.cc
      source/timestepping.cc)
 
 # Set the include directory and the name of the project
@@ -92,9 +98,9 @@ DEAL_II_SETUP_TARGET(adsolic)
 ADD_SUBDIRECTORY(applications)
 
 # Set up unit tests
-IF(EXISTS ${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt)
-  ENABLE_TESTING()
-  ADD_SUBDIRECTORY(tests)
-ENDIF()
+#IF(EXISTS ${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt)
+#  ENABLE_TESTING()
+#  ADD_SUBDIRECTORY(tests)
+#ENDIF()
 
 MESSAGE("====================================================")
