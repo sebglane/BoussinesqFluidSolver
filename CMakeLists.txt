@@ -90,6 +90,19 @@ PROJECT(adsolic)
 
 ADD_LIBRARY(adsolic  ${TARGET_SRC})
 
+# Define custom targets to easily switch the build type:
+ADD_CUSTOM_TARGET(debug
+  COMMAND ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=Debug ${CMAKE_SOURCE_DIR}
+  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
+  COMMENT "Switch CMAKE_BUILD_TYPE to Debug"
+  )
+
+ADD_CUSTOM_TARGET(release
+  COMMAND ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=Release ${CMAKE_SOURCE_DIR}
+  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
+  COMMENT "Switch CMAKE_BUILD_TYPE to Release"
+)
+
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 
 DEAL_II_SETUP_TARGET(adsolic)
@@ -97,9 +110,9 @@ DEAL_II_SETUP_TARGET(adsolic)
 ADD_SUBDIRECTORY(applications)
 
 # Set up unit tests
-#IF(EXISTS ${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt)
-#  ENABLE_TESTING()
-#  ADD_SUBDIRECTORY(tests)
-#ENDIF()
+IF(EXISTS ${CMAKE_SOURCE_DIR}/tests/CMakeLists.txt)
+  ENABLE_TESTING()
+  ADD_SUBDIRECTORY(tests)
+ENDIF()
 
 MESSAGE("====================================================")

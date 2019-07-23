@@ -1,12 +1,12 @@
 /*
- * temperature_solver.h
+ * convection_diffusion_solver.h
  *
  *  Created on: Jul 23, 2019
  *      Author: sg
  */
 
-#ifndef INCLUDE_ADSOLIC_TEMPERATURE_SOLVER_H_
-#define INCLUDE_ADSOLIC_TEMPERATURE_SOLVER_H_
+#ifndef INCLUDE_ADSOLIC_CONVECTION_DIFFUSION_SOLVER_H_
+#define INCLUDE_ADSOLIC_CONVECTION_DIFFUSION_SOLVER_H_
 
 
 #include <deal.II/base/conditional_ostream.h>
@@ -36,7 +36,7 @@ namespace adsolic {
 using namespace dealii;
 using namespace TimeStepping;
 
-namespace TemperatureAssembly {
+namespace ConvectionDiffusionAssembly {
 
 namespace Scratch {
 
@@ -61,10 +61,10 @@ struct RightHandSide
      *
      */
 
-    RightHandSide(const FiniteElement<dim>     &temperature_fe,
+    RightHandSide(const FiniteElement<dim>     &fe,
                   const Mapping<dim>           &mapping,
-                  const Quadrature<dim>        &temperature_quadrature,
-                  const UpdateFlags             temperature_update_flags,
+                  const Quadrature<dim>        &quadrature,
+                  const UpdateFlags             update_flags,
                   TensorFunction<1,dim>        &advection_field,
                   const std::array<double,3>   &alpha,
                   const std::array<double,2>   &beta,
@@ -75,13 +75,13 @@ struct RightHandSide
      */
     RightHandSide(const RightHandSide<dim> &scratch);
 
-    FEValues<dim>               temperature_fe_values;
-    std::vector<double>         phi_temperature;
-    std::vector<Tensor<1,dim>>  grad_phi_temperature;
-    std::vector<double>         old_temperature_values;
-    std::vector<double>         old_old_temperature_values;
-    std::vector<Tensor<1,dim>>  old_temperature_gradients;
-    std::vector<Tensor<1,dim>>  old_old_temperature_gradients;
+    FEValues<dim>               fe_values;
+    std::vector<double>         phi;
+    std::vector<Tensor<1,dim>>  grad_phi;
+    std::vector<double>         old_values;
+    std::vector<double>         old_old_values;
+    std::vector<Tensor<1,dim>>  old_gradients;
+    std::vector<Tensor<1,dim>>  old_old_gradients;
 
 //    FEValues<dim>               stokes_fe_values;
     TensorFunction<1,dim>      &advection_field;
@@ -101,10 +101,10 @@ struct RightHandSide
 template<int dim>
 struct Matrix
 {
-    Matrix(const FiniteElement<dim> &temperature_fe,
+    Matrix(const FiniteElement<dim> &fe,
            const Mapping<dim>       &mapping,
-           const Quadrature<dim>    &temperature_quadrature,
-           const UpdateFlags         temperature_update_flags);
+           const Quadrature<dim>    &quadrature,
+           const UpdateFlags         update_flags);
 
     Matrix(const Matrix<dim>  &scratch);
 
@@ -121,7 +121,7 @@ namespace CopyData {
 template <int dim>
 struct RightHandSide
 {
-    RightHandSide(const FiniteElement<dim>    &temperature_fe);
+    RightHandSide(const FiniteElement<dim>    &fe);
     RightHandSide(const RightHandSide<dim>    &data);
 
     Vector<double>                          local_rhs;
@@ -132,7 +132,7 @@ struct RightHandSide
 template <int dim>
 struct Matrix
 {
-    Matrix(const FiniteElement<dim> &temperature_fe);
+    Matrix(const FiniteElement<dim> &fe);
     Matrix(const Matrix<dim>        &data);
 
     FullMatrix<double>      local_mass_matrix;
@@ -146,18 +146,18 @@ struct Matrix
 }  // namespace TemperatureAssembly
 
 
-struct TemperatureParameters
+struct ConvectionDiffusionParameters
 {
-    TemperatureParameters();
-    TemperatureParameters(const std::string &parameter_filename);
+    ConvectionDiffusionParameters();
+    ConvectionDiffusionParameters(const std::string &parameter_filename);
     static void declare_parameters(ParameterHandler &prm);
     void parse_parameters(ParameterHandler &prm);
 
     // dimensionless coefficient in convection diffusion equation
-    double  equation_coefficient;
+    double          equation_coefficient;
 
     // finite element degree
-    unsigned int temperature_degree;
+    unsigned int    fe_degree;
 
     // linear solver parameters
     double          rel_tol;
@@ -171,21 +171,22 @@ struct TemperatureParameters
 
 /*
  *
- * templated class for solving the heat conduction equation of the form
+ * templated class for solving a convection diffusion equation of the form
  *
- *      dT/dt + v . grad(T) = C div(grad(T)).
+ *      d\phi/dt + v . grad(\phi) = C div(grad(\phi)).
  *
  */
 
 template <int dim>
-class TemperatureSolver
+class ConvectionDiffusionSolver
 {
 public:
-    TemperatureSolver(TemperatureParameters &parameters,
-                      parallel::distributed::Triangulation<dim> &triangulation_in,
-                      MappingQ<dim>         &mapping_in,
-                      IMEXTimeStepping      &timestepper_in,
-                      TimerOutput           *external_timer = 0);
+    ConvectionDiffusionSolver
+    (ConvectionDiffusionParameters &parameters,
+     parallel::distributed::Triangulation<dim> &triangulation_in,
+     MappingQ<dim>         &mapping_in,
+     IMEXTimeStepping      &timestepper_in,
+     TimerOutput           *external_timer = 0);
 
     void evaluate_time_step();
 
@@ -199,20 +200,20 @@ public:
 private:
     void setup_dofs();
 
-    void setup_temperature_matrix
+    void setup_system_matrix
     (const IndexSet &locally_owned_dofs,
      const IndexSet &locally_relevant_dofs);
 
-    void assemble_temperature_system();
+    void assemble_system();
 
-    void build_temperature_preconditioner();
+    void build_preconditioner();
 
-    void solve_temperature_system();
+    void solve_linear_system();
 
-    void temperature_step();
+    void convection_diffusion_step();
 
     // reference to parameters
-    TemperatureParameters          &parameters;
+    ConvectionDiffusionParameters          &parameters;
 
     // reference to common triangulation
     parallel::distributed::Triangulation<dim>   &triangulation;
@@ -232,49 +233,49 @@ private:
     // pointer to monitor of computing times
     std::shared_ptr<TimerOutput> computing_timer;
 
-    // temperature FiniteElement and DoFHandler
-    const FE_Q<dim>     temperature_fe;
-    DoFHandler<dim>     temperature_dof_handler;
+    // FiniteElement and DoFHandler
+    const FE_Q<dim>     fe;
+    DoFHandler<dim>     dof_handler;
 
-    // temperature matrices
-    IndexSet            locally_owned_temperature_dofs;
-    IndexSet            locally_relevant_temperature_dofs;
+    // matrices
+    IndexSet            locally_owned_dofs;
+    IndexSet            locally_relevant_dofs;
 
-    ConstraintMatrix    temperature_constraints;
+    ConstraintMatrix    constraints;
 
-    LA::SparseMatrix    temperature_matrix;
-    LA::SparseMatrix    temperature_mass_matrix;
-    LA::SparseMatrix    temperature_stiffness_matrix;
+    LA::SparseMatrix    system_matrix;
+    LA::SparseMatrix    mass_matrix;
+    LA::SparseMatrix    stiffness_matrix;
 
-    // vectors of temperature part
-    LA::Vector          temperature_solution;
-    LA::Vector          old_temperature_solution;
-    LA::Vector          old_old_temperature_solution;
-    LA::Vector          temperature_rhs;
+    // vectors
+    LA::Vector          solution;
+    LA::Vector          old_solution;
+    LA::Vector          old_old_solution;
+    LA::Vector          rhs;
 
     // pointers to preconditioners
-    std::shared_ptr<LA::PreconditionSSOR> preconditioner_temperature;
+    std::shared_ptr<LA::PreconditionSSOR> preconditioner;
 
     // flags for rebuilding matrices and preconditioners
-    bool    rebuild_temperature_matrices = true,
-            rebuild_temperature_preconditioner = true;
+    bool    rebuild_matrices = true,
+            rebuild_preconditioner = true;
 
     // work stream methods for temperature assembly
-    void local_assemble_temperature_rhs
-    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
-     TemperatureAssembly::Scratch::RightHandSide<dim>       &scratch,
-     TemperatureAssembly::CopyData::RightHandSide<dim>      &data);
-    void copy_local_to_global_temperature_rhs
-    (const TemperatureAssembly::CopyData::RightHandSide<dim>    &data);
+    void local_assemble_rhs
+    (const typename DoFHandler<dim>::active_cell_iterator       &cell,
+     ConvectionDiffusionAssembly::Scratch::RightHandSide<dim>   &scratch,
+     ConvectionDiffusionAssembly::CopyData::RightHandSide<dim>  &data);
+    void copy_local_to_global_rhs
+    (const ConvectionDiffusionAssembly::CopyData::RightHandSide<dim>    &data);
 
-    void local_assemble_temperature_matrix
+    void local_assemble_matrix
     (const typename DoFHandler<dim>::active_cell_iterator   &cell,
-     TemperatureAssembly::Scratch::Matrix<dim>       &scratch,
-     TemperatureAssembly::CopyData::Matrix<dim>      &data);
-    void copy_local_to_global_temperature_matrix
-    (const TemperatureAssembly::CopyData::Matrix<dim>    &data);
+     ConvectionDiffusionAssembly::Scratch::Matrix<dim>      &scratch,
+     ConvectionDiffusionAssembly::CopyData::Matrix<dim>     &data);
+    void copy_local_to_global_matrix
+    (const ConvectionDiffusionAssembly::CopyData::Matrix<dim>    &data);
 };
 
 }  // namespace adsolic
 
-#endif /* INCLUDE_ADSOLIC_TEMPERATURE_SOLVER_H_ */
+#endif /* INCLUDE_ADSOLIC_CONVECTION_DIFFUSION_SOLVER_H_ */

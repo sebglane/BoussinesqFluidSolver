@@ -61,8 +61,8 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
         constraints.close();
     }
     // temperature matrix and vector setup
-    setup_matrix(locally_owned_dofs,
-                             locally_relevant_dofs);
+    setup_system_matrix(locally_owned_dofs,
+                        locally_relevant_dofs);
 
     solution.reinit(locally_relevant_dofs,
                                 triangulation.get_communicator());
@@ -90,7 +90,7 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
 }
 
 template<int dim>
-void ConvectionDiffusionSolver<dim>::setup_matrix
+void ConvectionDiffusionSolver<dim>::setup_system_matrix
 (const IndexSet &locally_owned_dofs,
  const IndexSet &locally_relevant_dofs)
 {
@@ -124,10 +124,10 @@ void ConvectionDiffusionSolver<dim>::setup_matrix
 template void ConvectionDiffusionSolver<2>::setup_dofs();
 template void ConvectionDiffusionSolver<3>::setup_dofs();
 
-template void ConvectionDiffusionSolver<2>::setup_matrix
+template void ConvectionDiffusionSolver<2>::setup_system_matrix
 (const IndexSet &,
  const IndexSet &);
-template void ConvectionDiffusionSolver<3>::setup_matrix
+template void ConvectionDiffusionSolver<3>::setup_system_matrix
 (const IndexSet &,
  const IndexSet &);
 

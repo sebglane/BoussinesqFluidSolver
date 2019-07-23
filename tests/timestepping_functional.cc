@@ -4,6 +4,8 @@
  *  Created on: Jul 23, 2019
  *      Author: sg
  */
+#include <deal.II/base/logstream.h>
+
 #include <iostream>
 #include <exception>
 #include <vector>
@@ -15,7 +17,6 @@ using namespace TimeStepping;
 void checkTimeStepper(const TimeSteppingParameters &parameters)
 {
     IMEXTimeStepping        timestepper(parameters);
-
 
     if (parameters.adaptive_timestep)
     {
@@ -79,12 +80,17 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
     return;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     try
     {
+        dealii::deallog.depth_console(0);
+
         std::string parameter_filename;
-        parameter_filename = "timestepping_functional.prm";
+        if (argc>1)
+            parameter_filename = argv[1];
+        else
+            parameter_filename = "timestepping_functional.prm";
 
         TimeSteppingParameters  parameters(parameter_filename);
 
