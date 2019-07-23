@@ -5,62 +5,64 @@
  *      Author: sg
  */
 
+#include <adsolic/convection_diffusion_solver.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
 
-#include <adsolic/buoyant_fluid_solver.h>
 
-namespace BuoyantFluid {
+namespace adsolic {
 
 template<int dim>
-void BuoyantFluidSolver<dim>::temperature_step()
+void ConvectionDiffusionSolver<dim>::convection_diffusion_step()
 {
     if (parameters.verbose)
         pcout << "   Temperature step..." << std::endl;
 
     // assemble right-hand side (and system if necessary)
-    assemble_temperature_system();
+    assemble_system();
 
     // rebuild preconditioner for diffusion step
-    build_temperature_preconditioner();
+    build_preconditioner();
 
     // solve projection step
-    solve_temperature_system();
+    solve_linear_system();
 }
 
 template<int dim>
-void BuoyantFluidSolver<dim>::build_temperature_preconditioner()
+void ConvectionDiffusionSolver<dim>::build_preconditioner()
 {
-    if (!rebuild_temperature_preconditioner)
+    if (!rebuild_preconditioner)
         return;
 
-    TimerOutput::Scope timer_section(computing_timer, "build preconditioner temperature");
+    computing_timer->enter_subsection("build preconditioner temperature");
 
-    preconditioner_temperature.reset(new LA::PreconditionSSOR());
+    preconditioner.reset(new LA::PreconditionSSOR());
 
     LA::PreconditionSSOR::AdditionalData     data;
     data.omega = 0.6;
 
-    preconditioner_temperature->initialize(temperature_matrix,
-                                 data);
+    preconditioner->initialize(system_matrix,
+                                           data);
 
-    rebuild_temperature_preconditioner = false;
+    rebuild_preconditioner = false;
+
+    computing_timer->leave_subsection();
 }
 
 
 template <int dim>
-void BuoyantFluidSolver<dim>::solve_temperature_system()
+void ConvectionDiffusionSolver<dim>::solve_linear_system()
 {
     if (parameters.verbose)
         pcout << "      Solving temperature system..." << std::endl;
 
-    TimerOutput::Scope  timer_section(computing_timer, "solve temperature");
+    computing_timer->enter_subsection("solve temperature");
 
-    LA::Vector  distributed_solution(temperature_rhs);
-    distributed_solution = temperature_solution;
+    LA::Vector  distributed_solution(rhs);
+    distributed_solution = solution;
 
     SolverControl solver_control(parameters.n_max_iter,
-                                 std::max(parameters.rel_tol * temperature_rhs.l2_norm(),
+                                 std::max(parameters.rel_tol * rhs.l2_norm(),
                                           parameters.abs_tol));
 
     // solve linear system
@@ -68,10 +70,10 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
     {
         LA::SolverCG    cg(solver_control);
 
-        cg.solve(temperature_matrix,
+        cg.solve(system_matrix,
                  distributed_solution,
-                 temperature_rhs,
-                 *preconditioner_temperature);
+                 rhs,
+                 *preconditioner);
     }
     catch (std::exception &exc)
     {
@@ -96,8 +98,10 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
                 << std::endl;
         std::abort();
     }
-    temperature_constraints.distribute(distributed_solution);
-    temperature_solution = distributed_solution;
+    constraints.distribute(distributed_solution);
+    solution = distributed_solution;
+
+    computing_timer->leave_subsection();
 
     // write info message
     if (parameters.verbose)
@@ -106,14 +110,16 @@ void BuoyantFluidSolver<dim>::solve_temperature_system()
               << " CG iterations for temperature"
               << std::endl;
 }
-}  // namespace BouyantFluid
 
 // explicit instantiation
-template void BuoyantFluid::BuoyantFluidSolver<2>::temperature_step();
-template void BuoyantFluid::BuoyantFluidSolver<3>::temperature_step();
+template void ConvectionDiffusionSolver<2>::convection_diffusion_step();
+template void ConvectionDiffusionSolver<3>::convection_diffusion_step();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::build_temperature_preconditioner();
-template void BuoyantFluid::BuoyantFluidSolver<3>::build_temperature_preconditioner();
+template void ConvectionDiffusionSolver<2>::build_preconditioner();
+template void ConvectionDiffusionSolver<3>::build_preconditioner();
 
-template void BuoyantFluid::BuoyantFluidSolver<2>::solve_temperature_system();
-template void BuoyantFluid::BuoyantFluidSolver<3>::solve_temperature_system();
+template void ConvectionDiffusionSolver<2>::solve_linear_system();
+template void ConvectionDiffusionSolver<3>::solve_linear_system();
+
+}  // namespace BouyantFluid
+

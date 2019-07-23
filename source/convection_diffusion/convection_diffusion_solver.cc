@@ -5,23 +5,23 @@
  *      Author: sg
  */
 
-#include <adsolic/temperature_solver.h>
+#include <adsolic/convection_diffusion_solver.h>
 
 namespace adsolic
 {
 
-TemperatureParameters::TemperatureParameters()
+ConvectionDiffusionParameters::ConvectionDiffusionParameters()
 :
 equation_coefficient(1.0),
-temperature_degree(1),
+fe_degree(1),
 rel_tol(1e-6),
 abs_tol(1e-9),
 n_max_iter(200)
 {}
 
-TemperatureParameters::TemperatureParameters(const std::string &parameter_filename)
+ConvectionDiffusionParameters::ConvectionDiffusionParameters(const std::string &parameter_filename)
 :
-TemperatureParameters()
+ConvectionDiffusionParameters()
 {
     ParameterHandler prm;
     declare_parameters(prm);
@@ -52,8 +52,8 @@ TemperatureParameters()
 }
 
 template<int dim>
-TemperatureSolver<dim>::TemperatureSolver
-(TemperatureParameters &parameters_,
+ConvectionDiffusionSolver<dim>::ConvectionDiffusionSolver
+(ConvectionDiffusionParameters &parameters_,
  parallel::distributed::Triangulation<dim> &triangulation_in,
  MappingQ<dim>      &mapping_in,
  IMEXTimeStepping   &timestepper_in,
@@ -66,8 +66,8 @@ timestepper(timestepper_in),
 equation_coefficient(parameters.equation_coefficient),
 pcout(std::cout,
       Utilities::MPI::this_mpi_process(triangulation.get_communicator) == 0),
-temperature_fe(parameters.temperature_degree),
-temperature_dof_handler(triangulation)
+fe(parameters.fe_degree),
+dof_handler(triangulation)
 {
     // If the timer is not obtained form another class, reset it.
     if (external_timer == 0)

@@ -5,12 +5,12 @@
  *      Author: sg
  */
 
-#include <adsolic/temperature_solver.h>
+#include <adsolic/convection_diffusion_solver.h>
 
 namespace adsolic
 {
 
-namespace TemperatureAssembly
+namespace ConvectionDiffusionAssembly
 {
 
 namespace Scratch
@@ -18,25 +18,25 @@ namespace Scratch
 
 template<int dim>
 RightHandSide<dim>::RightHandSide
-(const FiniteElement<dim>   &temperature_fe,
+(const FiniteElement<dim>   &fe,
  const Mapping<dim>         &mapping,
- const Quadrature<dim>      &temperature_quadrature,
- const UpdateFlags           temperature_update_flags,
+ const Quadrature<dim>      &quadrature,
+ const UpdateFlags           update_flags,
  TensorFunction<1,dim>      &advection_field,
  const std::array<double,3> &alpha,
  const std::array<double,2> &beta,
  const std::array<double,3> &gamma)
 :
-temperature_fe_values(mapping,
-                      temperature_fe,
-                      temperature_quadrature,
-                      temperature_update_flags),
-phi_temperature(temperature_fe.dofs_per_cell),
-grad_phi_temperature(temperature_fe.dofs_per_cell),
-old_temperature_values(temperature_quadrature.size()),
-old_old_temperature_values(temperature_quadrature.size()),
-old_temperature_gradients(temperature_quadrature.size()),
-old_old_temperature_gradients(temperature_quadrature.size()),
+fe_values(mapping,
+          fe,
+          quadrature,
+          update_flags),
+phi(fe.dofs_per_cell),
+grad_phi(fe.dofs_per_cell),
+old_values(quadrature.size()),
+old_old_values(quadrature.size()),
+old_gradients(quadrature.size()),
+old_old_gradients(quadrature.size()),
 /*
 stokes_fe_values(mapping,
                  stokes_fe,
@@ -44,32 +44,32 @@ stokes_fe_values(mapping,
                  stokes_update_flags),
 */
 advection_field(advection_field),
-old_velocity_values(temperature_quadrature.size()),
-old_old_velocity_values(temperature_quadrature.size()),
+old_velocity_values(quadrature.size()),
+old_old_velocity_values(quadrature.size()),
 /*
 velocity(first_velocity_component),
 */
 alpha(alpha),
 beta(beta),
 gamma(gamma),
-dofs_per_cell(temperature_fe.dofs_per_cell),
-n_q_points(temperature_quadrature.size())
+dofs_per_cell(fe.dofs_per_cell),
+n_q_points(quadrature.size())
 {}
 
 template<int dim>
 RightHandSide<dim>::RightHandSide
 (const RightHandSide<dim> &scratch)
 :
-temperature_fe_values(scratch.temperature_fe_values.get_mapping(),
-                      scratch.temperature_fe_values.get_fe(),
-                      scratch.temperature_fe_values.get_quadrature(),
-                      scratch.temperature_fe_values.get_update_flags()),
-phi_temperature(scratch.phi_temperature),
-grad_phi_temperature(scratch.grad_phi_temperature),
-old_temperature_values(scratch.old_temperature_values),
-old_old_temperature_values(scratch.old_old_temperature_values),
-old_temperature_gradients(scratch.old_temperature_gradients),
-old_old_temperature_gradients(scratch.old_old_temperature_gradients),
+fe_values(scratch.fe_values.get_mapping(),
+                      scratch.fe_values.get_fe(),
+                      scratch.fe_values.get_quadrature(),
+                      scratch.fe_values.get_update_flags()),
+phi(scratch.phi),
+grad_phi(scratch.grad_phi),
+old_values(scratch.old_values),
+old_old_values(scratch.old_old_values),
+old_gradients(scratch.old_gradients),
+old_old_gradients(scratch.old_old_gradients),
 /*
 stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
                  scratch.stokes_fe_values.get_fe(),
@@ -91,17 +91,17 @@ n_q_points(scratch.n_q_points)
 
 template <int dim>
 Matrix<dim>::Matrix
-(const FiniteElement<dim> &temperature_fe,
+(const FiniteElement<dim> &fe,
  const Mapping<dim>       &mapping,
- const Quadrature<dim>    &temperature_quadrature,
- const UpdateFlags         temperature_update_flags)
+ const Quadrature<dim>    &quadrature,
+ const UpdateFlags         update_flags)
 :
 fe_values(mapping,
-          temperature_fe,
-          temperature_quadrature,
-          temperature_update_flags),
-phi(temperature_fe.dofs_per_cell),
-grad_phi(temperature_fe.dofs_per_cell)
+          fe,
+          quadrature,
+          update_flags),
+phi(fe.dofs_per_cell),
+grad_phi(fe.dofs_per_cell)
 {}
 
 template <int dim>
@@ -128,12 +128,12 @@ namespace CopyData {
 
 template <int dim>
 RightHandSide<dim>::RightHandSide
-(const FiniteElement<dim> &temperature_fe)
+(const FiniteElement<dim> &fe)
 :
-local_rhs(temperature_fe.dofs_per_cell),
-matrix_for_bc(temperature_fe.dofs_per_cell,
-              temperature_fe.dofs_per_cell),
-local_dof_indices(temperature_fe.dofs_per_cell)
+local_rhs(fe.dofs_per_cell),
+matrix_for_bc(fe.dofs_per_cell,
+              fe.dofs_per_cell),
+local_dof_indices(fe.dofs_per_cell)
 {}
 
 template <int dim>
@@ -147,13 +147,13 @@ local_dof_indices(data.local_dof_indices)
 
 template <int dim>
 Matrix<dim>::Matrix
-(const FiniteElement<dim>    &temperature_fe)
+(const FiniteElement<dim>    &fe)
 :
-local_mass_matrix(temperature_fe.dofs_per_cell,
-                  temperature_fe.dofs_per_cell),
-local_laplace_matrix(temperature_fe.dofs_per_cell,
-                     temperature_fe.dofs_per_cell),
-local_dof_indices(temperature_fe.dofs_per_cell)
+local_mass_matrix(fe.dofs_per_cell,
+                  fe.dofs_per_cell),
+local_laplace_matrix(fe.dofs_per_cell,
+                     fe.dofs_per_cell),
+local_dof_indices(fe.dofs_per_cell)
 {}
 
 template <int dim>
@@ -173,7 +173,7 @@ template class Matrix<3>;
 
 }  // namespace CopyData
 
-}  // namespace TemperatureAssembly
+}  // namespace ConvectionDiffusionAssembly
 
 
 
