@@ -5,8 +5,8 @@
  *      Author: sg
  */
 
-#include "buoyant_fluid_solver.h"
-#include "initial_values.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/initial_values.h>
 
 namespace BuoyantFluid {
 

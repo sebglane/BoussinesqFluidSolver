@@ -6,8 +6,8 @@
  */
 
 
-#include "buoyant_fluid_solver.h"
-#include "grid_factory.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/grid_factory.h>
 
 namespace BuoyantFluid {
 

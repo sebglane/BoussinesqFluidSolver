@@ -5,8 +5,8 @@
  *      Author: sg
  */
 
-#include <timestepping.h>
-#include <parameters.h>
+#include <adsolic/timestepping.h>
+#include <adsolic/parameters.h>
 
 namespace TimeStepping
 {
@@ -25,7 +25,7 @@ old_old_step_val(0.0),
 omega(1.0),
 old_extrapol_factor(1.0),
 old_old_extrapol_factor(0.0),
-step_val(0)
+step_no_val(0)
 {
     alpha_array[0] = 1.0;
     alpha_array[1] = -1.0;

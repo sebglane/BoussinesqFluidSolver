@@ -5,8 +5,6 @@
  *      Author: sg
  */
 
-#include "snapshot_information.h"
-
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/utilities.h>
 
@@ -14,6 +12,8 @@
 #include <boost/serialization/map.hpp>
 
 #include <cassert>
+
+#include <adsolic/snapshot_information.h>
 
 namespace Snapshot {
 

@@ -11,9 +11,9 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
-#include "buoyant_fluid_solver.h"
-#include "initial_values.h"
-#include "grid_factory.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/initial_values.h>
+#include <adsolic/grid_factory.h>
 
 namespace BuoyantFluid {
 

@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "grid_factory.h"
+#include <adsolic/grid_factory.h>
 
 namespace GridFactory {
 

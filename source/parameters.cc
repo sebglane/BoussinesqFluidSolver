@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include <parameters.h>
+#include <adsolic/parameters.h>
 
 namespace BuoyantFluid
 {

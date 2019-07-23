@@ -18,8 +18,8 @@
 // Sadly this include file is not found
 // #include <boost/filesystem.hpp>
 
-#include "buoyant_fluid_solver.h"
-#include "postprocessor.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/postprocessor.h>
 
 namespace BuoyantFluid {
 

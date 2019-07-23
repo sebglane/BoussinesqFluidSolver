@@ -10,7 +10,7 @@
 
 #include <deal.II/numerics/matrix_tools.h>
 
-#include "buoyant_fluid_solver.h"
+#include <adsolic/buoyant_fluid_solver.h>
 
 
 namespace BuoyantFluid {
@@ -31,12 +31,12 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
     // time stepping coefficients
-    const std::vector<double> alpha = (timestep_number != 0?
-                                        imex_coefficients.alpha(timestep/old_timestep):
-                                        std::vector<double>({1.0,-1.0,0.0}));
-    const std::vector<double> gamma = (timestep_number != 0?
-                                        imex_coefficients.gamma(timestep/old_timestep):
-                                        std::vector<double>({1.0,0.0,0.0}));
+    const std::array<double,3> alpha = (timestep_number != 0?
+                                        imex_timestepper.alpha():
+                                        std::array<double,3>({1.0,-1.0,0.0}));
+    const std::array<double,3> gamma = (timestep_number != 0?
+                                        imex_timestepper.gamma():
+                                        std::array<double,3>({1.0,0.0,0.0}));
 
     // assemble temperature matrices
     if (rebuild_temperature_matrices)
@@ -120,8 +120,8 @@ void BuoyantFluidSolver<dim>::assemble_temperature_system()
                     update_values,
                     alpha,
                     (timestep_number != 0?
-                            imex_coefficients.beta(timestep/old_timestep):
-                            std::vector<double>({1.0,0.0})),
+                            imex_timestepper.beta():
+                            std::array<double,2>({1.0,0.0})),
                     gamma),
             TemperatureAssembly::CopyData::RightHandSide<dim>(temperature_fe));
 
@@ -190,12 +190,12 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
     const QGauss<dim>   quadrature_formula(parameters.velocity_degree + 1);
 
     // time stepping coefficients
-    const std::vector<double> alpha = (timestep_number != 0?
-                                        imex_coefficients.alpha(timestep/old_timestep):
-                                        std::vector<double>({1.0,-1.0,0.0}));
-    const std::vector<double> gamma = (timestep_number != 0?
-                                        imex_coefficients.gamma(timestep/old_timestep):
-                                        std::vector<double>({1.0,0.0,0.0}));
+    const std::array<double,3> alpha = (timestep_number != 0?
+                                        imex_timestepper.alpha():
+                                        std::array<double,3>({1.0,-1.0,0.0}));
+    const std::array<double,3> gamma = (timestep_number != 0?
+                                        imex_timestepper.gamma():
+                                        std::array<double,3>({1.0,0.0,0.0}));
 
     {
     TimerOutput::Scope timer_section(computing_timer, "assemble diff. sys., part 1");
@@ -347,8 +347,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         update_values,
                         alpha,
                         (timestep_number != 0?
-                                imex_coefficients.beta(timestep/old_timestep):
-                                std::vector<double>({1.0,0.0})),
+                                imex_timestepper.beta():
+                                std::array<double,2>({1.0,0.0})),
                         gamma,
                         parameters.gravity_profile),
                 NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));
@@ -378,8 +378,8 @@ void BuoyantFluidSolver<dim>::assemble_diffusion_system()
                         update_values,
                         alpha,
                         (timestep_number != 0?
-                                imex_coefficients.beta(timestep/old_timestep):
-                                std::vector<double>({1.0,0.0})),
+                                imex_timestepper.beta():
+                                std::array<double,2>({1.0,0.0})),
                         gamma,
                         parameters.gravity_profile),
                 NavierStokesAssembly::CopyData::RightHandSide<dim>(navier_stokes_fe));

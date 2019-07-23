@@ -4,11 +4,13 @@
  *  Created on: Jul 11, 2019
  *      Author: sg
  */
-
-#include <gravity_field.h>
+#include <adsolic/exceptions.h>
+#include <adsolic/gravity_field.h>
 
 namespace EquationData
 {
+
+using namespace GeometryExceptions;
 
 template<int dim>
 GravityFunction<dim>::GravityFunction

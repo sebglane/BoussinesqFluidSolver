@@ -8,7 +8,7 @@
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
 
-#include "buoyant_fluid_solver.h"
+#include <adsolic/buoyant_fluid_solver.h>
 
 namespace BuoyantFluid {
 

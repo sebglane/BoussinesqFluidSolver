@@ -123,10 +123,10 @@ namespace LA
 #include <memory>
 #include <tuple>
 
-#include "assembly_data.h"
-#include "exceptions.h"
-#include "parameters.h"
-#include "timestepping.h"
+#include <adsolic/assembly_data.h>
+#include <adsolic/exceptions.h>
+#include <adsolic/parameters.h>
+#include <adsolic/timestepping.h>
 
 namespace BuoyantFluid {
 
@@ -241,7 +241,7 @@ private:
 
     Parameters                     &parameters;
 
-    TimeStepping::IMEXCoefficients  imex_coefficients;
+    TimeStepping::IMEXTimeStepping  imex_timestepper;
 
     Tensor<1,dim>                   rotation_vector;
 

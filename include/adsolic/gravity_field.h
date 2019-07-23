@@ -10,8 +10,6 @@
 
 #include <deal.II/base/tensor_function.h>
 
-#include <exceptions.h>
-
 namespace EquationData {
 
 /*

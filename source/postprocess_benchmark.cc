@@ -13,8 +13,8 @@
 #include <functional>
 #include <algorithm>
 
-#include "buoyant_fluid_solver.h"
-#include "postprocessor.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/postprocessor.h>
 
 DeclException0(ExcBoostNoConvergence);
 

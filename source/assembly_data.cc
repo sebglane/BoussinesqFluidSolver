@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "assembly_data.h"
+#include <adsolic/assembly_data.h>
 
 namespace TemperatureAssembly {
 
@@ -19,9 +19,9 @@ RightHandSide<dim>::RightHandSide(
         const UpdateFlags            temperature_update_flags,
         const FiniteElement<dim>    &stokes_fe,
         const UpdateFlags            stokes_update_flags,
-        const std::vector<double>   &alpha,
-        const std::vector<double>   &beta,
-        const std::vector<double>   &gamma)
+        const std::array<double,3>  &alpha,
+        const std::array<double,2>  &beta,
+        const std::array<double,3>  &gamma)
 :
 temperature_fe_values(mapping,
                       temperature_fe,
@@ -227,9 +227,9 @@ RightHandSide<dim>::RightHandSide
  const UpdateFlags           stokes_update_flags,
  const FiniteElement<dim>   &temperature_fe,
  const UpdateFlags           temperature_update_flags,
- const std::vector<double>  &alpha,
- const std::vector<double>  &beta,
- const std::vector<double>  &gamma,
+ const std::array<double,3> &alpha,
+ const std::array<double,2> &beta,
+ const std::array<double,3> &gamma,
  const EquationData::GravityProfile gravity_profile)
 :
 stokes_fe_values(mapping,

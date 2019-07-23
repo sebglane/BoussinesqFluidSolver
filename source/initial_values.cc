@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include "initial_values.h"
+#include <adsolic/initial_values.h>
 
 namespace EquationData
 {

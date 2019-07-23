@@ -24,10 +24,10 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
-#include "buoyant_fluid_solver.h"
-#include "initial_values.h"
-#include "snapshot_information.h"
-#include "postprocessor.h"
+#include <adsolic/buoyant_fluid_solver.h>
+#include <adsolic/initial_values.h>
+#include <adsolic/snapshot_information.h>
+#include <adsolic/postprocessor.h>
 
 namespace BuoyantFluid {
 
@@ -36,7 +36,7 @@ BuoyantFluidSolver<dim>::BuoyantFluidSolver(Parameters &parameters_)
 :
 mpi_communicator(MPI_COMM_WORLD),
 parameters(parameters_),
-imex_coefficients(parameters.imex_scheme),
+imex_timestepper(parameters),
 triangulation(mpi_communicator),
 mapping(4),
 // temperature part
@@ -146,7 +146,7 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
         pcout << "   Updating time step..." << std::endl;
 
     old_alpha_zero = (timestep_number != 0?
-                        imex_coefficients.alpha(timestep/old_timestep)[0]:
+                        imex_timestepper.alpha()[0]:
                         1.0);
 
     old_timestep = timestep;
@@ -862,7 +862,7 @@ void BuoyantFluidSolver<dim>::run()
         // increase timestep number
         ++timestep_number;
 
-    } while (timestep_number < parameters.n_steps + 1 && time < parameters.t_final);
+    } while (timestep_number < parameters.n_steps + 1 && time < parameters.final_time);
 
     timestep_number -= 1;
 

@@ -5,7 +5,7 @@
  *      Author: sg
  */
 
-#include <postprocessor.h>
+#include <adsolic/postprocessor.h>
 
 namespace BuoyantFluid {
 

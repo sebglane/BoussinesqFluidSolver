@@ -10,7 +10,7 @@
 
 #include <deal.II/numerics/data_postprocessor.h>
 
-#include "exceptions.h"
+#include <adsolic/exceptions.h>
 
 namespace BuoyantFluid {
 

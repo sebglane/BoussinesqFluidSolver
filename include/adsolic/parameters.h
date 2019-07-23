@@ -10,9 +10,9 @@
 
 #include <deal.II/base/parameter_handler.h>
 
-#include <gravity_field.h>
-#include <initial_values.h>
-#include <timestepping.h>
+#include <adsolic/gravity_field.h>
+#include <adsolic/initial_values.h>
+#include <adsolic/timestepping.h>
 
 namespace BuoyantFluid {
 

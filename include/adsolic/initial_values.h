@@ -13,7 +13,7 @@
 #include <deal.II/base/point.h>
 #include <deal.II/lac/vector.h>
 
-#include "exceptions.h"
+#include <adsolic/exceptions.h>
 
 namespace EquationData {
 
