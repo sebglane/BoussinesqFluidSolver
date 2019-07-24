@@ -8,6 +8,7 @@
 #ifndef INCLUDE_ADSOLIC_CONVECTION_DIFFUSION_SOLVER_H_
 #define INCLUDE_ADSOLIC_CONVECTION_DIFFUSION_SOLVER_H_
 
+#include <memory>
 
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/index_set.h>
@@ -25,9 +26,7 @@
 
 #include <deal.II/distributed/tria.h>
 
-#include <memory>
-#include <tuple>
-
+#include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
 #include <adsolic/timestepping.h>
 
@@ -35,6 +34,7 @@ namespace adsolic {
 
 using namespace dealii;
 using namespace TimeStepping;
+
 
 namespace ConvectionDiffusionAssembly {
 
@@ -182,15 +182,20 @@ class ConvectionDiffusionSolver
 {
 public:
     ConvectionDiffusionSolver
-    (ConvectionDiffusionParameters &parameters,
+    (const ConvectionDiffusionParameters &parameters,
      parallel::distributed::Triangulation<dim> &triangulation_in,
-     MappingQ<dim>         &mapping_in,
+     const MappingQ<dim>         &mapping_in,
      IMEXTimeStepping      &timestepper_in,
+     TensorFunction<1,dim> &advection_function_in,
+     std::shared_ptr<BC::ScalarBoundaryConditions<dim>> boundary_descriptor =
+             std::shared_ptr<BC::ScalarBoundaryConditions<dim>>(),
      TimerOutput           *external_timer = 0);
 
     void evaluate_time_step();
 
-    virtual void setup_problem(const Function<dim> &initial_temperature_field);
+    void setup_problem();
+
+    void setup_initial_condition(const Function<dim> &initial_field);
 
     const FiniteElement<dim> &get_fe() const;
 
@@ -213,7 +218,7 @@ private:
     void convection_diffusion_step();
 
     // reference to parameters
-    ConvectionDiffusionParameters          &parameters;
+    const ConvectionDiffusionParameters          &parameters;
 
     // reference to common triangulation
     parallel::distributed::Triangulation<dim>   &triangulation;
@@ -232,6 +237,12 @@ private:
 
     // pointer to monitor of computing times
     std::shared_ptr<TimerOutput> computing_timer;
+
+    // advection field
+    TensorFunction<1,dim>   &advection_function;
+
+    // pointer to boundary conditions
+    std::shared_ptr<BC::ScalarBoundaryConditions<dim>>  boundary_conditions;
 
     // FiniteElement and DoFHandler
     const FE_Q<dim>     fe;

@@ -7,6 +7,7 @@ INCLUDE_DIRECTORIES(
 
 SET( SOURCE_FILES
 #     main.cc
+     convection_diffusion_rectangle.cc
      )
 
 FOREACH( sourcefile ${SOURCE_FILES} )

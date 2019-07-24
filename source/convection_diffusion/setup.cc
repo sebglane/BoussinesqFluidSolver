@@ -34,29 +34,78 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
     DoFTools::extract_locally_relevant_dofs(dof_handler,
                                             locally_relevant_dofs);
 
-    // temperature constraints
+    // constraints
     {
         constraints.clear();
         constraints.reinit(locally_relevant_dofs);
 
+        // constraint matrix for hanging nodes
         DoFTools::make_hanging_node_constraints(
                 dof_handler,
                 constraints);
 
-        /*
-         *
-        const Functions::ConstantFunction<dim>  icb_temperature(1.0);
-        const Functions::ConstantFunction<dim>  cmb_temperature(0.0);
+        // constraint matrix for periodicity constraints
+        for (unsigned int d=0; d<dim; ++d)
+            if (boundary_conditions->periodic_bcs[d] !=
+                std::pair<types::boundary_id,types::boundary_id>
+                (numbers::invalid_boundary_id, numbers::invalid_boundary_id))
+            {
+                const types::boundary_id first_id = boundary_conditions->periodic_bcs[d].first;
+                const types::boundary_id second_id = boundary_conditions->periodic_bcs[d].second;
+                AssertThrow(boundary_conditions->dirichlet_bcs.find(first_id) ==
+                            boundary_conditions->dirichlet_bcs.end() &&
+                            boundary_conditions->dirichlet_bcs.find(second_id) ==
+                            boundary_conditions->dirichlet_bcs.end() &&
+                            boundary_conditions->neumann_bcs.find(first_id) ==
+                            boundary_conditions->neumann_bcs.end() &&
+                            boundary_conditions->neumann_bcs.find(second_id) ==
+                            boundary_conditions->neumann_bcs.end(),
+                            ExcMessage("Cannot mix periodic boundary conditions with "
+                                       "other types of boundary conditions on same "
+                                       "boundary!"));
+                AssertThrow(first_id != second_id,
+                            ExcMessage("The two faces for periodic boundary conditions "
+                                       "must have different boundary indicators!"));
+                DoFTools::make_periodicity_constraints(dof_handler,
+                                                       first_id,
+                                                       second_id,
+                                                       d,
+                                                       constraints);
+              }
 
-        const std::map<typename types::boundary_id, const Function<dim>*>
-        temperature_boundary_values = {{GridFactory::BoundaryIds::ICB, &icb_temperature},
-                                       {GridFactory::BoundaryIds::CMB, &cmb_temperature}};
 
-        VectorTools::interpolate_boundary_values(temperature_dof_handler,
-                                                 temperature_boundary_values,
-                                                 temperature_constraints);
-         *
-         */
+        const Functions::ZeroFunction<dim>  zero_function;
+        typename FunctionMap<dim>::type   function_map;
+
+        if (boundary_conditions.get() != 0)
+        {
+            if (boundary_conditions->dirichlet_bcs.size() != 0)
+                for (const auto &it: boundary_conditions->dirichlet_bcs)
+                    function_map[it.first] = it.second.get();
+            else
+            {
+                pcout << "   No Dirichlet boundary conditions specified in" << std::endl
+                      << "   BC object. Using homogeneous Dirichlet boundary" << std::endl
+                      << "   conditions on all boundaries." << std::endl;
+
+                for (const auto &id: triangulation.get_boundary_ids())
+                    function_map[id] = &zero_function;
+            }
+        }
+        else
+        {
+            pcout << "   No BC object passed. Using homogeneous Dirichlet boundary" << std::endl
+                  << "   conditions on all boundaries." << std::endl;
+
+            for (const auto &id: triangulation.get_boundary_ids())
+                function_map[id] = &zero_function;
+        }
+
+        VectorTools::interpolate_boundary_values
+        (mapping,
+         dof_handler,
+         function_map,
+         constraints);
 
         constraints.close();
     }
@@ -120,6 +169,25 @@ void ConvectionDiffusionSolver<dim>::setup_system_matrix
     rebuild_matrices = true;
 }
 
+template<int dim>
+void ConvectionDiffusionSolver<dim>::setup_problem()
+{
+    setup_dofs();
+}
+
+
+template<int dim>
+void ConvectionDiffusionSolver<dim>::setup_initial_condition
+(const Function<dim> &initial_condition)
+{
+    Assert(initial_condition.n_components == 1,
+           ExcDimensionMismatch(initial_condition.n_components, 1));
+
+    VectorTools::interpolate(mapping,
+                             dof_handler,
+                             initial_condition,
+                             old_solution);
+}
 // explicit instantiation
 template void ConvectionDiffusionSolver<2>::setup_dofs();
 template void ConvectionDiffusionSolver<3>::setup_dofs();

@@ -76,11 +76,12 @@ SET( TARGET_SRC
 #     source/snapshot_information.cc
 #     source/solve_navier_stokes.cc
 #     source/solve_temperature.cc
-     source/convection_diffusion/assemble_system.cc
+     source/convection_diffusion/assemble.cc
      source/convection_diffusion/assembly_data.cc
-     source/convection_diffusion/setup_dofs.cc
+     source/convection_diffusion/setup.cc
      source/convection_diffusion/convection_diffusion_solver.cc
-     source/convection_diffusion/solve_linear_system.cc
+     source/convection_diffusion/solve.cc
+     source/convection_diffusion/scalar_boundary_conditions.cc
      source/timestepping.cc)
 
 # Set the include directory and the name of the project
