@@ -17,9 +17,9 @@ namespace adsolic {
 
 template<int dim>
 void ConvectionDiffusionSolver<dim>::set_convection_function
-(ConvectionFunction<dim> &function)
+(std::shared_ptr<ConvectionFunction<dim>> function)
 {
-    convection_function = std::make_shared<ConvectionFunction<dim>>(function);
+    convection_function = function;
 }
 
 template<int dim>
@@ -199,9 +199,9 @@ void ConvectionDiffusionSolver<dim>::setup_initial_condition
 }
 // explicit instantiation
 template void ConvectionDiffusionSolver<2>::set_convection_function
-(ConvectionFunction<2> &);
+(std::shared_ptr<ConvectionFunction<2>>);
 template void ConvectionDiffusionSolver<3>::set_convection_function
-(ConvectionFunction<3> &);
+(std::shared_ptr<ConvectionFunction<3>>);
 
 template void ConvectionDiffusionSolver<2>::setup_dofs();
 template void ConvectionDiffusionSolver<3>::setup_dofs();

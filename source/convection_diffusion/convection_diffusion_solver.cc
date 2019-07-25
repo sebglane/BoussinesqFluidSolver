@@ -245,9 +245,17 @@ void ConvectionDiffusionSolver<dim>::advance_time_step()
         pcout << "   Convection diffusion step..." << std::endl;
 
     if (convection_function.get() != 0)
+    {
+        std::stringstream ss;
+        ss << "Time of the ConvectionFunction does not "
+              "the match time of the IMEXTimeStepper." << std::endl
+           <<  "ConvectionFunction::get_time() return " << convection_function->get_time()
+           << ", which is not equal to " << timestepper.now()
+           << ", which is return by IMEXTimeStepper::now()" << std::endl;
+
         Assert(timestepper.now() == convection_function->get_time(),
-               ExcMessage("Time of the ConvectionFunction does not "
-                          "the match time of the TimeStepper."));
+               ExcMessage(ss.str().c_str()));
+    }
 
     // extrapolate from old solutions
     extrapolate_solution_vector();

@@ -198,7 +198,7 @@ public:
 
     void advance_time_step();
 
-    void set_convection_function(ConvectionFunction<dim> &function);
+    void set_convection_function(std::shared_ptr<ConvectionFunction<dim>> function);
 
     void setup_problem();
 

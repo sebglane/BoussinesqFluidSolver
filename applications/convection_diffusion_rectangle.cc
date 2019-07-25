@@ -502,9 +502,11 @@ void HeatConductionSquare<dim>::run()
     const std::shared_ptr<Function<dim>> dirichlet_function
     = std::make_shared<Functions::ZeroFunction<dim>>();
 
-    ConvectionFunction<dim>  convective_field(parameters.amplitude,
-                                           parameters.kx,
-                                           parameters.ky);
+
+    const std::shared_ptr<ConvectionFunction<dim>> convective_field
+    = std::make_shared<ConvectionFunction<dim>>(parameters.amplitude,
+                                                parameters.kx,
+                                                parameters.ky);
 
     boundary_conditions->set_dirichlet_bc(0, dirichlet_function);
 
@@ -526,7 +528,7 @@ void HeatConductionSquare<dim>::run()
 
         timestepper.print_info(pcout);
 
-        convective_field.set_time(timestepper.now());
+        convective_field->set_time(timestepper.now());
 
         solver.advance_time_step();
     }
