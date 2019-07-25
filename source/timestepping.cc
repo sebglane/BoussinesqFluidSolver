@@ -59,7 +59,6 @@ TimeSteppingParameters()
 
 void TimeSteppingParameters::declare_parameters(ParameterHandler &prm)
 {
-
     prm.enter_subsection("Time stepping settings");
     {
         prm.declare_entry("time_stepping_scheme",
@@ -68,7 +67,7 @@ void TimeSteppingParameters::declare_parameters(ParameterHandler &prm)
                 "Time stepping scheme applied.");
 
         prm.declare_entry("n_steps",
-                "1000",
+                "10",
                 Patterns::Integer(),
                 "Maximum number of time steps.");
 
@@ -171,6 +170,40 @@ void TimeSteppingParameters::parse_parameters(ParameterHandler &prm)
     prm.leave_subsection();
 }
 
+template<typename Stream>
+void TimeSteppingParameters::write
+(Stream &stream) const
+{
+    stream << "Time stepping parameters" << std::endl
+           << "   imex_scheme: ";
+    switch (imex_scheme)
+    {
+    case IMEXType::Euler:
+         stream << "Euler" << std::endl;
+        break;
+    case IMEXType::CNAB:
+        stream << "CNAB" << std::endl;
+        break;
+    case IMEXType::MCNAB:
+        stream << "MCNAB" << std::endl;
+        break;
+    case IMEXType::CNLF:
+        stream << "CNLF" << std::endl;
+        break;
+    case IMEXType::SBDF:
+        stream << "SBDF" << std::endl;
+        break;
+    }
+    stream << "   n_steps: " << n_steps << std::endl
+           << "   adaptive_timestep: " << (adaptive_timestep? "true": "false") << std::endl
+           << "   adaptive_timestep_barrier: " << adaptive_timestep_barrier << std::endl
+           << "   initial_timestep: " << initial_timestep << std::endl
+           << "   min_timestep: " << min_timestep << std::endl
+           << "   max_timestep: " << max_timestep << std::endl
+           << "   final_time: " << final_time << std::endl
+           << "   verbose: " << (verbose? "true": "false") << std::endl;
+}
+
 IMEXTimeStepping::IMEXTimeStepping(const TimeSteppingParameters &prm)
 :
 type(prm.imex_scheme),
@@ -192,6 +225,7 @@ old_old_extrapol_factor(0.0),
 adaptive_timestep(prm.adaptive_timestep),
 adaptive_barrier(prm.adaptive_timestep_barrier),
 step_no_val(0),
+max_step_no(prm.n_steps),
 at_end_time(false),
 verbose(prm.verbose)
 {
@@ -341,7 +375,7 @@ std::string IMEXTimeStepping::name() const
         return std::string("CNLF");
         break;
     case IMEXType::SBDF:
-        return std::string("SBF");
+        return std::string("SBDF");
         break;
     default:
         AssertThrow(false, ExcInternalError());
@@ -548,8 +582,10 @@ void IMEXTimeStepping::update_extrapol_factors()
     old_old_extrapol_factor = omega;
 }
 
-
 // explicit instantiation
+template void TimeSteppingParameters::write(std::ostream &) const;
+template void TimeSteppingParameters::write(ConditionalOStream &) const;
+
 template void IMEXTimeStepping::write(std::ostream &) const;
 template void IMEXTimeStepping::write(ConditionalOStream &) const;
 

@@ -45,6 +45,13 @@ struct TimeSteppingParameters
     static void declare_parameters(ParameterHandler &prm);
     void parse_parameters(ParameterHandler &prm);
 
+    /*
+     * function forwarding parameters to a stream object
+     */
+    template<typename Stream>
+    void write(Stream &stream) const;
+
+
     // time stepping parameters
     TimeStepping::IMEXType  imex_scheme;
 
@@ -77,7 +84,11 @@ public:
     template<typename Stream>
     void write(Stream &stream) const;
 
+    template<typename Stream>
+    void print_info(Stream &stream) const;
+
     void   set_time_step(double);
+
     double advance_time_step();
 
     /*
@@ -156,6 +167,7 @@ private:
      * timestep counter
      */
     unsigned int step_no_val;
+    unsigned int max_step_no;
     /*
      * boolean flags
      */
@@ -179,14 +191,14 @@ private:
 inline double
 IMEXTimeStepping::start() const
 {
-  return start_time;
+    return start_time;
 }
 
 
 inline double
 IMEXTimeStepping::final() const
 {
-  return end_time;
+    return end_time;
 }
 
 inline double
@@ -198,64 +210,80 @@ IMEXTimeStepping::step_size() const
 inline double
 IMEXTimeStepping::old_step_size() const
 {
-  return old_step_val;
+    return old_step_val;
 }
 
 inline double
 IMEXTimeStepping::min_step_size() const
 {
-  return min_step_val;
+    return min_step_val;
 }
 
 inline double
 IMEXTimeStepping::max_step_size() const
 {
-  return max_step_val;
+    return max_step_val;
 }
 
 inline double
 IMEXTimeStepping::now() const
 {
-  return current_time;
+    return current_time;
 }
 
 inline double
 IMEXTimeStepping::previous() const
 {
-  return previous_time;
+    return previous_time;
 }
 
 inline double
 IMEXTimeStepping::pre_previous() const
 {
-  return pre_previous_time;
+    return pre_previous_time;
 }
 
 inline unsigned int
 IMEXTimeStepping::step_no() const
 {
-  return step_no_val;
+    return step_no_val;
 }
 
 inline bool
 IMEXTimeStepping::coefficients_have_changed() const
 {
-  return coefficients_changed;
+    return coefficients_changed;
 }
 
 template <typename Number>
 inline Number
-IMEXTimeStepping::extrapolate(const Number &old,
-                              const Number &old_old) const
+IMEXTimeStepping::extrapolate
+(const Number &old,
+ const Number &old_old) const
 {
-  return old * old_extrapol_factor + old_old * old_old_extrapol_factor;
+    return old * old_extrapol_factor + old_old * old_old_extrapol_factor;
 }
 
 inline bool
 IMEXTimeStepping::at_end() const
 {
-  return at_end_time;
+    return at_end_time || (step_no() == max_step_no);
 }
+
+template<typename Stream>
+inline void IMEXTimeStepping::print_info
+(Stream &stream) const
+{
+    stream << "Step No: "
+            << Utilities::int_to_string(step_no(), 10) << ", "
+            << "time: " << Utilities::to_string(now(), 10)  << ", "
+            << "step size: " << Utilities::to_string(step_size(),8)
+            << std::endl;
+}
+
+// explicit instantiations
+template void IMEXTimeStepping::print_info(std::ofstream &) const;
+template void IMEXTimeStepping::print_info(ConditionalOStream &) const;
 
 }  // namespace IMEXTimeStepping
 
