@@ -82,7 +82,8 @@ SET( TARGET_SRC
      source/convection_diffusion/convection_diffusion_solver.cc
      source/convection_diffusion/solve.cc
      source/convection_diffusion/scalar_boundary_conditions.cc
-     source/timestepping.cc)
+     source/timestepping.cc
+     source/utility.cc)
 
 # Set the include directory and the name of the project
 INCLUDE_DIRECTORIES(include)
