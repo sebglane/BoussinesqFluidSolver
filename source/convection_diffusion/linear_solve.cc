@@ -13,28 +13,12 @@
 namespace adsolic {
 
 template<int dim>
-void ConvectionDiffusionSolver<dim>::convection_diffusion_step()
-{
-    if (parameters.verbose)
-        pcout << "   Temperature step..." << std::endl;
-
-    // assemble right-hand side (and system if necessary)
-    assemble_system();
-
-    // rebuild preconditioner for diffusion step
-    build_preconditioner();
-
-    // solve projection step
-    solve_linear_system();
-}
-
-template<int dim>
 void ConvectionDiffusionSolver<dim>::build_preconditioner()
 {
     if (!rebuild_preconditioner)
         return;
 
-    computing_timer->enter_subsection("build preconditioner temperature");
+    TimerOutput::Scope(*computing_timer,"build preconditioner");
 
     preconditioner.reset(new LA::PreconditionSSOR());
 
@@ -56,7 +40,7 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
     if (parameters.verbose)
         pcout << "      Solving temperature system..." << std::endl;
 
-    computing_timer->enter_subsection("solve temperature");
+    TimerOutput::Scope(*computing_timer,"linear solve");
 
     LA::Vector  distributed_solution(rhs);
     distributed_solution = solution;
@@ -101,8 +85,6 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
     constraints.distribute(distributed_solution);
     solution = distributed_solution;
 
-    computing_timer->leave_subsection();
-
     // write info message
     if (parameters.verbose)
         pcout << "      "
@@ -112,9 +94,6 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
 }
 
 // explicit instantiation
-template void ConvectionDiffusionSolver<2>::convection_diffusion_step();
-template void ConvectionDiffusionSolver<3>::convection_diffusion_step();
-
 template void ConvectionDiffusionSolver<2>::build_preconditioner();
 template void ConvectionDiffusionSolver<3>::build_preconditioner();
 

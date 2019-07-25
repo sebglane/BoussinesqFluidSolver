@@ -12,8 +12,49 @@
 
 #include <deal.II/numerics/matrix_tools.h>
 
-
 namespace adsolic {
+
+template<int dim>
+void ConvectionDiffusionSolver<dim>::assemble_system_matrix()
+{
+    using namespace ConvectionDiffusionAssembly;
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
+    // quadrature formula
+    const QGauss<dim> quadrature_formula(fe.degree + 2);
+
+    // reset matrices
+    mass_matrix = 0;
+    stiffness_matrix = 0;
+
+    // assemble right-hand side
+    WorkStream::run(
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       dof_handler.end()),
+            std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_matrix,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&ConvectionDiffusionSolver<dim>::copy_local_to_global_matrix,
+                      this,
+                      std::placeholders::_1),
+            Scratch::Matrix<dim>(fe,
+                                 mapping,
+                                 quadrature_formula,
+                                 update_values|
+                                 update_gradients|
+                                 update_JxW_values),
+            CopyData::Matrix<dim>(fe));
+
+    mass_matrix.compress(VectorOperation::add);
+    stiffness_matrix.compress(VectorOperation::add);
+}
 
 template<int dim>
 void ConvectionDiffusionSolver<dim>::assemble_system()
@@ -21,14 +62,16 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
     if (parameters.verbose)
         pcout << "      Assembling convection diffussion system..." << std::endl;
 
-    computing_timer->enter_subsection("assemble convect. diff. system");
+    using namespace ConvectionDiffusionAssembly;
 
     typedef
     FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
     CellFilter;
 
+    TimerOutput::Scope(*computing_timer, "assembly");
+
     // quadrature formula
-    const QGauss<dim> quadrature_formula(parameters.fe_degree + 2);
+    const QGauss<dim> quadrature_formula(fe.degree + 2);
 
     // time stepping coefficients
     const std::array<double,3> alpha = timestepper.alpha();
@@ -37,45 +80,17 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
     // assemble matrices
     if (rebuild_matrices)
     {
-        mass_matrix = 0;
-        stiffness_matrix = 0;
-
-        // assemble right-hand side
-        WorkStream::run(
-                CellFilter(IteratorFilters::LocallyOwnedCell(),
-                           dof_handler.begin_active()),
-                CellFilter(IteratorFilters::LocallyOwnedCell(),
-                           dof_handler.end()),
-                std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_matrix,
-                          this,
-                          std::placeholders::_1,
-                          std::placeholders::_2,
-                          std::placeholders::_3),
-                std::bind(&ConvectionDiffusionSolver<dim>::copy_local_to_global_matrix,
-                          this,
-                          std::placeholders::_1),
-                ConvectionDiffusionAssembly::Scratch::Matrix<dim>(fe,
-                                                          mapping,
-                                                          quadrature_formula,
-                                                          update_values|
-                                                          update_gradients|
-                                                          update_JxW_values),
-                ConvectionDiffusionAssembly::CopyData::Matrix<dim>(fe));
-
-        mass_matrix.compress(VectorOperation::add);
-        stiffness_matrix.compress(VectorOperation::add);
+        assemble_system();
 
         system_matrix.copy_from(mass_matrix);
         system_matrix *= alpha[0] / timestepper.step_size();
         system_matrix.add(gamma[0] * equation_coefficient,
-                               stiffness_matrix);
+                          stiffness_matrix);
 
         system_matrix.compress(VectorOperation::add);
 
-        rebuild_matrices = false;
         rebuild_preconditioner = true;
     }
-
     if (timestepper.coefficients_have_changed())
     {
         system_matrix.copy_from(mass_matrix);
@@ -91,8 +106,6 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
     // reset all entries
     rhs = 0;
 
-    ZeroTensorFunction<1,dim>   dummy_function;
-
     // assemble right-hand side
     WorkStream::run(
             CellFilter(IteratorFilters::LocallyOwnedCell(),
@@ -107,20 +120,21 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
             std::bind(&ConvectionDiffusionSolver<dim>::copy_local_to_global_rhs,
                       this,
                       std::placeholders::_1),
-            ConvectionDiffusionAssembly::Scratch::RightHandSide<dim>(
-                    fe,
-                    mapping,
-                    quadrature_formula,
-                    update_values|
-                    update_gradients|
-                    update_JxW_values,
-                    dummy_function,
-                    alpha,
-                    timestepper.beta(),
-                    gamma),
-            ConvectionDiffusionAssembly::CopyData::RightHandSide<dim>(fe));
+            Scratch::RightHandSide<dim>(fe,
+                                        mapping,
+                                        quadrature_formula,
+                                        update_values|
+                                        update_gradients|
+                                        update_quadrature_points|
+                                        update_JxW_values,
+                                        alpha,
+                                        timestepper.beta(),
+                                        gamma),
+            CopyData::RightHandSide<dim>(fe));
 
     rhs.compress(VectorOperation::add);
+
+    computing_timer->leave_subsection();
 }
 
 template <int dim>
@@ -201,13 +215,13 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
     scratch.fe_values.get_function_gradients(old_old_solution,
                                              scratch.old_old_gradients);
 
-    scratch.advection_field.set_time(timestepper.previous());
-    scratch.advection_field.value_list(scratch.fe_values.get_quadrature_points(),
-                                       scratch.old_velocity_values);
+    convection_function->set_time(timestepper.previous());
+    convection_function->old_value_list(scratch.fe_values.get_quadrature_points(),
+                                        scratch.old_velocity_values);
 
-    scratch.advection_field.set_time(timestepper.previous());
-    scratch.advection_field.value_list(scratch.fe_values.get_quadrature_points(),
-                                       scratch.old_old_velocity_values);
+    convection_function->set_time(timestepper.previous());
+    convection_function->old_old_value_list(scratch.fe_values.get_quadrature_points(),
+                                            scratch.old_old_velocity_values);
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -262,6 +276,9 @@ void ConvectionDiffusionSolver<dim>::copy_local_to_global_rhs
 }
 
 // explicit instantiation
+template void ConvectionDiffusionSolver<2>::assemble_system_matrix();
+template void ConvectionDiffusionSolver<3>::assemble_system_matrix();
+
 template void ConvectionDiffusionSolver<2>::assemble_system();
 template void ConvectionDiffusionSolver<3>::assemble_system();
 

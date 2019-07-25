@@ -7,61 +7,13 @@
 
 #include <deal.II/grid/grid_generator.h>
 
+#include <deal.II/numerics/data_out.h>
+
 #include <adsolic/convection_diffusion_solver.h>
+#include <adsolic/utility.h>
 
 using namespace dealii;
 using namespace adsolic;
-
-/*
- *
- * velocity field
- *
- */
-template <int dim>
-class ConvectiveField : public TensorFunction<1,dim>
-{
-public:
-    ConvectiveField(const double amplitude = 1.0,
-                    const double kx = 2.0 * numbers::PI,
-                    const double ky = 2.0 * numbers::PI,
-                    const double kz = 2.0 * numbers::PI);
-
-    virtual void vector_value(const Point<dim> &point,
-                              Vector<double>   &values) const;
-private:
-    const double amplitude;
-    const double kx;
-    const double ky;
-    const double kz;
-};
-
-template <int dim>
-ConvectiveField<dim>::ConvectiveField
-(const double amplitude_in,
- const double kx_in,
- const double ky_in,
- const double kz_in)
-:
-amplitude(amplitude_in),
-kx(kx_in),
-ky(ky_in),
-kz(kz_in)
-{}
-
-
-template <int dim>
-void ConvectiveField<dim>::vector_value
-(const Point<dim> &point,
- Vector<double>   &values) const
-{
-    AssertThrow(dim == 2,
-                ExcImpossibleInDim(dim));
-
-    AssertDimension(values.size(), dim);
-
-    values(0) = amplitude * std::sin(kx * point[0]) * std::cos(ky * point[1]);
-    values(1) = -amplitude * kx / ky * std::cos(kx * point[0]) * std::sin(ky * point[1]);
-}
 
 /*
  *
@@ -122,6 +74,12 @@ struct HeatConductionParameters
 
     static void declare_parameters(ParameterHandler &prm);
     void parse_parameters(ParameterHandler &prm);
+
+    /*
+     * function forwarding parameters to a stream object
+     */
+    template<typename Stream>
+    void write(Stream &stream) const;
 
     ConvectionDiffusionParameters   convect_diff_params;
 
@@ -203,7 +161,9 @@ verbose(false)
     prm.parse_input(parameter_file);
 
     parse_parameters(prm);
+
     convect_diff_params.parse_parameters(prm);
+
     time_stepping_params.parse_parameters(prm);
 
     if (verbose == true)
@@ -286,17 +246,17 @@ void HeatConductionParameters::declare_parameters(ParameterHandler &prm)
                 "Amplitude of the convective field.");
 
         prm.declare_entry("kx",
-                "2.0 * 3.14159265358979323846",
+                "6.283185307179586",
                 Patterns::Double(),
                 "Wave number in x-direction.");
 
         prm.declare_entry("ky",
-                "2.0 * 3.14159265358979323846",
+                "6.283185307179586",
                 Patterns::Double(),
                 "Wave number in y-direction.");
 
         prm.declare_entry("kz",
-                "2.0 * 3.14159265358979323846",
+                "6.283185307179586",
                 Patterns::Double(),
                 "Wave number in z-direction.");
     }
@@ -387,6 +347,28 @@ void HeatConductionParameters::parse_parameters(ParameterHandler &prm)
     prm.leave_subsection();
 }
 
+template<typename Stream>
+void HeatConductionParameters::write(Stream &stream) const
+{
+    stream << "Heat conduction parameters" << std::endl
+           << "   dim: " << dim << std::endl
+           << "   amplitude: " << amplitude << std::endl
+           << "   kx: " << kx << std::endl
+           << "   ky: " << ky << std::endl
+           << "   kz: " << kz << std::endl
+           << "   adaptive_mesh_refinement: " << (adaptive_mesh_refinement? "true": "false") << std::endl
+           << "   n_global_refinements: " << n_global_refinements << std::endl
+           << "   n_initial_refinements: " << n_initial_refinements << std::endl
+           << "   n_boundary_refinements: " << n_boundary_refinements << std::endl
+           << "   n_max_levels: " << n_max_levels << std::endl
+           << "   n_min_levels: " << n_min_levels << std::endl
+           << "   vtk_frequency: " << vtk_frequency << std::endl
+           << "   verbose: " << (verbose? "true": "false") << std::endl;
+
+    convect_diff_params.write(stream);
+    time_stepping_params.write(stream);
+}
+
 /*
  *
  * problem class
@@ -417,12 +399,12 @@ private:
 
     IMEXTimeStepping    timestepper;
 
-    ConvectiveField<dim>    advection_function;
+    AuxiliaryFunctions::ConvectionFunction<dim>    advection_function;
     TemperatureField<dim>   temperature_function;
 
-    BC::ScalarBoundaryConditions<dim> boundary_conditions;
+    std::shared_ptr<BC::ScalarBoundaryConditions<dim>> boundary_conditions;
 
-    mutable TimerOutput timer;
+    mutable std::shared_ptr<TimerOutput>    timer;
 
     ConvectionDiffusionSolver<dim>    solver;
 };
@@ -445,57 +427,64 @@ advection_function(parameters.amplitude,
 temperature_function(parameters.convect_diff_params.equation_coefficient,
                      parameters.kx,
                      parameters.ky),
-timer(pcout,
-      TimerOutput::summary, TimerOutput::cpu_and_wall_times),
+boundary_conditions(new BC::ScalarBoundaryConditions<dim>()),
+timer(new TimerOutput(pcout,TimerOutput::summary,TimerOutput::cpu_and_wall_times)),
 solver(parameters.convect_diff_params,
        triangulation,
        mapping,
        timestepper,
-       advection_function,
-       std::shared_ptr<BC::ScalarBoundaryConditions<dim>>(&boundary_conditions),
-       &timer)
-{}
+       boundary_conditions,
+       timer)
+{
+    parameters.write(pcout);
+}
 
-/*
- *
 template <int dim>
 void HeatConductionSquare<dim>::output_results () const
 {
-  if (!navier_stokes.time_stepping.at_tick(navier_stokes.get_parameters().output_frequency))
-    return;
+    timer->enter_subsection("Output solution.");
 
-  timer.enter_subsection("Output solution.");
+    DataOut<dim> data_out;
 
-  navier_stokes.solution.update_ghost_values();
+    data_out.add_data_vector(solver.get_dof_handler(),
+                           solver.get_solution(),
+                           "temperature");
+    data_out.build_patches(parameters.convect_diff_params.fe_degree);
 
-  DataOut<dim> data_out;
+    // write output to disk
+    const std::string filename = ("solution-" +
+                                 Utilities::int_to_string(timestepper.step_no(), 5) +
+                                "." +
+                                Utilities::int_to_string
+                                (triangulation.locally_owned_subdomain(), 4) +
+                                ".vtu");
+    std::ofstream output (filename.c_str());
+    data_out.write_vtu (output);
 
-  std::vector<DataComponentInterpretation::DataComponentInterpretation>
-  vector_component_interpretation
-  (dim, DataComponentInterpretation::component_is_part_of_vector);
-  data_out.add_data_vector (navier_stokes.get_dof_handler_u(),
-                            navier_stokes.solution.block(0),
-                            std::vector<std::string>(dim,"velocity"),
-                            vector_component_interpretation);
-  data_out.add_data_vector (navier_stokes.get_dof_handler_p(),
-                            navier_stokes.solution.block(1),
-                            "pressure");
-  data_out.build_patches (navier_stokes.get_parameters().velocity_degree);
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    {
+      std::vector<std::string> filenames;
+      for (unsigned int i=0; i<Utilities::MPI::n_mpi_processes(mpi_communicator); ++i)
+          filenames.push_back(std::string("solution-") +
+                              Utilities::int_to_string(timestepper.step_no(), 5) +
+                              "." +
+                              Utilities::int_to_string(i, 4) +
+                              ".vtu");
+      const std::string
+      pvtu_master_filename = ("solution-" +
+                              Utilities::int_to_string(timestepper.step_no(), 5) +
+                              ".pvtu");
+      std::ofstream pvtu_master(pvtu_master_filename.c_str());
+      data_out.write_pvtu_record(pvtu_master, filenames);
+    }
 
-  navier_stokes.write_data_output(navier_stokes.get_parameters().output_filename,
-                                  navier_stokes.time_stepping,
-                                  navier_stokes.get_parameters().output_frequency,
-                                  data_out);
-
-  timer.leave_subsection();
+   timer->leave_subsection();
 }
-*
-*
-*/
+
 template <int dim>
-void HeatConductionSquare<dim>::run ()
+void HeatConductionSquare<dim>::run()
 {
-    timer.enter_subsection ("Setup grid and initial condition.");
+    timer->enter_subsection ("Setup grid");
 
     pcout << "Running a " << dim << "D heat conduction problem "
           << "using " << timestepper.name()
@@ -510,19 +499,35 @@ void HeatConductionSquare<dim>::run ()
         triangulation.refine_global(parameters.n_global_refinements);
     }
 
-    boundary_conditions.set_dirichlet_bc(0,
-                                         std::shared_ptr<Function<dim>>(new Functions::ZeroFunction<dim>));
+    const std::shared_ptr<Function<dim>> dirichlet_function
+    = std::make_shared<Functions::ZeroFunction<dim>>();
+
+    ConvectionFunction<dim>  convective_field(parameters.amplitude,
+                                           parameters.kx,
+                                           parameters.ky);
+
+    boundary_conditions->set_dirichlet_bc(0, dirichlet_function);
+
+    timer->leave_subsection();
+
+    solver.set_convection_function(convective_field);
 
     solver.setup_problem();
-
-    timer.leave_subsection();
 
     solver.setup_initial_condition(TemperatureField<dim>());
 
     output_results();
 
+    pcout << "Start time integration..." << std::endl;
+
     while (timestepper.at_end() == false)
     {
+        timestepper.advance_time_step();
+
+        timestepper.print_info(pcout);
+
+        convective_field.set_time(timestepper.now());
+
         solver.advance_time_step();
     }
 }
@@ -557,12 +562,12 @@ int main (int argc, char **argv)
         if (parameters.dim == 2)
         {
             HeatConductionSquare<2> problem(parameters);
-//            problem.run ();
+            problem.run ();
         }
         else if (parameters.dim == 3)
         {
             HeatConductionSquare<3> problem (parameters);
-//            problem.run ();
+            problem.run ();
         }
         else
             AssertThrow (false, ExcNotImplemented());

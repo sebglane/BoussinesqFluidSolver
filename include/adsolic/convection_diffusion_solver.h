@@ -29,12 +29,15 @@
 #include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
 #include <adsolic/timestepping.h>
+#include <adsolic/utility.h>
 
 namespace adsolic {
 
 using namespace dealii;
+
 using namespace TimeStepping;
 
+using namespace AuxiliaryFunctions;
 
 namespace ConvectionDiffusionAssembly {
 
@@ -65,7 +68,6 @@ struct RightHandSide
                   const Mapping<dim>           &mapping,
                   const Quadrature<dim>        &quadrature,
                   const UpdateFlags             update_flags,
-                  TensorFunction<1,dim>        &advection_field,
                   const std::array<double,3>   &alpha,
                   const std::array<double,2>   &beta,
                   const std::array<double,3>   &gamma);
@@ -83,12 +85,8 @@ struct RightHandSide
     std::vector<Tensor<1,dim>>  old_gradients;
     std::vector<Tensor<1,dim>>  old_old_gradients;
 
-//    FEValues<dim>               stokes_fe_values;
-    TensorFunction<1,dim>      &advection_field;
     std::vector<Tensor<1,dim>>  old_velocity_values;
     std::vector<Tensor<1,dim>>  old_old_velocity_values;
-
-//    const FEValuesExtractors::Vector velocity;
 
     const std::array<double,3> &alpha;
     const std::array<double,2> &beta;
@@ -150,8 +148,15 @@ struct ConvectionDiffusionParameters
 {
     ConvectionDiffusionParameters();
     ConvectionDiffusionParameters(const std::string &parameter_filename);
+
     static void declare_parameters(ParameterHandler &prm);
     void parse_parameters(ParameterHandler &prm);
+
+    /*
+     * function forwarding parameters to a stream object
+     */
+    template<typename Stream>
+    void write(Stream &stream) const;
 
     // dimensionless coefficient in convection diffusion equation
     double          equation_coefficient;
@@ -183,15 +188,17 @@ class ConvectionDiffusionSolver
 public:
     ConvectionDiffusionSolver
     (const ConvectionDiffusionParameters &parameters,
-     parallel::distributed::Triangulation<dim> &triangulation_in,
-     const MappingQ<dim>         &mapping_in,
-     IMEXTimeStepping      &timestepper_in,
-     TensorFunction<1,dim> &advection_function_in,
-     std::shared_ptr<BC::ScalarBoundaryConditions<dim>> boundary_descriptor =
-             std::shared_ptr<BC::ScalarBoundaryConditions<dim>>(),
-     TimerOutput           *external_timer = 0);
+     const parallel::distributed::Triangulation<dim> &triangulation_in,
+     const MappingQ<dim>   &mapping_in,
+     const IMEXTimeStepping&timestepper_in,
+     const std::shared_ptr<const BC::ScalarBoundaryConditions<dim>> boundary_descriptor =
+             std::shared_ptr<const BC::ScalarBoundaryConditions<dim>>(),
+     const std::shared_ptr<TimerOutput> external_timer =
+             std::shared_ptr<TimerOutput>());
 
-    void evaluate_time_step();
+    void advance_time_step();
+
+    void set_convection_function(ConvectionFunction<dim> &function);
 
     void setup_problem();
 
@@ -199,11 +206,18 @@ public:
 
     const FiniteElement<dim> &get_fe() const;
 
-    const DoFHandler<dim>    &get_dof_handler() const;
-    const ConstraintMatrix   &get_constraints() const;
+    unsigned int fe_degree() const;
+
+    types::global_dof_index n_dofs() const;
+
+    const DoFHandler<dim>  &get_dof_handler() const;
+    const ConstraintMatrix &get_constraints() const;
+    const LA::Vector       &get_solution() const;
 
 private:
     void setup_dofs();
+
+    void extrapolate_solution_vector();
 
     void setup_system_matrix
     (const IndexSet &locally_owned_dofs,
@@ -211,23 +225,25 @@ private:
 
     void assemble_system();
 
+    void assemble_system_matrix();
+
     void build_preconditioner();
 
     void solve_linear_system();
 
-    void convection_diffusion_step();
+    void advance_solution_vectors();
 
     // reference to parameters
-    const ConvectionDiffusionParameters          &parameters;
+    const ConvectionDiffusionParameters &parameters;
 
     // reference to common triangulation
-    parallel::distributed::Triangulation<dim>   &triangulation;
+    const parallel::distributed::Triangulation<dim>   &triangulation;
 
     // reference to common mapping
     const MappingQ<dim>&mapping;
 
     // reference to time stepper
-    IMEXTimeStepping   &timestepper;
+    const IMEXTimeStepping   &timestepper;
 
     // copy of equation coefficient
     const double        equation_coefficient;
@@ -235,14 +251,14 @@ private:
     // parallel output
     ConditionalOStream  pcout;
 
+    // pointer to boundary conditions
+    std::shared_ptr<const BC::ScalarBoundaryConditions<dim>>  boundary_conditions;
+
+    // pointer to convective function
+    std::shared_ptr<ConvectionFunction<dim>>  convection_function;
+
     // pointer to monitor of computing times
     std::shared_ptr<TimerOutput> computing_timer;
-
-    // advection field
-    TensorFunction<1,dim>   &advection_function;
-
-    // pointer to boundary conditions
-    std::shared_ptr<BC::ScalarBoundaryConditions<dim>>  boundary_conditions;
 
     // FiniteElement and DoFHandler
     const FE_Q<dim>     fe;

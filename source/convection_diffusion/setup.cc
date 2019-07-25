@@ -16,11 +16,18 @@
 namespace adsolic {
 
 template<int dim>
+void ConvectionDiffusionSolver<dim>::set_convection_function
+(ConvectionFunction<dim> &function)
+{
+    convection_function = std::make_shared<ConvectionFunction<dim>>(function);
+}
+
+template<int dim>
 void ConvectionDiffusionSolver<dim>::setup_dofs()
 {
     pcout << "Setup dofs..." << std::endl;
 
-    computing_timer->enter_subsection("setup temperature dofs");
+    TimerOutput::Scope(*computing_timer, "setup dofs");
 
     // temperature part
     locally_owned_dofs.clear();
@@ -122,20 +129,6 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
                            locally_relevant_dofs,
                            triangulation.get_communicator(),
                            true);
-
-    // count dofs
-    const types::global_dof_index n_dofs_temperature
-    = dof_handler.n_dofs();
-
-    computing_timer->leave_subsection();
-
-    // print info message
-    pcout << "   Number of active cells: "
-          << triangulation.n_global_active_cells()
-          << std::endl
-          << "   Number of temperature degrees of freedom: "
-          << n_dofs_temperature
-          << std::endl;
 }
 
 template<int dim>
@@ -175,20 +168,41 @@ void ConvectionDiffusionSolver<dim>::setup_problem()
     setup_dofs();
 }
 
-
 template<int dim>
 void ConvectionDiffusionSolver<dim>::setup_initial_condition
 (const Function<dim> &initial_condition)
 {
+    if (parameters.verbose)
+        pcout << "   Setup initial condition..." << std::endl;
+
     Assert(initial_condition.n_components == 1,
            ExcDimensionMismatch(initial_condition.n_components, 1));
+
+    TimerOutput::Scope(*computing_timer, "setup initial field");
 
     VectorTools::interpolate(mapping,
                              dof_handler,
                              initial_condition,
                              old_solution);
+    constraints.distribute(old_solution);
+
+    // copy initial solution to current solution
+    LA::Vector::const_iterator
+    old = old_solution.begin(),
+    end_old = old_solution.end();
+
+    LA::Vector::iterator
+    sol = solution.begin();
+
+    for (; old != end_old; ++old, ++sol)
+        *sol = *old;
 }
 // explicit instantiation
+template void ConvectionDiffusionSolver<2>::set_convection_function
+(ConvectionFunction<2> &);
+template void ConvectionDiffusionSolver<3>::set_convection_function
+(ConvectionFunction<3> &);
+
 template void ConvectionDiffusionSolver<2>::setup_dofs();
 template void ConvectionDiffusionSolver<3>::setup_dofs();
 
@@ -198,6 +212,12 @@ template void ConvectionDiffusionSolver<2>::setup_system_matrix
 template void ConvectionDiffusionSolver<3>::setup_system_matrix
 (const IndexSet &,
  const IndexSet &);
+
+template void ConvectionDiffusionSolver<2>::setup_problem();
+template void ConvectionDiffusionSolver<3>::setup_problem();
+
+template void ConvectionDiffusionSolver<2>::setup_initial_condition(const Function<2> &);
+template void ConvectionDiffusionSolver<3>::setup_initial_condition(const Function<3> &);
 
 }  // namespace BuoyantFluid
 

@@ -80,7 +80,7 @@ SET( TARGET_SRC
      source/convection_diffusion/assembly_data.cc
      source/convection_diffusion/setup.cc
      source/convection_diffusion/convection_diffusion_solver.cc
-     source/convection_diffusion/solve.cc
+     source/convection_diffusion/linear_solve.cc
      source/convection_diffusion/scalar_boundary_conditions.cc
      source/timestepping.cc
      source/utility.cc)

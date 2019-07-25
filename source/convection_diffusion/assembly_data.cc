@@ -22,7 +22,6 @@ RightHandSide<dim>::RightHandSide
  const Mapping<dim>         &mapping,
  const Quadrature<dim>      &quadrature,
  const UpdateFlags           update_flags,
- TensorFunction<1,dim>      &advection_field,
  const std::array<double,3> &alpha,
  const std::array<double,2> &beta,
  const std::array<double,3> &gamma)
@@ -43,7 +42,6 @@ stokes_fe_values(mapping,
                  temperature_quadrature,
                  stokes_update_flags),
 */
-advection_field(advection_field),
 old_velocity_values(quadrature.size()),
 old_old_velocity_values(quadrature.size()),
 /*
@@ -76,7 +74,6 @@ stokes_fe_values(scratch.stokes_fe_values.get_mapping(),
                  scratch.stokes_fe_values.get_quadrature(),
                  scratch.stokes_fe_values.get_update_flags()),
  */
-advection_field(scratch.advection_field),
 old_velocity_values(scratch.old_velocity_values),
 old_old_velocity_values(scratch.old_old_velocity_values),
 /*
