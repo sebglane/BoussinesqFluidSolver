@@ -196,11 +196,13 @@ public:
      const std::shared_ptr<TimerOutput> external_timer =
              std::shared_ptr<TimerOutput>());
 
-    void advance_time_step();
+    void advance_in_time();
 
-    void set_convection_function(std::shared_ptr<ConvectionFunction<dim>> function);
+    void set_convection_function(const std::shared_ptr<ConvectionFunction<dim>> &function);
 
     void setup_problem();
+
+    void set_post_refinement() const;
 
     void setup_initial_condition(const Function<dim> &initial_field);
 
@@ -217,7 +219,7 @@ public:
 private:
     void setup_dofs();
 
-    void extrapolate_solution_vector();
+    void extrapolate_solution();
 
     void setup_system_matrix
     (const IndexSet &locally_owned_dofs,
@@ -231,7 +233,7 @@ private:
 
     void solve_linear_system();
 
-    void advance_solution_vectors();
+    void advance_solution();
 
     // reference to parameters
     const ConvectionDiffusionParameters &parameters;
@@ -255,7 +257,7 @@ private:
     std::shared_ptr<const BC::ScalarBoundaryConditions<dim>>  boundary_conditions;
 
     // pointer to convective function
-    std::shared_ptr<ConvectionFunction<dim>>  convection_function;
+    std::shared_ptr<const ConvectionFunction<dim>>  convection_function;
 
     // pointer to monitor of computing times
     std::shared_ptr<TimerOutput> computing_timer;
@@ -286,6 +288,7 @@ private:
     // flags for rebuilding matrices and preconditioners
     bool    rebuild_matrices = true,
             rebuild_preconditioner = true;
+    mutable bool setup_dofs_flag = true;
 
     // work stream methods for temperature assembly
     void local_assemble_rhs
@@ -302,6 +305,12 @@ private:
     void copy_local_to_global_matrix
     (const ConvectionDiffusionAssembly::CopyData::Matrix<dim>    &data);
 };
+
+template<int dim>
+inline void ConvectionDiffusionSolver<dim>::set_post_refinement() const
+{
+    setup_dofs_flag = true;
+}
 
 }  // namespace adsolic
 

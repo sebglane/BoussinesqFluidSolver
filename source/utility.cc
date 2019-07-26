@@ -34,7 +34,7 @@ ConvectionFunction<dim>::set_time(const double new_time)
 {
     old_old_time = old_time;
     old_time = this->get_time();
-    this->set_time(new_time);
+    FunctionTime<double>::set_time(new_time);
 }
 
 template<int dim>

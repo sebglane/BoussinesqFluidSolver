@@ -205,7 +205,7 @@ ConvectionDiffusionSolver<dim>::get_solution() const
 }
 
 template<int dim>
-void ConvectionDiffusionSolver<dim>::extrapolate_solution_vector()
+void ConvectionDiffusionSolver<dim>::extrapolate_solution()
 {
     LA::Vector::iterator
     sol = solution.begin(),
@@ -220,7 +220,7 @@ void ConvectionDiffusionSolver<dim>::extrapolate_solution_vector()
 }
 
 template<int dim>
-void ConvectionDiffusionSolver<dim>::advance_solution_vectors()
+void ConvectionDiffusionSolver<dim>::advance_solution()
 {
     LA::Vector::const_iterator
     sol = solution.begin(),
@@ -239,7 +239,7 @@ void ConvectionDiffusionSolver<dim>::advance_solution_vectors()
 }
 
 template<int dim>
-void ConvectionDiffusionSolver<dim>::advance_time_step()
+void ConvectionDiffusionSolver<dim>::advance_in_time()
 {
     if (parameters.verbose)
         pcout << "   Convection diffusion step..." << std::endl;
@@ -249,16 +249,18 @@ void ConvectionDiffusionSolver<dim>::advance_time_step()
         std::stringstream ss;
         ss << "Time of the ConvectionFunction does not "
               "the match time of the IMEXTimeStepper." << std::endl
-           <<  "ConvectionFunction::get_time() return " << convection_function->get_time()
+           <<  "ConvectionFunction::get_time() returns " << convection_function->get_time()
            << ", which is not equal to " << timestepper.now()
-           << ", which is return by IMEXTimeStepper::now()" << std::endl;
+           << ", which is returned by IMEXTimeStepper::now()" << std::endl;
 
         Assert(timestepper.now() == convection_function->get_time(),
                ExcMessage(ss.str().c_str()));
     }
 
+    computing_timer->enter_subsection("Convect.-Diff.");
+
     // extrapolate from old solutions
-    extrapolate_solution_vector();
+    extrapolate_solution();
 
     // assemble right-hand side (and system if necessary)
     assemble_system();
@@ -270,7 +272,9 @@ void ConvectionDiffusionSolver<dim>::advance_time_step()
     solve_linear_system();
 
     // update solution vectors
-    advance_solution_vectors();
+    advance_solution();
+
+    computing_timer->leave_subsection();
 }
 
 // explicit instantiation

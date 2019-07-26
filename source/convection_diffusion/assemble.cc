@@ -14,73 +14,35 @@
 
 namespace adsolic {
 
-template<int dim>
-void ConvectionDiffusionSolver<dim>::assemble_system_matrix()
-{
-    using namespace ConvectionDiffusionAssembly;
-
-    typedef
-    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
-    CellFilter;
-
-    // quadrature formula
-    const QGauss<dim> quadrature_formula(fe.degree + 2);
-
-    // reset matrices
-    mass_matrix = 0;
-    stiffness_matrix = 0;
-
-    // assemble right-hand side
-    WorkStream::run(
-            CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.begin_active()),
-            CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.end()),
-            std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_matrix,
-                      this,
-                      std::placeholders::_1,
-                      std::placeholders::_2,
-                      std::placeholders::_3),
-            std::bind(&ConvectionDiffusionSolver<dim>::copy_local_to_global_matrix,
-                      this,
-                      std::placeholders::_1),
-            Scratch::Matrix<dim>(fe,
-                                 mapping,
-                                 quadrature_formula,
-                                 update_values|
-                                 update_gradients|
-                                 update_JxW_values),
-            CopyData::Matrix<dim>(fe));
-
-    mass_matrix.compress(VectorOperation::add);
-    stiffness_matrix.compress(VectorOperation::add);
-}
+using namespace ConvectionDiffusionAssembly;
 
 template<int dim>
 void ConvectionDiffusionSolver<dim>::assemble_system()
 {
+    Assert(setup_dofs_flag == false,
+           ExcMessage("Cannot assemble_system because setup_dofs_flag is true."));
+
     if (parameters.verbose)
         pcout << "      Assembling convection diffussion system..." << std::endl;
-
-    using namespace ConvectionDiffusionAssembly;
 
     typedef
     FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
     CellFilter;
 
-    TimerOutput::Scope(*computing_timer, "assembly");
+    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Assembly.");
 
     // quadrature formula
     const QGauss<dim> quadrature_formula(fe.degree + 2);
 
+
     // time stepping coefficients
-    const std::array<double,3> alpha = timestepper.alpha();
-    const std::array<double,3> gamma = timestepper.gamma();
+    const std::array<double,3>& alpha = timestepper.alpha();
+    const std::array<double,3>& gamma = timestepper.gamma();
 
     // assemble matrices
     if (rebuild_matrices)
     {
-        assemble_system();
+        assemble_system_matrix();
 
         system_matrix.copy_from(mass_matrix);
         system_matrix *= alpha[0] / timestepper.step_size();
@@ -91,6 +53,7 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
 
         rebuild_preconditioner = true;
     }
+
     if (timestepper.coefficients_have_changed())
     {
         system_matrix.copy_from(mass_matrix);
@@ -133,8 +96,51 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
             CopyData::RightHandSide<dim>(fe));
 
     rhs.compress(VectorOperation::add);
+}
 
-    computing_timer->leave_subsection();
+template<int dim>
+void ConvectionDiffusionSolver<dim>::assemble_system_matrix()
+{
+    Assert(rebuild_matrices == true,
+           ExcMessage("Cannot assemble_system_matrix because flag is false"));
+
+    typedef
+    FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
+    CellFilter;
+
+    // quadrature formula
+    const QGauss<dim> quadrature_formula(fe.degree + 2);
+
+    // reset matrices
+    mass_matrix = 0;
+    stiffness_matrix = 0;
+
+    // assemble right-hand side
+    WorkStream::run(
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       dof_handler.begin_active()),
+            CellFilter(IteratorFilters::LocallyOwnedCell(),
+                       dof_handler.end()),
+            std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_matrix,
+                      this,
+                      std::placeholders::_1,
+                      std::placeholders::_2,
+                      std::placeholders::_3),
+            std::bind(&ConvectionDiffusionSolver<dim>::copy_local_to_global_matrix,
+                      this,
+                      std::placeholders::_1),
+            Scratch::Matrix<dim>(fe,
+                                 mapping,
+                                 quadrature_formula,
+                                 update_values|
+                                 update_gradients|
+                                 update_JxW_values),
+            CopyData::Matrix<dim>(fe));
+
+    mass_matrix.compress(VectorOperation::add);
+    stiffness_matrix.compress(VectorOperation::add);
+
+    rebuild_matrices = false;
 }
 
 template <int dim>
@@ -215,11 +221,9 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
     scratch.fe_values.get_function_gradients(old_old_solution,
                                              scratch.old_old_gradients);
 
-    convection_function->set_time(timestepper.previous());
     convection_function->old_value_list(scratch.fe_values.get_quadrature_points(),
                                         scratch.old_velocity_values);
 
-    convection_function->set_time(timestepper.previous());
     convection_function->old_old_value_list(scratch.fe_values.get_quadrature_points(),
                                             scratch.old_old_velocity_values);
 

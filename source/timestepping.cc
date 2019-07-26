@@ -162,7 +162,7 @@ void TimeSteppingParameters::parse_parameters(ParameterHandler &prm)
 
         final_time = prm.get_double("final_time");
         Assert(final_time > 0.0, ExcLowerRangeType<double>(final_time, 0.0));
-        Assert(initial_timestep < final_time,
+        Assert(initial_timestep <= final_time,
                ExcLowerRangeType<double>(initial_timestep, final_time));
 
         verbose = prm.get_bool("verbose");
@@ -213,7 +213,6 @@ start_step_val(prm.initial_timestep),
 min_step_val(prm.min_timestep),
 max_step_val(prm.max_timestep),
 step_val(start_step_val),
-desired_step_val(start_step_val),
 old_step_val(0.0),
 old_old_step_val(0.0),
 omega(1.0),
@@ -241,36 +240,33 @@ verbose(prm.verbose)
     gamma_array[2] = 0.0;
 }
 
-double IMEXTimeStepping::advance_time_step()
+double IMEXTimeStepping::advance_in_time()
 {
     Assert(at_end_time == false,
            ExcMessage("Final time already reached, cannot proceed"));
 
-    if (adaptive_timestep && step_no_val >= adaptive_barrier)
-        advance_adaptive();
-    else
-        advance_fixed();
+    pre_previous_time = previous_time;
+    previous_time = current_time;
+    current_time += step_val;
+    step_no_val++;
+
+    // Check if we shot over the final time and set
+    // the flag that the final time is reached.
+    // In fixed time stepping we do not adjust
+    // the final time.
+    if (!at_end_time && current_time >= end_time)
+        at_end_time = true;
 
     return current_time;
 }
 
-void IMEXTimeStepping::advance_fixed()
+void IMEXTimeStepping::set_step_fixed()
 {
     Assert(omega == 1.0,
            ExcMessage("Time step ration is not equal to one."));
 
     old_old_step_val = old_step_val;
     old_step_val = step_val;
-
-    // Try incrementing time by tentative step size
-    double tentative_time = current_time + step_val;
-
-    // Check if we shot over the final time and set
-    // the flag that the final time is reached.
-    // In fixed time stepping we do not adjust
-    // the final time.
-    if (!at_end_time && tentative_time > end_time)
-        at_end_time = true;
 
     // Update the coefficients after the second step. The first two step are
     // Euler steps because the initial condition might be inconsistent.
@@ -291,15 +287,10 @@ void IMEXTimeStepping::advance_fixed()
     {
         coefficients_changed = false;
     }
-
-    pre_previous_time = previous_time;
-    previous_time = current_time;
-    current_time = tentative_time;
-    step_no_val++;
 }
 
 
-void IMEXTimeStepping::advance_adaptive()
+void IMEXTimeStepping::set_step_adaptive(const double &desired_step_val)
 {
     double tentative_step_val = desired_step_val;
     // Do time step control, but not in
@@ -311,7 +302,7 @@ void IMEXTimeStepping::advance_adaptive()
     }
 
     // Try incrementing time by tentative step size
-    double tentative_time = current_time + tentative_step_val;
+    const double tentative_time = current_time + tentative_step_val;
     step_val = tentative_step_val;
 
     // If we just missed the final time, increase
@@ -319,12 +310,10 @@ void IMEXTimeStepping::advance_adaptive()
     // very small final step. If the step shot
     // over the final time, adjust it so we hit
     // the final time exactly.
-    double small_step = .01 * tentative_step_val;
+    const double small_step = 0.01 * tentative_step_val;
     if (!at_end_time && tentative_time > end_time - small_step)
     {
         step_val = end_time - current_time;
-        tentative_time = end_time;
-        at_end_time = true;
     }
 
     // Update the coefficients if necessary
@@ -347,15 +336,9 @@ void IMEXTimeStepping::advance_adaptive()
     }
     else
     {
-        tentative_time = current_time + old_step_val;
         step_val = old_step_val;
         coefficients_changed = false;
     }
-
-    pre_previous_time = previous_time;
-    previous_time = current_time;
-    current_time = tentative_time;
-    step_no_val++;
 }
 
 std::string IMEXTimeStepping::name() const
@@ -391,11 +374,13 @@ IMEXType IMEXTimeStepping::scheme() const
 void IMEXTimeStepping::set_time_step(double desired_value)
 {
     if (!adaptive_timestep ||
-        (adaptive_timestep && step_no_val < adaptive_barrier) ||
-        step_no() < 1)
+        (adaptive_timestep && step_no_val < adaptive_barrier))
+    {
+        set_step_fixed();
         return;
+    }
 
-    const double damping_factor = 1.0; // 0.5;
+    const double damping_factor = 0.5; // 0.5;
 
     // When setting a new time step size one needs to consider three things:
     //  - That it is not smaller than the minimum given
@@ -407,16 +392,14 @@ void IMEXTimeStepping::set_time_step(double desired_value)
     // Therefore we check if the damping is activated.
     if (damping_factor != 1.0)
     {
-        desired_step_val = std::min(step_size() / damping_factor,
-                                    std::max(desired_value, damping_factor * step_size()));
+        desired_value = std::min(step_size() / damping_factor,
+                                 std::max(desired_value, damping_factor * step_size()));
     }
-    else
-        desired_step_val = desired_value;
 
     Assert(desired_value >= min_step_val,
            ExcLowerRangeType<double>(desired_value, min_step_val));
-    Assert(max_step_val >= desired_value,
-           ExcLowerRangeType<double>(max_step_val, desired_value));
+
+    set_step_adaptive(desired_value);
 }
 
 template<typename Stream>
@@ -425,70 +408,70 @@ void IMEXTimeStepping::write(Stream &stream) const
     if (verbose == false)
         return;
 
-    stream << "+-----------+----------+----------+----------+\n"
-           << "|   Index   |    n+1   |    n     |    n-1   |\n"
-           << "+-----------+----------+----------+----------+\n"
-           << "|   alpha   | ";
+    stream << "+-------------+------------+------------+------------+\n"
+           << "|    Index    |     n+1    |     n      |     n-1    |\n"
+           << "+-------------+------------+------------+------------+\n"
+           << "|    alpha    | ";
     for (const auto it: alpha_array)
     {
-        stream << std::setw(8)
-               << std::setprecision(1)
+        stream << std::setw(10)
+               << std::setprecision(2)
                << std::scientific
                << std::right
                << it;
         stream << " | ";
     }
 
-    stream << std::endl << "|   beta    |    -     | ";
+    stream << std::endl << "|    beta     |     -      | ";
     for (const auto it: beta_array)
     {
-        stream << std::setw(8)
-               << std::setprecision(1)
+        stream << std::setw(10)
+               << std::setprecision(2)
                << std::scientific
                << std::right
                << it;
         stream << " | ";
     }
 
-    stream << std::endl << "|   gamma   | ";
+    stream << std::endl << "|    gamma    | ";
     for (const auto it: gamma_array)
     {
-        stream << std::setw(8)
-               << std::setprecision(1)
+        stream << std::setw(10)
+               << std::setprecision(2)
                << std::scientific
                << std::right
                << it;
         stream << " | ";
     }
 
-    stream << std::endl << "| extra_pol |    -     | ";
+    stream << std::endl << "|  extra_pol  |     -      | ";
     for (const auto it: std::array<double,2>({old_extrapol_factor,
                                               old_old_extrapol_factor}))
     {
-        stream << std::setw(8)
-               << std::setprecision(1)
+        stream << std::setw(10)
+               << std::setprecision(2)
                << std::scientific
                << std::right
                << it;
         stream << " | ";
     }
     stream << std::endl
-           << "+-----------+----------+----------+----------+\n";
-    stream << std::fixed << std::setprecision(6);
+           << "+-------------+------------+------------+------------+\n";
+    stream << std::fixed << std::setprecision(0);
     return;
 }
 
-std::array<double,3> IMEXTimeStepping::alpha() const
+const std::array<double,3>& IMEXTimeStepping::alpha() const
 {
     return alpha_array;
 }
 
-std::array<double,2> IMEXTimeStepping::beta() const
+const std::array<double,2>& IMEXTimeStepping::beta() const
 {
     return beta_array;
 }
 
-std::array<double,3> IMEXTimeStepping::gamma() const
+const std::array<double,3>& IMEXTimeStepping::gamma() const
 {
     return gamma_array;
 }
@@ -585,6 +568,9 @@ void IMEXTimeStepping::update_extrapol_factors()
 // explicit instantiation
 template void TimeSteppingParameters::write(std::ostream &) const;
 template void TimeSteppingParameters::write(ConditionalOStream &) const;
+
+template void IMEXTimeStepping::print_info(std::ofstream &) const;
+template void IMEXTimeStepping::print_info(ConditionalOStream &) const;
 
 template void IMEXTimeStepping::write(std::ostream &) const;
 template void IMEXTimeStepping::write(ConditionalOStream &) const;

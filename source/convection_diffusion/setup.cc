@@ -12,22 +12,26 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
-
 namespace adsolic {
 
 template<int dim>
 void ConvectionDiffusionSolver<dim>::set_convection_function
-(std::shared_ptr<ConvectionFunction<dim>> function)
+(const std::shared_ptr<ConvectionFunction<dim>> &function)
 {
-    convection_function = function;
+    convection_function =
+    std::const_pointer_cast<const ConvectionFunction<dim>>(function);
 }
 
 template<int dim>
 void ConvectionDiffusionSolver<dim>::setup_dofs()
 {
-    pcout << "Setup dofs..." << std::endl;
+    Assert(setup_dofs_flag == true,
+           ExcMessage("Cannot setup_dofs because flag is false."));
 
-    TimerOutput::Scope(*computing_timer, "setup dofs");
+    if (parameters.verbose)
+        pcout << "Setup dofs..." << std::endl;
+
+    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Setup dofs.");
 
     // temperature part
     locally_owned_dofs.clear();
@@ -129,6 +133,8 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
                            locally_relevant_dofs,
                            triangulation.get_communicator(),
                            true);
+
+    setup_dofs_flag = false;
 }
 
 template<int dim>
@@ -175,33 +181,31 @@ void ConvectionDiffusionSolver<dim>::setup_initial_condition
     if (parameters.verbose)
         pcout << "   Setup initial condition..." << std::endl;
 
+    Assert(setup_dofs_flag == false,
+           ExcMessage("Cannot setup_initial_condition because setup_dofs_flag is true."));
+
     Assert(initial_condition.n_components == 1,
            ExcDimensionMismatch(initial_condition.n_components, 1));
 
-    TimerOutput::Scope(*computing_timer, "setup initial field");
+    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Setup initial field.");
+
+    LA::Vector  distributed_solution(rhs);
 
     VectorTools::interpolate(mapping,
                              dof_handler,
                              initial_condition,
-                             old_solution);
-    constraints.distribute(old_solution);
+                             distributed_solution);
+    constraints.distribute(distributed_solution);
 
     // copy initial solution to current solution
-    LA::Vector::const_iterator
-    old = old_solution.begin(),
-    end_old = old_solution.end();
-
-    LA::Vector::iterator
-    sol = solution.begin();
-
-    for (; old != end_old; ++old, ++sol)
-        *sol = *old;
+    old_solution = distributed_solution;
+    solution = distributed_solution;
 }
 // explicit instantiation
 template void ConvectionDiffusionSolver<2>::set_convection_function
-(std::shared_ptr<ConvectionFunction<2>>);
+(const std::shared_ptr<ConvectionFunction<2>> &);
 template void ConvectionDiffusionSolver<3>::set_convection_function
-(std::shared_ptr<ConvectionFunction<3>>);
+(const std::shared_ptr<ConvectionFunction<3>> &);
 
 template void ConvectionDiffusionSolver<2>::setup_dofs();
 template void ConvectionDiffusionSolver<3>::setup_dofs();

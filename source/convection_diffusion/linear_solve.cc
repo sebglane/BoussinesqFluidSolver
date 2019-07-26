@@ -18,7 +18,7 @@ void ConvectionDiffusionSolver<dim>::build_preconditioner()
     if (!rebuild_preconditioner)
         return;
 
-    TimerOutput::Scope(*computing_timer,"build preconditioner");
+    TimerOutput::Scope(*computing_timer,"Convect.-Diff. Build preconditioner.");
 
     preconditioner.reset(new LA::PreconditionSSOR());
 
@@ -29,8 +29,6 @@ void ConvectionDiffusionSolver<dim>::build_preconditioner()
                                            data);
 
     rebuild_preconditioner = false;
-
-    computing_timer->leave_subsection();
 }
 
 
@@ -40,7 +38,11 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
     if (parameters.verbose)
         pcout << "      Solving temperature system..." << std::endl;
 
-    TimerOutput::Scope(*computing_timer,"linear solve");
+    Assert(rebuild_preconditioner == false,
+           ExcMessage("Cannot solve_linear_system if flag to build precondition"
+                      " is true"));
+
+    TimerOutput::Scope(*computing_timer,"Convect.-Diff. Linear solve.");
 
     LA::Vector  distributed_solution(rhs);
     distributed_solution = solution;

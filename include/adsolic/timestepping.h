@@ -84,19 +84,23 @@ public:
     template<typename Stream>
     void write(Stream &stream) const;
 
+    /*
+     * function forwarding current time and step size to a stream object
+     */
     template<typename Stream>
     void print_info(Stream &stream) const;
 
     void   set_time_step(double);
+    double advance_in_time();
 
-    double advance_time_step();
+    void reset();
 
     /*
      * functions returning array of the IMEX coefficients
      */
-    std::array<double,3> alpha() const;
-    std::array<double,2> beta() const;
-    std::array<double,3> gamma() const;
+    const std::array<double,3>& alpha() const;
+    const std::array<double,2>& beta() const;
+    const std::array<double,3>& gamma() const;
 
     /*
      * inline functions
@@ -143,7 +147,6 @@ private:
     const double min_step_val;
     const double max_step_val;
     double step_val;
-    double desired_step_val;
     double old_step_val;
     double old_old_step_val;
     double omega;
@@ -182,10 +185,10 @@ private:
     void update_gamma();
     void update_extrapol_factors();
     /*
-     * advance time step
+     * set time step
      */
-    void advance_adaptive();
-    void advance_fixed();
+    void set_step_adaptive(const double &desired_step_size);
+    void set_step_fixed();
 };
 
 inline double
@@ -270,20 +273,45 @@ IMEXTimeStepping::at_end() const
     return at_end_time || (step_no() == max_step_no);
 }
 
+inline void IMEXTimeStepping::reset()
+{
+    at_end_time = false;
+    step_no_val = 0;
+    current_time = start();
+    previous_time = 0.0;
+    pre_previous_time = 0.0;
+    step_val = start_step_val;
+    old_step_val = 0.0;
+    old_old_step_val = 0.0;
+    omega = 1.0;
+    old_extrapol_factor = 1.0;
+    old_old_extrapol_factor = 0.0;
+}
+
 template<typename Stream>
 inline void IMEXTimeStepping::print_info
 (Stream &stream) const
 {
-    stream << "Step No: "
-            << Utilities::int_to_string(step_no(), 10) << ", "
-            << "time: " << Utilities::to_string(now(), 10)  << ", "
-            << "step size: " << Utilities::to_string(step_size(),8)
-            << std::endl;
-}
+    std::ostringstream ss;
+    if (!at_end_time)
+        ss << std::setprecision(8)
+           << "time: " << std::setw(12) << std::right
+           << (now() > 1e3 || (now() < 1e-8 && now() > 0.0)? std::scientific: std::fixed) << now()  << ", "
+           << "step size: " << std::setw(12) << std::right
+           << (step_size() > 1e3 || step_size() < 1e-8? std::scientific: std::fixed) << step_size()
+           << std::endl;
+    else
+        ss << std::setprecision(8)
+           << "time: " << std::setw(12) << std::right
+           << (now() > 1e3 || (now() < 1e-8 && now() > 0.0)? std::scientific: std::fixed) << now()  << ", "
+           << "finished time integration"
+           << std::endl;
 
-// explicit instantiations
-template void IMEXTimeStepping::print_info(std::ofstream &) const;
-template void IMEXTimeStepping::print_info(ConditionalOStream &) const;
+    stream << "Step No: "
+           << Utilities::int_to_string(step_no(), 10) << ", "
+           << ss.str().c_str()
+           << std::flush;
+}
 
 }  // namespace IMEXTimeStepping
 

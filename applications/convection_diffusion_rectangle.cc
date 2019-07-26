@@ -9,6 +9,8 @@
 
 #include <deal.II/numerics/data_out.h>
 
+#include <deal.II/numerics/vector_tools.h>
+
 #include <adsolic/convection_diffusion_solver.h>
 #include <adsolic/utility.h>
 
@@ -102,6 +104,10 @@ struct HeatConductionParameters
     unsigned int    n_max_levels;
     unsigned int    n_min_levels;
 
+    // cfl limits
+    double cfl_min;
+    double cfl_max;
+
     // logging parameters
     unsigned int    vtk_frequency;
 
@@ -126,6 +132,9 @@ n_initial_refinements(4),
 n_boundary_refinements(1),
 n_max_levels(6),
 n_min_levels(3),
+// time stepping parameters
+cfl_min(0.3),
+cfl_max(0.7),
 // logging parameters
 vtk_frequency(10),
 // verbosity flag
@@ -261,6 +270,20 @@ void HeatConductionParameters::declare_parameters(ParameterHandler &prm)
                 "Wave number in z-direction.");
     }
     prm.leave_subsection();
+
+    prm.enter_subsection("Time stepping settings");
+    {
+        prm.declare_entry("cfl_min",
+                "0.3",
+                Patterns::Double(),
+                "Minimal value for the cfl number.");
+
+        prm.declare_entry("cfl_max",
+                "0.7",
+                Patterns::Double(),
+                "Maximal value for the cfl number.");
+    }
+    prm.leave_subsection();
 }
 
 void HeatConductionParameters::parse_parameters(ParameterHandler &prm)
@@ -345,6 +368,17 @@ void HeatConductionParameters::parse_parameters(ParameterHandler &prm)
                ExcMessage("Wave number in z-direction must be positive."));
     }
     prm.leave_subsection();
+
+    prm.enter_subsection("Time stepping settings");
+    {
+        cfl_min = prm.get_double("cfl_min");
+        Assert(cfl_min > 0, ExcLowerRangeType<double>(cfl_min, 0));
+
+        cfl_max = prm.get_double("cfl_max");
+        Assert(cfl_max > 0, ExcLowerRangeType<double>(cfl_max, 0));
+        Assert(cfl_min < cfl_max, ExcLowerRangeType<double>(cfl_min, cfl_max));
+    }
+    prm.leave_subsection();
 }
 
 template<typename Stream>
@@ -387,6 +421,10 @@ private:
 
     void output_results() const;
 
+    double compute_l2_error() const;
+
+    double compute_cfl_number() const;
+
     const HeatConductionParameters &parameters;
 
     MPI_Comm            mpi_communicator;
@@ -399,12 +437,14 @@ private:
 
     IMEXTimeStepping    timestepper;
 
-    AuxiliaryFunctions::ConvectionFunction<dim>    advection_function;
+    const std::shared_ptr<AuxiliaryFunctions::ConvectionFunction<dim>>
+    convection_function;
+
+    const std::shared_ptr<BC::ScalarBoundaryConditions<dim>> boundary_conditions;
+
     TemperatureField<dim>   temperature_function;
 
-    std::shared_ptr<BC::ScalarBoundaryConditions<dim>> boundary_conditions;
-
-    mutable std::shared_ptr<TimerOutput>    timer;
+    const std::shared_ptr<TimerOutput>    timer;
 
     ConvectionDiffusionSolver<dim>    solver;
 };
@@ -421,13 +461,14 @@ pcout(std::cout,
 triangulation(mpi_communicator),
 mapping(1),
 timestepper(parameters.time_stepping_params),
-advection_function(parameters.amplitude,
-                   parameters.kx,
-                   parameters.ky),
+convection_function(new AuxiliaryFunctions::ConvectionFunction<dim>
+                        (parameters.amplitude,
+                         parameters.kx,
+                         parameters.ky)),
+boundary_conditions(new BC::ScalarBoundaryConditions<dim>()),
 temperature_function(parameters.convect_diff_params.equation_coefficient,
                      parameters.kx,
                      parameters.ky),
-boundary_conditions(new BC::ScalarBoundaryConditions<dim>()),
 timer(new TimerOutput(pcout,TimerOutput::summary,TimerOutput::cpu_and_wall_times)),
 solver(parameters.convect_diff_params,
        triangulation,
@@ -435,14 +476,12 @@ solver(parameters.convect_diff_params,
        timestepper,
        boundary_conditions,
        timer)
-{
-    parameters.write(pcout);
-}
+{}
 
 template <int dim>
 void HeatConductionSquare<dim>::output_results () const
 {
-    timer->enter_subsection("Output solution.");
+    TimerOutput::Scope(*timer,"Output solution.");
 
     DataOut<dim> data_out;
 
@@ -477,14 +516,117 @@ void HeatConductionSquare<dim>::output_results () const
       std::ofstream pvtu_master(pvtu_master_filename.c_str());
       data_out.write_pvtu_record(pvtu_master, filenames);
     }
+}
 
-   timer->leave_subsection();
+template <int dim>
+double HeatConductionSquare<dim>::compute_l2_error() const
+{
+    TimerOutput::Scope(*timer, "Compute error.");
+    {
+        std::stringstream ss;
+        ss << "Time of the TemperatureField does not "
+              "the match time of the IMEXTimeStepper." << std::endl
+           <<  "TemperatureField::get_time() returns " << temperature_function.get_time()
+           << ", which is not equal to " << timestepper.now()
+           << ", which is return by IMEXTimeStepper::now()" << std::endl;
+
+        Assert(timestepper.now() == temperature_function.get_time(),
+               ExcMessage(ss.str().c_str()));
+    }
+
+    const DoFHandler<dim>& temperature_dof_handler = solver.get_dof_handler();
+    const LA::Vector& temperature_solution = solver.get_solution();
+
+    const QGauss<dim>   quadrature(solver.get_fe().degree + 2);
+
+    Vector<double>   cellwise_error(triangulation.n_active_cells());
+
+    VectorTools::integrate_difference(mapping,
+                                      temperature_dof_handler,
+                                      temperature_solution,
+                                      temperature_function,
+                                      cellwise_error,
+                                      quadrature,
+                                      VectorTools::L2_norm);
+
+    const double global_error
+    = VectorTools::compute_global_error(triangulation,
+                                        cellwise_error,
+                                        VectorTools::L2_norm);
+
+    AssertIsFinite(global_error);
+    Assert(global_error > 0.0,
+           ExcLowerRangeType<double>(global_error, 0.0));
+
+    return global_error;
+}
+
+
+template<int dim>
+double HeatConductionSquare<dim>::compute_cfl_number() const
+{
+    {
+        std::stringstream ss;
+        ss << "Time of the ConvectionFunction does not "
+              "the match time of the IMEXTimeStepper." << std::endl
+           <<  "ConvectionFunction::get_time() returns " << convection_function->get_time()
+           << ", which is not equal to " << timestepper.now()
+           << ", which is returned by IMEXTimeStepper::now()" << std::endl;
+
+        Assert(timestepper.now() == convection_function->get_time(),
+               ExcMessage(ss.str().c_str()));
+    }
+
+    const DoFHandler<dim>& temperature_dof_handler = solver.get_dof_handler();
+    const FiniteElement<dim>& temperature_fe = solver.get_fe();
+
+    const QIterated<dim> quadrature_formula(QTrapez<1>(),
+                                            temperature_fe.degree);
+
+    const unsigned int n_q_points = quadrature_formula.size();
+
+    FEValues<dim> fe_values(mapping,
+                            temperature_fe,
+                            quadrature_formula,
+                            update_quadrature_points);
+
+    std::vector<Tensor<1,dim>>  velocity_values(n_q_points);
+
+    double max_cfl = 0;
+
+    for (auto cell: temperature_dof_handler.active_cell_iterators())
+        if (cell->is_locally_owned())
+        {
+            fe_values.reinit(cell);
+
+            convection_function->value_list(fe_values.get_quadrature_points(),
+                                            velocity_values);
+
+            double  max_cell_velocity = 0;
+
+            for (unsigned int q=0; q<n_q_points; ++q)
+            {
+                max_cell_velocity = std::max(max_cell_velocity,
+                                             velocity_values[q].norm());
+            }
+            max_cfl = std::max(max_cfl,
+                               max_cell_velocity / (cell->diameter() * std::sqrt(dim)));
+        }
+
+    const double polynomial_degree = double(temperature_fe.degree);
+
+    const double local_cfl = max_cfl * timestepper.step_size() / polynomial_degree;
+
+    const double global_cfl
+    = Utilities::MPI::max(local_cfl, mpi_communicator);
+
+    return global_cfl;
 }
 
 template <int dim>
 void HeatConductionSquare<dim>::run()
 {
-    timer->enter_subsection ("Setup grid");
+    timer->enter_subsection("Setup grid.");
 
     pcout << "Running a " << dim << "D heat conduction problem "
           << "using " << timestepper.name()
@@ -502,35 +644,67 @@ void HeatConductionSquare<dim>::run()
     const std::shared_ptr<Function<dim>> dirichlet_function
     = std::make_shared<Functions::ZeroFunction<dim>>();
 
-
-    const std::shared_ptr<ConvectionFunction<dim>> convective_field
-    = std::make_shared<ConvectionFunction<dim>>(parameters.amplitude,
-                                                parameters.kx,
-                                                parameters.ky);
-
     boundary_conditions->set_dirichlet_bc(0, dirichlet_function);
 
     timer->leave_subsection();
 
-    solver.set_convection_function(convective_field);
+    solver.set_convection_function(convection_function);
 
-    solver.setup_problem();
-
-    solver.setup_initial_condition(TemperatureField<dim>());
-
-    output_results();
-
-    pcout << "Start time integration..." << std::endl;
-
-    while (timestepper.at_end() == false)
+    for (unsigned int cycle=0; cycle < 1; ++cycle)
     {
-        timestepper.advance_time_step();
+        // reset objects
+        solver.set_post_refinement();
+        timestepper.reset();
+        convection_function->set_time(timestepper.now());
+        temperature_function.set_time(timestepper.now());
 
+        // run cycle
+        solver.setup_problem();
+
+        pcout << "Cycle: " << Utilities::int_to_string(cycle, 2) << ", "
+              << "n_cells: " << Utilities::to_string(triangulation.n_global_active_cells(), 8) << ", "
+              << "n_dofs: "  << Utilities::to_string(solver.n_dofs(), 8)
+              << std::endl;
+
+        solver.setup_initial_condition(TemperatureField<dim>());
+
+        pcout << "Start time integration..." << std::endl;
+
+        while (timestepper.at_end() == false)
+        {
+            timestepper.print_info(pcout);
+
+            // solve problem
+            solver.advance_in_time();
+
+            // The solver succeeded, therefore
+            // advance time in timestepper
+            timestepper.advance_in_time();
+
+            // update time of relevant objects
+            convection_function->set_time(timestepper.now());
+            temperature_function.set_time(timestepper.now());
+
+            // determine new timestep
+            {
+                const double cfl = compute_cfl_number();
+                if (cfl > parameters.cfl_max || cfl < parameters.cfl_min)
+                {
+                    const double desired_time_step
+                    = 0.5 * (parameters.cfl_min + parameters.cfl_max)
+                                    * timestepper.step_size() / cfl;
+
+                    timestepper.set_time_step(desired_time_step);
+                }
+            }
+        }
         timestepper.print_info(pcout);
 
-        convective_field->set_time(timestepper.now());
+        // postprocessing of solution
+        pcout << "   L2-error: " << compute_l2_error() << std::endl;
 
-        solver.advance_time_step();
+        // refinement
+        triangulation.refine_global();
     }
 }
 
@@ -550,7 +724,7 @@ int main (int argc, char **argv)
         using namespace dealii;
         using namespace adsolic;
 
-        Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, -1);
+        Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
         deallog.depth_console (0);
 
         std::string paramfile;

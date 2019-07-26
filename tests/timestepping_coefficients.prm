@@ -1,14 +1,17 @@
 # Listing of Parameters
 # ---------------------
 subsection Time stepping settings
+  # Turn adaptive time stepping on or off
+  set adaptive_timestep         = true
+
   # Time step after which adaptive time stepping is applied.
-  set adaptive_timestep_barrier = 1
+  set adaptive_timestep_barrier = 2
 
   # Initial time step.
-  set dt_initial                = 2e-1
+  set dt_initial                = 1e-6
 
   # Maximum time step.
-  set dt_max                    = 1e+0
+  set dt_max                    = 1e-3
 
   # Maximum time step.
   set dt_min                    = 1e-6
@@ -17,10 +20,13 @@ subsection Time stepping settings
   set final_time                = 1.0
 
   # Maximum number of time steps.
-  set n_steps                   = 5
+  set n_steps                   = 10
+
+  # Time stepping scheme applied.
+  set time_stepping_scheme      = CNAB
 
   # Activate verbose output.
-  set verbose                   = true
+  set verbose                   = false
 end
 
 

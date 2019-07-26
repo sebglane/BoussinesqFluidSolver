@@ -1,13 +1,12 @@
 /*
- * functional_test_timestepping.cc
+ * timestepping_coefficients.cc
  *
  *  Created on: Jul 23, 2019
  *      Author: sg
  */
-#include <deal.II/base/logstream.h>
-
 #include <iostream>
 #include <exception>
+#include <functional>
 #include <vector>
 
 #include <adsolic/timestepping.h>
@@ -25,15 +24,9 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 
         const std::vector<double> timesteps({0.1,0.1,0.1,0.05,0.15,0.9});
 
-        const unsigned int max_cnt = 10;
-
-        while (!timestepper.at_end() && timestepper.step_no() < max_cnt)
+        while (!timestepper.at_end())
         {
-            std::cout << "Step No: " << timestepper.step_no() << ", "
-                                  << "time: " << timestepper.now() << ", "
-                                  << "step size: " << timestepper.step_size() << ", "
-                                  << "old step size: " << timestepper.old_step_size() << ", "
-                                  << std::endl;
+            timestepper.print_info(std::cout);
             timestepper.write(std::cout);
             /*
              * solve problem
@@ -41,16 +34,8 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
              * compute desired time step
              */
             timestepper.set_time_step(timesteps[timestepper.step_no()]);
-            timestepper.advance_time_step();
+            timestepper.advance_in_time();
         }
-
-        std::cout << "Step No: " << timestepper.step_no() << ", "
-                  << "time: " << timestepper.now() << ", "
-                  << "step size: " << timestepper.step_size() << ", "
-                  << "old step size: " << timestepper.old_step_size() << ", "
-                  << std::endl;
-        timestepper.write(std::cout);
-
     }
     else
     {
@@ -61,11 +46,7 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 
         while (!timestepper.at_end() && timestepper.step_no() < max_cnt)
         {
-            std::cout << "Step No: " << timestepper.step_no() << ", "
-                      << "time: " << timestepper.now() << ", "
-                      << "step size: " << timestepper.step_size() << ", "
-                      << "old step size: " << timestepper.old_step_size() << ", "
-                      << std::endl;
+            timestepper.print_info(std::cout);
             timestepper.write(std::cout);
             /*
              * solve problem
@@ -73,7 +54,7 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
              * compute desired time step
              */
             timestepper.set_time_step(1.0);
-            timestepper.advance_time_step();
+            timestepper.advance_in_time();
         }
     }
 
@@ -84,13 +65,11 @@ int main(int argc, char **argv)
 {
     try
     {
-        dealii::deallog.depth_console(0);
-
         std::string parameter_filename;
         if (argc>1)
             parameter_filename = argv[1];
         else
-            parameter_filename = "timestepping_functional.prm";
+            parameter_filename = "timestepping_coefficients.prm";
 
         TimeSteppingParameters  parameters(parameter_filename);
 
