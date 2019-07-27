@@ -8,6 +8,9 @@
 #include <exception>
 #include <vector>
 
+#define _USE_MATH_DEFINES // for C++
+#include <cmath>
+
 #include <adsolic/timestepping.h>
 
 using namespace TimeStepping;
@@ -17,53 +20,91 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 {
     IMEXTimeStepping        timestepper(parameters);
 
-    std::function<double (const double)> f = [](const double x) { return 1./ (x * x); };
+    const double a = 1.0;
 
-    std::function<double (const double)> g = [](const double x) { return -x; };
+    std::function<double (const double)> f = [&a](const double x) { return a / (x * x); };
 
-    std::vector<double> x(3,1.0);
+    std::function<double (void)> g = [](void) { return 1.0; };
 
-    // DGL: x_t + 1 / x(t)^2 == -x(t), x(t=0) == 1, x(t) = 1 / sqrt(1 + 2 t)
+    std::function<double (const double)> y = [&a](const double t)
+            { return std::pow(a*(std::exp(3.*t)-1.0)+std::exp(3.*t), 1./3.); };
+
+    std::vector<double> x(3, 1.0);
+
+    const double exact_solution = y(1.0);
+
+    // DGL: x_t  == a / x(t)^2 -x(t), x(t=0) == 1, x(t) = 1 / sqrt(1 + 2 t)
 
     if (parameters.adaptive_timestep)
     {
         std::cout << "Adaptive time stepping with "
                   << timestepper.name() << " scheme" << std::endl;
 
-        const std::vector<double> timesteps({0.1,0.1,0.1,0.05,0.15,0.9});
+        const double inital_step_size = timestepper.step_size();
+        const double final_time = timestepper.final();
+
+        std::function<double (const double)> step_size = [&inital_step_size,&final_time](const double t)
+                    { return inital_step_size + inital_step_size/2. * std::sin(10.* M_PI * t /final_time) ; };
 
         while (!timestepper.at_end())
         {
-            timestepper.print_info(std::cout);
-            timestepper.write(std::cout);
-            /*
-             * solve problem
-             *
-             * compute desired time step
-             */
-            timestepper.set_time_step(timesteps[timestepper.step_no()]);
+            const std::array<double,3> &alpha = timestepper.alpha();
+            const std::array<double,2> &beta = timestepper.beta();
+            const std::array<double,3> &gamma = timestepper.gamma();
+
+            const double lhs = alpha[0] / timestepper.step_size() - gamma[0] * g();
+            const double rhs
+            = -(alpha[1] * x[1] + alpha[2] * x[2]) / timestepper.step_size()
+            + beta[0] * f(x[1]) + beta[1] * f(x[2])
+            + gamma[1] * g() * x[1] + gamma[2] * g() * x[2];
+
+            x[0] = rhs / lhs;
+
             timestepper.advance_in_time();
+
+            x[2] = x[1];
+            x[1] = x[0];
+
+            timestepper.set_time_step(step_size(timestepper.now()));
         }
+        timestepper.print_info(std::cout);
+
+        std::cout << "Solution: " << x[0] << ", "
+                  << "suggested value: " << exact_solution << ", "
+                  << "error: " << std::abs(x[0] - exact_solution ) << std::endl;
     }
     else
     {
         std::cout << "Fixed time stepping with "
                   << timestepper.name() << " scheme" << std::endl;
 
-        const unsigned int max_cnt = 10;
-
-        while (!timestepper.at_end() && timestepper.step_no() < max_cnt)
+        while (!timestepper.at_end())
         {
-            timestepper.print_info(std::cout);
-            timestepper.write(std::cout);
-            /*
-             * solve problem
-             *
-             * compute desired time step
-             */
-            timestepper.set_time_step(1.0);
+            const std::array<double,3> &alpha = timestepper.alpha();
+
+            const std::array<double,2> &beta = timestepper.beta();
+            const std::array<double,3> &gamma = timestepper.gamma();
+
+            const double lhs = alpha[0] / timestepper.step_size() - gamma[0] * g();
+            const double rhs
+            = -(alpha[1] * x[1] + alpha[2] * x[2]) / timestepper.step_size()
+            + beta[0] * f(x[1]) + beta[1] * f(x[2])
+            + gamma[1] * g() * x[1] + gamma[2] * g() * x[2];
+
+            x[0] = rhs / lhs;
+
             timestepper.advance_in_time();
+
+            x[2] = x[1];
+            x[1] = x[0];
+
+            timestepper.set_time_step(parameters.initial_timestep);
         }
+        timestepper.print_info(std::cout);
+
+        std::cout << "Solution: " << x[0] << ", "
+                  << "suggested value: " << exact_solution  << ", "
+                  << "error: " << std::abs(x[0] - exact_solution ) << std::endl;
     }
 
     return;

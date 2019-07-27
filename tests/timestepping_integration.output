@@ -1,0 +1,36 @@
+=========================================================================
+Fixed time stepping with Euler scheme
+Step No: 0000000200, time:   1.00000000, finished time integration
+Solution: 3.40882, suggested value: 3.39616, error: 0.0126574
+=========================================================================
+Fixed time stepping with SBDF scheme
+Step No: 0000000200, time:   1.00000000, finished time integration
+Solution: 3.39626, suggested value: 3.39616, error: 0.000101988
+=========================================================================
+Fixed time stepping with CNAB scheme
+Step No: 0000000200, time:   1.00000000, finished time integration
+Solution: 3.39623, suggested value: 3.39616, error: 6.5788e-05
+=========================================================================
+Fixed time stepping with MCNAB scheme
+Step No: 0000000200, time:   1.00000000, finished time integration
+Solution: 3.39623, suggested value: 3.39616, error: 6.87594e-05
+=========================================================================
+Fixed time stepping with CNLF scheme
+Step No: 0000000200, time:   1.00000000, finished time integration
+Solution: 3.39606, suggested value: 3.39616, error: 0.000105417
+=========================================================================
+Adaptive time stepping with SBDF scheme
+Step No: 0000000231, time:   1.00000000, finished time integration
+Solution: 3.39623, suggested value: 3.39616, error: 7.20708e-05
+=========================================================================
+Adaptive time stepping with CNAB scheme
+Step No: 0000000231, time:   1.00000000, finished time integration
+Solution: 3.39621, suggested value: 3.39616, error: 4.34719e-05
+=========================================================================
+Adaptive time stepping with MCNAB scheme
+Step No: 0000000231, time:   1.00000000, finished time integration
+Solution: 3.39621, suggested value: 3.39616, error: 4.651e-05
+=========================================================================
+Adaptive time stepping with CNLF scheme
+Step No: 0000000231, time:   1.00000000, finished time integration
+Solution: 3.39635, suggested value: 3.39616, error: 0.000184613

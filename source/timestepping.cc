@@ -257,6 +257,10 @@ double IMEXTimeStepping::advance_in_time()
     if (!at_end_time && current_time >= end_time)
         at_end_time = true;
 
+    if (!adaptive_timestep ||
+        (adaptive_timestep && step_no_val < adaptive_barrier))
+        set_step_fixed();
+
     return current_time;
 }
 
@@ -375,10 +379,7 @@ void IMEXTimeStepping::set_time_step(double desired_value)
 {
     if (!adaptive_timestep ||
         (adaptive_timestep && step_no_val < adaptive_barrier))
-    {
-        set_step_fixed();
         return;
-    }
 
     const double damping_factor = 0.5; // 0.5;
 
