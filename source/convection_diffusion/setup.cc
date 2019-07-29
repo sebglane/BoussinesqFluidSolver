@@ -29,20 +29,20 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
            ExcMessage("Cannot setup_dofs because flag is false."));
 
     if (parameters.verbose)
-        pcout << "Setup dofs..." << std::endl;
+        this->pcout << "Setup dofs..." << std::endl;
 
-    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Setup dofs.");
+    TimerOutput::Scope(*(this->computing_timer), "Convect.-Diff. Setup dofs.");
 
     // temperature part
     locally_owned_dofs.clear();
     locally_relevant_dofs.clear();
-    dof_handler.distribute_dofs(fe);
+    this->dof_handler.distribute_dofs(fe);
 
-    DoFRenumbering::Cuthill_McKee(dof_handler);
+    DoFRenumbering::Cuthill_McKee(this->dof_handler);
 
     // extract locally owned and relevant dofs
-    locally_owned_dofs = dof_handler.locally_owned_dofs ();
-    DoFTools::extract_locally_relevant_dofs(dof_handler,
+    locally_owned_dofs = this->dof_handler.locally_owned_dofs ();
+    DoFTools::extract_locally_relevant_dofs(this->dof_handler,
                                             locally_relevant_dofs);
 
     // constraints
@@ -52,7 +52,7 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
 
         // constraint matrix for hanging nodes
         DoFTools::make_hanging_node_constraints(
-                dof_handler,
+                this->dof_handler,
                 constraints);
 
         // constraint matrix for periodicity constraints
@@ -77,7 +77,7 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
                 AssertThrow(first_id != second_id,
                             ExcMessage("The two faces for periodic boundary conditions "
                                        "must have different boundary indicators!"));
-                DoFTools::make_periodicity_constraints(dof_handler,
+                DoFTools::make_periodicity_constraints(this->dof_handler,
                                                        first_id,
                                                        second_id,
                                                        d,
@@ -95,26 +95,26 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
                     function_map[it.first] = it.second.get();
             else
             {
-                pcout << "   No Dirichlet boundary conditions specified in" << std::endl
-                      << "   BC object. Using homogeneous Dirichlet boundary" << std::endl
-                      << "   conditions on all boundaries." << std::endl;
+                this->pcout << "   No Dirichlet boundary conditions specified in" << std::endl
+                            << "   BC object. Using homogeneous Dirichlet boundary" << std::endl
+                            << "   conditions on all boundaries." << std::endl;
 
-                for (const auto &id: triangulation.get_boundary_ids())
+                for (const auto &id: this->triangulation.get_boundary_ids())
                     function_map[id] = &zero_function;
             }
         }
         else
         {
-            pcout << "   No BC object passed. Using homogeneous Dirichlet boundary" << std::endl
-                  << "   conditions on all boundaries." << std::endl;
+            this->pcout << "   No BC object passed. Using homogeneous Dirichlet boundary" << std::endl
+                        << "   conditions on all boundaries." << std::endl;
 
-            for (const auto &id: triangulation.get_boundary_ids())
+            for (const auto &id: this->triangulation.get_boundary_ids())
                 function_map[id] = &zero_function;
         }
 
         VectorTools::interpolate_boundary_values
-        (mapping,
-         dof_handler,
+        (this->mapping,
+         this->dof_handler,
          function_map,
          constraints);
 
@@ -124,15 +124,15 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
     setup_system_matrix(locally_owned_dofs,
                         locally_relevant_dofs);
 
-    solution.reinit(locally_relevant_dofs,
-                                triangulation.get_communicator());
-    old_solution.reinit(solution);
-    old_old_solution.reinit(solution);
+    this->solution.reinit(locally_relevant_dofs,
+                          this->triangulation.get_communicator());
+    this->old_solution.reinit(this->solution);
+    this->old_old_solution.reinit(this->solution);
 
-    rhs.reinit(locally_owned_dofs,
-                           locally_relevant_dofs,
-                           triangulation.get_communicator(),
-                           true);
+    this->rhs.reinit(locally_owned_dofs,
+                     locally_relevant_dofs,
+                     this->triangulation.get_communicator(),
+                     true);
 
     setup_dofs_flag = false;
 }
@@ -151,13 +151,13 @@ void ConvectionDiffusionSolver<dim>::setup_system_matrix
     LA::DynamicSparsityPattern  dsp(locally_owned_dofs,
                                     locally_owned_dofs,
                                     locally_relevant_dofs,
-                                    triangulation.get_communicator());
+                                    this->triangulation.get_communicator());
 
-    DoFTools::make_sparsity_pattern(dof_handler,
+    DoFTools::make_sparsity_pattern(this->dof_handler,
                                     dsp,
                                     constraints,
                                     false,
-                                    Utilities::MPI::this_mpi_process(triangulation.get_communicator()));
+                                    Utilities::MPI::this_mpi_process(this->triangulation.get_communicator()));
 
     dsp.compress();
 
@@ -179,7 +179,7 @@ void ConvectionDiffusionSolver<dim>::setup_initial_condition
 (const Function<dim> &initial_condition)
 {
     if (parameters.verbose)
-        pcout << "   Setup initial condition..." << std::endl;
+        this->pcout << "   Setup initial condition..." << std::endl;
 
     Assert(setup_dofs_flag == false,
            ExcMessage("Cannot setup_initial_condition because setup_dofs_flag is true."));
@@ -187,19 +187,19 @@ void ConvectionDiffusionSolver<dim>::setup_initial_condition
     Assert(initial_condition.n_components == 1,
            ExcDimensionMismatch(initial_condition.n_components, 1));
 
-    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Setup initial field.");
+    TimerOutput::Scope(*(this->computing_timer), "Convect.-Diff. Setup initial field.");
 
-    LA::Vector  distributed_solution(rhs);
+    LA::Vector  distributed_solution(this->rhs);
 
-    VectorTools::interpolate(mapping,
-                             dof_handler,
+    VectorTools::interpolate(this->mapping,
+                             this->dof_handler,
                              initial_condition,
                              distributed_solution);
     constraints.distribute(distributed_solution);
 
     // copy initial solution to current solution
-    old_solution = distributed_solution;
-    solution = distributed_solution;
+    this->old_solution = distributed_solution;
+    this->solution = distributed_solution;
 }
 // explicit instantiation
 template void ConvectionDiffusionSolver<2>::set_convection_function

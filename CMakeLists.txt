@@ -82,6 +82,7 @@ SET( TARGET_SRC
      source/convection_diffusion/convection_diffusion_solver.cc
      source/convection_diffusion/linear_solve.cc
      source/convection_diffusion/scalar_boundary_conditions.cc
+     source/solver_base.cc 
      source/timestepping.cc
      source/utility.cc)
 

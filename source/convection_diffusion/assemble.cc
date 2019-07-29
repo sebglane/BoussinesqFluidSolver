@@ -23,21 +23,21 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
            ExcMessage("Cannot assemble_system because setup_dofs_flag is true."));
 
     if (parameters.verbose)
-        pcout << "      Assembling convection diffussion system..." << std::endl;
+        this->pcout << "      Assembling convection diffussion system..." << std::endl;
 
     typedef
     FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>
     CellFilter;
 
-    TimerOutput::Scope(*computing_timer, "Convect.-Diff. Assembly.");
+    TimerOutput::Scope(*(this->computing_timer), "Convect.-Diff. Assembly.");
 
     // quadrature formula
     const QGauss<dim> quadrature_formula(fe.degree + 2);
 
 
     // time stepping coefficients
-    const std::array<double,3>& alpha = timestepper.alpha();
-    const std::array<double,3>& gamma = timestepper.gamma();
+    const std::array<double,3>& alpha = this->timestepper.alpha();
+    const std::array<double,3>& gamma = this->timestepper.gamma();
 
     // assemble matrices
     if (rebuild_matrices)
@@ -45,7 +45,7 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
         assemble_system_matrix();
 
         system_matrix.copy_from(mass_matrix);
-        system_matrix *= alpha[0] / timestepper.step_size();
+        system_matrix *= alpha[0] / this->timestepper.step_size();
         system_matrix.add(gamma[0] * equation_coefficient,
                           stiffness_matrix);
 
@@ -54,10 +54,10 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
         rebuild_preconditioner = true;
     }
 
-    if (timestepper.coefficients_have_changed())
+    if (this->timestepper.coefficients_have_changed())
     {
         system_matrix.copy_from(mass_matrix);
-        system_matrix *= alpha[0] / timestepper.step_size();
+        system_matrix *= alpha[0] / this->timestepper.step_size();
         system_matrix.add(gamma[0] * equation_coefficient,
                                stiffness_matrix);
 
@@ -67,14 +67,14 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
     }
 
     // reset all entries
-    rhs = 0;
+    this->rhs = 0;
 
     // assemble right-hand side
     WorkStream::run(
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.begin_active()),
+                       this->dof_handler.begin_active()),
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.end()),
+                       this->dof_handler.end()),
             std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_rhs,
                       this,
                       std::placeholders::_1,
@@ -84,18 +84,18 @@ void ConvectionDiffusionSolver<dim>::assemble_system()
                       this,
                       std::placeholders::_1),
             Scratch::RightHandSide<dim>(fe,
-                                        mapping,
+                                        this->mapping,
                                         quadrature_formula,
                                         update_values|
                                         update_gradients|
                                         update_quadrature_points|
                                         update_JxW_values,
                                         alpha,
-                                        timestepper.beta(),
+                                        this->timestepper.beta(),
                                         gamma),
             CopyData::RightHandSide<dim>(fe));
 
-    rhs.compress(VectorOperation::add);
+    this->rhs.compress(VectorOperation::add);
 }
 
 template<int dim>
@@ -118,9 +118,9 @@ void ConvectionDiffusionSolver<dim>::assemble_system_matrix()
     // assemble right-hand side
     WorkStream::run(
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.begin_active()),
+                       this->dof_handler.begin_active()),
             CellFilter(IteratorFilters::LocallyOwnedCell(),
-                       dof_handler.end()),
+                       this->dof_handler.end()),
             std::bind(&ConvectionDiffusionSolver<dim>::local_assemble_matrix,
                       this,
                       std::placeholders::_1,
@@ -130,7 +130,7 @@ void ConvectionDiffusionSolver<dim>::assemble_system_matrix()
                       this,
                       std::placeholders::_1),
             Scratch::Matrix<dim>(fe,
-                                 mapping,
+                                 this->mapping,
                                  quadrature_formula,
                                  update_values|
                                  update_gradients|
@@ -212,13 +212,13 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
 
     scratch.fe_values.reinit(cell);
 
-    scratch.fe_values.get_function_values(old_solution,
+    scratch.fe_values.get_function_values(this->old_solution,
                                           scratch.old_values);
-    scratch.fe_values.get_function_values(old_old_solution,
+    scratch.fe_values.get_function_values(this->old_old_solution,
                                           scratch.old_old_values);
-    scratch.fe_values.get_function_gradients(old_solution,
+    scratch.fe_values.get_function_gradients(this->old_solution,
                                              scratch.old_gradients);
-    scratch.fe_values.get_function_gradients(old_old_solution,
+    scratch.fe_values.get_function_gradients(this->old_old_solution,
                                              scratch.old_old_gradients);
 
     convection_function->old_value_list(scratch.fe_values.get_quadrature_points(),
@@ -226,6 +226,8 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
 
     convection_function->old_old_value_list(scratch.fe_values.get_quadrature_points(),
                                             scratch.old_old_velocity_values);
+
+    const double step_size = this->timestepper.step_size();
 
     for (unsigned int q=0; q<scratch.n_q_points; ++q)
     {
@@ -236,8 +238,8 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
         }
 
         const double time_derivative =
-                scratch.alpha[1] / timestepper.step_size() * scratch.old_values[q]
-                    + scratch.alpha[2] / timestepper.step_size() * scratch.old_old_values[q];
+                scratch.alpha[1] / step_size * scratch.old_values[q]
+                    + scratch.alpha[2] / step_size * scratch.old_old_values[q];
 
         const double nonlinear_term =
                 scratch.beta[0] * scratch.old_gradients[q] * scratch.old_velocity_values[q]
@@ -258,7 +260,7 @@ void ConvectionDiffusionSolver<dim>::local_assemble_rhs
             if (constraints.is_inhomogeneously_constrained(data.local_dof_indices[i]))
                 for (unsigned int j=0; j<scratch.dofs_per_cell; ++j)
                     data.matrix_for_bc(j,i) += (
-                                  scratch.alpha[0] / timestepper.step_size() *
+                                  scratch.alpha[0] / step_size *
                                   scratch.phi[i] * scratch.phi[j]
                                 + scratch.gamma[0] * equation_coefficient
                                   * scratch.grad_phi[i] * scratch.grad_phi[j]
@@ -275,7 +277,7 @@ void ConvectionDiffusionSolver<dim>::copy_local_to_global_rhs
     constraints.distribute_local_to_global(
             data.local_rhs,
             data.local_dof_indices,
-            rhs,
+            this->rhs,
             data.matrix_for_bc);
 }
 

@@ -28,6 +28,7 @@
 
 #include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
+#include <adsolic/solver_base.h>
 #include <adsolic/timestepping.h>
 #include <adsolic/utility.h>
 
@@ -181,9 +182,8 @@ struct ConvectionDiffusionParameters
  *      d\phi/dt + v . grad(\phi) = C div(grad(\phi)).
  *
  */
-
 template <int dim>
-class ConvectionDiffusionSolver
+class ConvectionDiffusionSolver : public SolverBase<dim,LA::Vector>
 {
 public:
     ConvectionDiffusionSolver
@@ -196,30 +196,24 @@ public:
      const std::shared_ptr<TimerOutput> external_timer =
              std::shared_ptr<TimerOutput>());
 
-    void advance_in_time();
+    virtual void advance_in_time();
 
-    void set_convection_function(const std::shared_ptr<ConvectionFunction<dim>> &function);
+    virtual void setup_problem();
 
-    void setup_problem();
+    virtual void setup_initial_condition
+    (const Function<dim> &initial_field);
+
+    virtual const FiniteElement<dim> &get_fe() const;
+
+    virtual unsigned int fe_degree() const;
+
+    void set_convection_function
+    (const std::shared_ptr<ConvectionFunction<dim>> &function);
 
     void set_post_refinement() const;
 
-    void setup_initial_condition(const Function<dim> &initial_field);
-
-    const FiniteElement<dim> &get_fe() const;
-
-    unsigned int fe_degree() const;
-
-    types::global_dof_index n_dofs() const;
-
-    const DoFHandler<dim>  &get_dof_handler() const;
-    const ConstraintMatrix &get_constraints() const;
-    const LA::Vector       &get_solution() const;
-
 private:
     void setup_dofs();
-
-    void extrapolate_solution();
 
     void setup_system_matrix
     (const IndexSet &locally_owned_dofs,
@@ -233,25 +227,11 @@ private:
 
     void solve_linear_system();
 
-    void advance_solution();
-
     // reference to parameters
     const ConvectionDiffusionParameters &parameters;
 
-    // reference to common triangulation
-    const parallel::distributed::Triangulation<dim>   &triangulation;
-
-    // reference to common mapping
-    const MappingQ<dim>&mapping;
-
-    // reference to time stepper
-    const IMEXTimeStepping   &timestepper;
-
     // copy of equation coefficient
     const double        equation_coefficient;
-
-    // parallel output
-    ConditionalOStream  pcout;
 
     // pointer to boundary conditions
     std::shared_ptr<const BC::ScalarBoundaryConditions<dim>>  boundary_conditions;
@@ -259,12 +239,8 @@ private:
     // pointer to convective function
     std::shared_ptr<const ConvectionFunction<dim>>  convection_function;
 
-    // pointer to monitor of computing times
-    std::shared_ptr<TimerOutput> computing_timer;
-
     // FiniteElement and DoFHandler
     const FE_Q<dim>     fe;
-    DoFHandler<dim>     dof_handler;
 
     // matrices
     IndexSet            locally_owned_dofs;
@@ -275,12 +251,6 @@ private:
     LA::SparseMatrix    system_matrix;
     LA::SparseMatrix    mass_matrix;
     LA::SparseMatrix    stiffness_matrix;
-
-    // vectors
-    LA::Vector          solution;
-    LA::Vector          old_solution;
-    LA::Vector          old_old_solution;
-    LA::Vector          rhs;
 
     // pointers to preconditioners
     std::shared_ptr<LA::PreconditionSSOR> preconditioner;
@@ -310,6 +280,13 @@ template<int dim>
 inline void ConvectionDiffusionSolver<dim>::set_post_refinement() const
 {
     setup_dofs_flag = true;
+}
+
+template<int dim>
+inline unsigned int
+ConvectionDiffusionSolver<dim>::fe_degree() const
+{
+    return fe.degree;
 }
 
 }  // namespace adsolic

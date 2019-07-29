@@ -18,7 +18,7 @@ void ConvectionDiffusionSolver<dim>::build_preconditioner()
     if (!rebuild_preconditioner)
         return;
 
-    TimerOutput::Scope(*computing_timer,"Convect.-Diff. Build preconditioner.");
+    TimerOutput::Scope(*(this->computing_timer),"Convect.-Diff. Build preconditioner.");
 
     preconditioner.reset(new LA::PreconditionSSOR());
 
@@ -26,7 +26,7 @@ void ConvectionDiffusionSolver<dim>::build_preconditioner()
     data.omega = 0.6;
 
     preconditioner->initialize(system_matrix,
-                                           data);
+                               data);
 
     rebuild_preconditioner = false;
 }
@@ -36,19 +36,19 @@ template <int dim>
 void ConvectionDiffusionSolver<dim>::solve_linear_system()
 {
     if (parameters.verbose)
-        pcout << "      Solving temperature system..." << std::endl;
+        this->pcout << "      Solving temperature system..." << std::endl;
 
     Assert(rebuild_preconditioner == false,
            ExcMessage("Cannot solve_linear_system if flag to build precondition"
                       " is true"));
 
-    TimerOutput::Scope(*computing_timer,"Convect.-Diff. Linear solve.");
+    TimerOutput::Scope(*(this->computing_timer),"Convect.-Diff. Linear solve.");
 
-    LA::Vector  distributed_solution(rhs);
-    distributed_solution = solution;
+    LA::Vector  distributed_solution(this->rhs);
+    distributed_solution = this->solution;
 
     SolverControl solver_control(parameters.n_max_iter,
-                                 std::max(parameters.rel_tol * rhs.l2_norm(),
+                                 std::max(parameters.rel_tol * this->rhs.l2_norm(),
                                           parameters.abs_tol));
 
     // solve linear system
@@ -58,7 +58,7 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
 
         cg.solve(system_matrix,
                  distributed_solution,
-                 rhs,
+                 this->rhs,
                  *preconditioner);
     }
     catch (std::exception &exc)
@@ -85,14 +85,14 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
         std::abort();
     }
     constraints.distribute(distributed_solution);
-    solution = distributed_solution;
+    this->solution = distributed_solution;
 
     // write info message
     if (parameters.verbose)
-        pcout << "      "
-              << solver_control.last_step()
-              << " CG iterations for temperature"
-              << std::endl;
+        this->pcout << "      "
+                    << solver_control.last_step()
+                    << " CG iterations for temperature"
+                    << std::endl;
 }
 
 // explicit instantiation

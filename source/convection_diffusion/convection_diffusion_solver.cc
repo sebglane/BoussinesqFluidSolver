@@ -139,27 +139,19 @@ ConvectionDiffusionSolver<dim>::ConvectionDiffusionSolver
  const std::shared_ptr<const BC::ScalarBoundaryConditions<dim>> boundary_descriptor,
  const std::shared_ptr<TimerOutput> external_timer)
 :
+SolverBase<dim,LA::Vector>
+(triangulation_in,
+ mapping_in,
+ timestepper_in,
+ external_timer),
 parameters(parameters_),
-triangulation(triangulation_in),
-mapping(mapping_in),
-timestepper(timestepper_in),
 equation_coefficient(parameters.equation_coefficient),
-pcout(std::cout,
-      Utilities::MPI::this_mpi_process(triangulation.get_communicator()) == 0),
-fe(parameters.fe_degree),
-dof_handler(triangulation)
+fe(parameters.fe_degree)
 {
     if (boundary_descriptor.get() != 0)
         boundary_conditions = boundary_descriptor;
     else
         boundary_conditions = std::make_shared<const BC::ScalarBoundaryConditions<dim>>();
-
-    if (external_timer.get() != 0)
-        computing_timer  = external_timer;
-    else
-        computing_timer.reset(new TimerOutput(pcout,
-                                              TimerOutput::summary,
-                                              TimerOutput::wall_times));
 }
 
 template<int dim>
@@ -170,79 +162,10 @@ ConvectionDiffusionSolver<dim>::get_fe() const
 }
 
 template<int dim>
-unsigned int
-ConvectionDiffusionSolver<dim>::fe_degree() const
-{
-    return fe.degree;
-}
-
-template<int dim>
-types::global_dof_index
-ConvectionDiffusionSolver<dim>::n_dofs() const
-{
-    return dof_handler.n_dofs();
-}
-
-template<int dim>
-const DoFHandler<dim> &
-ConvectionDiffusionSolver<dim>::get_dof_handler() const
-{
-    return dof_handler;
-}
-
-template<int dim>
-const ConstraintMatrix &
-ConvectionDiffusionSolver<dim>::get_constraints() const
-{
-    return constraints;
-}
-
-template<int dim>
-const LA::Vector &
-ConvectionDiffusionSolver<dim>::get_solution() const
-{
-    return solution;
-}
-
-template<int dim>
-void ConvectionDiffusionSolver<dim>::extrapolate_solution()
-{
-    LA::Vector::iterator
-    sol = solution.begin(),
-    end_sol = solution.end();
-    LA::Vector::const_iterator
-    old_sol = old_solution.begin(),
-    old_old_sol = old_old_solution.begin();
-
-    // extrapolate solution from old states
-    for (; sol!=end_sol; ++sol, ++old_sol, ++old_old_sol)
-        *sol = timestepper.extrapolate(*old_sol, *old_old_sol);
-}
-
-template<int dim>
-void ConvectionDiffusionSolver<dim>::advance_solution()
-{
-    LA::Vector::const_iterator
-    sol = solution.begin(),
-    end_sol = solution.end();
-
-    LA::Vector::iterator
-    old_sol = old_solution.begin(),
-    old_old_sol = old_old_solution.begin();
-
-    // copy solutions
-    for (; sol!=end_sol; ++sol, ++old_sol, ++old_old_sol)
-    {
-        *old_old_sol = *old_sol;
-        *old_sol = *sol;
-    }
-}
-
-template<int dim>
 void ConvectionDiffusionSolver<dim>::advance_in_time()
 {
     if (parameters.verbose)
-        pcout << "   Convection diffusion step..." << std::endl;
+        this->pcout << "   Convection diffusion step..." << std::endl;
 
     if (convection_function.get() != 0)
     {
@@ -250,17 +173,17 @@ void ConvectionDiffusionSolver<dim>::advance_in_time()
         ss << "Time of the ConvectionFunction does not "
               "the match time of the IMEXTimeStepper." << std::endl
            <<  "ConvectionFunction::get_time() returns " << convection_function->get_time()
-           << ", which is not equal to " << timestepper.now()
+           << ", which is not equal to " << this->timestepper.now()
            << ", which is returned by IMEXTimeStepper::now()" << std::endl;
 
-        Assert(timestepper.now() == convection_function->get_time(),
+        Assert(this->timestepper.now() == convection_function->get_time(),
                ExcMessage(ss.str().c_str()));
     }
 
-    computing_timer->enter_subsection("Convect.-Diff.");
+    this->computing_timer->enter_subsection("Convect.-Diff.");
 
     // extrapolate from old solutions
-    extrapolate_solution();
+    this->extrapolate_solution();
 
     // assemble right-hand side (and system if necessary)
     assemble_system();
@@ -272,9 +195,9 @@ void ConvectionDiffusionSolver<dim>::advance_in_time()
     solve_linear_system();
 
     // update solution vectors
-    advance_solution();
+    this->advance_solution();
 
-    computing_timer->leave_subsection();
+    this->computing_timer->leave_subsection();
 }
 
 // explicit instantiation
