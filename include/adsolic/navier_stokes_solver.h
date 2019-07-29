@@ -12,14 +12,13 @@
 
 #include <deal.II/base/index_set.h>
 
-#include <deal.II/fe/fe_values.h>
-
-#include <deal.II/lac/constraint_matrix.h>
+#include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_values.h>
 
-#include <deal.II/distributed/tria.h>
+#include <deal.II/lac/constraint_matrix.h>
 
 #include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
@@ -216,6 +215,9 @@ public:
     unsigned int fe_degree_velocity() const;
     unsigned int fe_degree_pressure() const;
 
+    types::global_dof_index n_dofs_velocity() const;
+    types::global_dof_index n_dofs_pressure() const;
+
     /*
     void set_post_refinement() const;
      */
@@ -223,8 +225,8 @@ private:
     void setup_dofs();
 
     void setup_system_matrix
-    (const IndexSet &locally_owned_dofs,
-     const IndexSet &locally_relevant_dofs);
+    (const std::vector<IndexSet> &locally_owned_dofs,
+     const std::vector<IndexSet> &locally_relevant_dofs);
 
     void assemble_system();
 
@@ -255,17 +257,17 @@ private:
     const FESystem<dim> fe;
 
     // matrices
-    IndexSet            locally_owned_dofs;
-    IndexSet            locally_relevant_dofs;
+    std::vector<IndexSet>   locally_owned_dofs;
+    std::vector<IndexSet>   locally_relevant_dofs;
 
     ConstraintMatrix    hanging_node_constraints;
     ConstraintMatrix    pressure_constraints;
     ConstraintMatrix    tentative_velocity_constraints;
     ConstraintMatrix    neumann_velocity_constraints;
 
-    LA::SparseMatrix    system_matrix;
-    LA::SparseMatrix    mass_matrix;
-    LA::SparseMatrix    stiffness_matrix;
+    LA::BlockSparseMatrix   system_matrix;
+    LA::BlockSparseMatrix   mass_matrix;
+    LA::BlockSparseMatrix   stiffness_matrix;
 
     // pointers to preconditioners
     std::shared_ptr<LA::PreconditionAMG>
@@ -301,6 +303,28 @@ private:
     (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
 
 };
+
+template<int dim>
+inline unsigned int
+NavierStokesSolver<dim>::fe_degree() const
+{
+    return fe.degree;
+}
+
+template<int dim>
+inline unsigned int
+NavierStokesSolver<dim>::fe_degree_velocity() const
+{
+    return fe.base_element(0).degree;
+}
+
+template<int dim>
+inline unsigned int
+NavierStokesSolver<dim>::fe_degree_pressure() const
+{
+    return fe.base_element(1).degree;
+}
+
 
 }  // namespace adsolic
 

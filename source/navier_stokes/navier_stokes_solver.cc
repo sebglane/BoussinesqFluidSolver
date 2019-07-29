@@ -15,10 +15,10 @@ using namespace dealii;
 NavierStokesParameters::NavierStokesParameters()
 :
 linear_solver_parameters(),
-projection_scheme(PressureUpdateType::StandardForm),
-convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
 fe_degree_velocity(2),
 fe_degree_pressure(1),
+projection_scheme(PressureUpdateType::StandardForm),
+convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
 verbose(false)
 {}
 
@@ -46,7 +46,7 @@ NavierStokesParameters()
 
         std::ofstream parameter_out(parameter_filename.c_str());
         prm.print_parameters(parameter_out,
-                ParameterHandler::OutputStyle::Text);
+                             ParameterHandler::OutputStyle::Text);
 
         AssertThrow(false, ExcMessage(message.str().c_str()));
     }
@@ -55,7 +55,7 @@ NavierStokesParameters()
 
     parse_parameters(prm);
     linear_solver_parameters.parse_parameters(prm);
-};
+}
 
 void NavierStokesParameters::declare_parameters
 (ParameterHandler &prm)
@@ -101,16 +101,12 @@ void NavierStokesParameters::parse_parameters(ParameterHandler &prm)
     prm.enter_subsection("Discretization parameters");
     {
         fe_degree_velocity = prm.get_integer("p_degree_velocity");
-        Assert(fe_degree_velocity >= 0, ExcLowerRange(fe_degree_velocity, 1));
-
         fe_degree_pressure = prm.get_integer("p_degree_temperature");
-        Assert(fe_degree_pressure >= 0, ExcLowerRange(fe_degree_pressure, 0));
 
         if ((fe_degree_pressure == 1) && (fe_degree_velocity == 0))
             fe_degree_velocity = 2;
         else if (fe_degree_pressure == 0 && fe_degree_velocity == 2)
             fe_degree_pressure = 1;
-
         else
             Assert(false, ExcMessage("Incorrect specification of polynomial "
                                      "degrees."));
@@ -145,5 +141,90 @@ void NavierStokesParameters::parse_parameters(ParameterHandler &prm)
     }
     prm.leave_subsection();
 }
+
+template<int dim>
+NavierStokesSolver<dim>::NavierStokesSolver
+(const NavierStokesParameters &parameters_in,
+ const parallel::distributed::Triangulation<dim> &triangulation_in,
+ const MappingQ<dim>   &mapping_in,
+ const IMEXTimeStepping&timestepper_in,
+ const std::shared_ptr<const BC::NavierStokesBoundaryConditions<dim>> boundary_descriptor,
+ const std::shared_ptr<TimerOutput> external_timer)
+:
+SolverBase<dim,LA::BlockVector>
+(triangulation_in,
+ mapping_in,
+ timestepper_in,
+ external_timer),
+parameters(parameters_in),
+equation_coefficients(parameters.equation_coefficients),
+fe(FE_Q<dim>(parameters.fe_degree_velocity), dim,
+   FE_Q<dim>(parameters.fe_degree_pressure), 1)
+{
+   if (boundary_descriptor.get() != 0)
+       boundary_conditions = boundary_descriptor;
+   else
+       boundary_conditions = std::make_shared<const BC::NavierStokesBoundaryConditions<dim>>();
+}
+
+template<int dim>
+const FiniteElement<dim> &
+NavierStokesSolver<dim>::get_fe() const
+{
+    return fe;
+}
+
+template<int dim>
+types::global_dof_index
+NavierStokesSolver<dim>::n_dofs_velocity() const
+{
+    std::vector<unsigned int> block_component(2,0);
+    block_component[1] = 1;
+    std::vector<types::global_dof_index> dofs_per_block(2);
+    DoFTools::count_dofs_per_block(this->dof_handler,
+                                   dofs_per_block,
+                                   block_component);
+
+    return dofs_per_block[0];
+
+}
+
+template<int dim>
+types::global_dof_index
+NavierStokesSolver<dim>::n_dofs_pressure() const
+{
+   std::vector<unsigned int> block_component(2,0);
+   block_component[1] = 1;
+   std::vector<types::global_dof_index> dofs_per_block(2);
+   DoFTools::count_dofs_per_block(this->dof_handler,
+                                  dofs_per_block,
+                                  block_component);
+
+   return dofs_per_block[1];
+}
+
+template<int dim>
+void NavierStokesSolver<dim>::advance_in_time()
+{
+    if (parameters.verbose)
+        this->pcout << "   Navier Stokes step..." << std::endl;
+
+    this->computing_timer->enter_subsection("Nav.-St.");
+
+    // extrapolate from old solutions
+    this->extrapolate_solution();
+
+    // assemble right-hand side (and system if necessary)
+    assemble_system();
+
+    // update solution vectors
+    this->advance_solution();
+
+    this->computing_timer->leave_subsection();
+}
+
+// explicit instantiation
+template class NavierStokesSolver<2>;
+template class NavierStokesSolver<3>;
 
 }  // namespace adsolic
