@@ -132,7 +132,7 @@ void ConvectionDiffusionParameters::write(Stream &stream) const
 
 template<int dim>
 ConvectionDiffusionSolver<dim>::ConvectionDiffusionSolver
-(const ConvectionDiffusionParameters    &parameters_,
+(const ConvectionDiffusionParameters    &parameters_in,
  const parallel::distributed::Triangulation<dim>  &triangulation_in,
  const MappingQ<dim>    &mapping_in,
  const IMEXTimeStepping &timestepper_in,
@@ -144,7 +144,7 @@ SolverBase<dim,LA::Vector>
  mapping_in,
  timestepper_in,
  external_timer),
-parameters(parameters_),
+parameters(parameters_in),
 equation_coefficient(parameters.equation_coefficient),
 fe(parameters.fe_degree)
 {
