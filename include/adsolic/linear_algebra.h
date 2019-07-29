@@ -8,6 +8,8 @@
 #ifndef INCLUDE_ADSOLIC_LINEAR_ALGEBRA_H_
 #define INCLUDE_ADSOLIC_LINEAR_ALGEBRA_H_
 
+#include <deal.II/base/parameter_handler.h>
+
 #include <deal.II/lac/sparsity_pattern.h>
 #include <deal.II/lac/block_sparsity_pattern.h>
 
@@ -18,6 +20,10 @@
 #include <deal.II/lac/trilinos_precondition.h>
 #include <deal.II/lac/trilinos_solver.h>
 
+namespace adsolic {
+
+using namespace dealii;
+
 /**
  * A namespace that contains typedefs for classes used in the linear algebra
  * description.
@@ -27,84 +33,109 @@ namespace LA
     /**
      * Typedef for the vector type used.
      */
-    typedef dealii::TrilinosWrappers::MPI::Vector Vector;
+    typedef TrilinosWrappers::MPI::Vector Vector;
 
     /**
      * Typedef for the type used to describe vectors that consist of multiple
      * blocks.
      */
-    typedef dealii::TrilinosWrappers::MPI::BlockVector BlockVector;
+    typedef TrilinosWrappers::MPI::BlockVector BlockVector;
 
     /**
      * Typedef for the sparse matrix type used.
      */
-    typedef dealii::TrilinosWrappers::SparseMatrix SparseMatrix;
+    typedef TrilinosWrappers::SparseMatrix SparseMatrix;
 
     /**
      * Typedef for the type used to describe sparse matrices that consist of
      * multiple blocks.
      */
-    typedef dealii::TrilinosWrappers::BlockSparseMatrix BlockSparseMatrix;
+    typedef TrilinosWrappers::BlockSparseMatrix BlockSparseMatrix;
 
     /**
      * Typedef for the base class for all preconditioners.
      */
-    typedef dealii::TrilinosWrappers::PreconditionBase PreconditionBase;
+    typedef TrilinosWrappers::PreconditionBase PreconditionBase;
 
     /**
      * Typedef for the AMG preconditioner type used for the top left block of
      * the Stokes matrix.
      */
-    typedef dealii::TrilinosWrappers::PreconditionAMG PreconditionAMG;
+    typedef TrilinosWrappers::PreconditionAMG PreconditionAMG;
 
     /**
      * Typedef for the Incomplete Cholesky preconditioner used for other
      * blocks of the system matrix.
      */
-    typedef dealii::TrilinosWrappers::PreconditionIC PreconditionIC;
+    typedef TrilinosWrappers::PreconditionIC PreconditionIC;
 
     /**
      * Typedef for the Incomplete LU decomposition preconditioner used for
      * other blocks of the system matrix.
      */
-    typedef dealii::TrilinosWrappers::PreconditionILU PreconditionILU;
+    typedef TrilinosWrappers::PreconditionILU PreconditionILU;
 
     /**
      * Typedef for the Jacobi preconditioner.
      */
-    typedef dealii::TrilinosWrappers::PreconditionJacobi PreconditionJacobi;
+    typedef TrilinosWrappers::PreconditionJacobi PreconditionJacobi;
 
     /**
      * Typedef for the SSOR preconditioner.
      */
-    typedef dealii::TrilinosWrappers::PreconditionBlockSSOR PreconditionSSOR;
+    typedef TrilinosWrappers::PreconditionBlockSSOR PreconditionSSOR;
 
     /**
      * Typedef for the SSOR preconditioner.
      */
-    typedef dealii::TrilinosWrappers::PreconditionSOR PreconditionSOR;
+    typedef TrilinosWrappers::PreconditionSOR PreconditionSOR;
 
 
     /**
      * Typedef for the block compressed sparsity pattern type.
      */
-    typedef dealii::TrilinosWrappers::BlockSparsityPattern BlockDynamicSparsityPattern;
+    typedef TrilinosWrappers::BlockSparsityPattern BlockDynamicSparsityPattern;
 
     /**
      * Typedef for the compressed sparsity pattern type.
      */
-    typedef dealii::TrilinosWrappers::SparsityPattern DynamicSparsityPattern;
+    typedef TrilinosWrappers::SparsityPattern DynamicSparsityPattern;
 
     /**
      * Typedef for conjugate gradient linear solver.
      */
-    typedef dealii::TrilinosWrappers::SolverCG  SolverCG;
+    typedef TrilinosWrappers::SolverCG  SolverCG;
 
     /**
      * Typedef for gmres method linear solver.
      */
-    typedef dealii::TrilinosWrappers::SolverGMRES  SolverGMRES;
+    typedef TrilinosWrappers::SolverGMRES  SolverGMRES;
 
 }
+
+/**
+ * A structure containing parameters relevant for the solution of linear systems.
+ */
+struct  LinearSolverParameters
+{
+    LinearSolverParameters();
+    LinearSolverParameters(const std::string &parameter_filename);
+
+    static void declare_parameters(ParameterHandler &prm);
+    void parse_parameters(ParameterHandler &prm);
+
+    /*
+     * function forwarding parameters to a stream object
+     */
+    template<typename Stream>
+    void write(Stream &stream) const;
+
+    // linear solver parameters
+    double          rel_tol;
+    double          abs_tol;
+    unsigned int    n_max_iter;
+};
+
+}  // namespace adsolic
 
 #endif /* INCLUDE_ADSOLIC_LINEAR_ALGEBRA_H_ */

@@ -152,16 +152,13 @@ struct ConvectionDiffusionParameters
     template<typename Stream>
     void write(Stream &stream) const;
 
+    LinearSolverParameters  linear_solver_parameters;
+
     // dimensionless coefficient in convection diffusion equation
     double          equation_coefficient;
 
     // finite element degree
     unsigned int    fe_degree;
-
-    // linear solver parameters
-    double          rel_tol;
-    double          abs_tol;
-    unsigned int    n_max_iter;
 
     // verbosity
     bool            verbose;

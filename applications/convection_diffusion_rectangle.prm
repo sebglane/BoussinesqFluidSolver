@@ -71,7 +71,7 @@ subsection Refinement parameters
   set n_initial_refinements    = 0
 
   # Total of number of refinements allowed during the run.
-  set n_max_levels             = 10
+  set n_max_levels             = 8
 
   # Minimum of number of refinements during the run.
   set n_min_levels             = 1
@@ -104,7 +104,7 @@ subsection Time stepping settings
   set dt_min                    = 1e-6
 
   # Final time.
-  set final_time                = 0.02
+  set final_time                = 0.1
 
   # Maximum number of time steps.
   set n_steps                   = 10000

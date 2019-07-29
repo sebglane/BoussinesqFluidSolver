@@ -724,8 +724,6 @@ void HeatConductionSquare<dim>::run()
                                           periodicity_vector);
 
         triangulation.add_periodicity(periodicity_vector);
-
-        triangulation.refine_global(parameters.n_global_refinements);
     }
 
     boundary_conditions->set_periodic_bc(0, 1, 3);
@@ -742,7 +740,7 @@ void HeatConductionSquare<dim>::run()
     ConvergenceTable    spatial_convergence_table;
     parameters.time_stepping_params.adaptive_timestep = false;
     parameters.time_stepping_params.n_steps = 100;
-    const unsigned int n_cycles = std::max(int(parameters.n_max_levels - parameters.n_global_refinements),
+    const unsigned int n_cycles = std::max(int(parameters.n_global_refinements),
                                            3);
     for (unsigned int cycle=0; cycle<n_cycles; ++cycle)
     {
