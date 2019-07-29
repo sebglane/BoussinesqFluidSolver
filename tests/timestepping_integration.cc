@@ -11,16 +11,19 @@
 #define _USE_MATH_DEFINES // for C++
 #include <cmath>
 
+#include <deal.II/base/convergence_table.h>
+
 #include <adsolic/timestepping.h>
 
 using namespace TimeStepping;
 
+using namespace dealii;
 
-void checkTimeStepper(const TimeSteppingParameters &parameters)
+std::vector<double> checkTimeStepper(const TimeSteppingParameters &parameters)
 {
     IMEXTimeStepping        timestepper(parameters);
 
-    const double a = 1.0;
+    const double a = 2.0;
 
     std::function<double (const double)> f = [&a](const double x) { return a / (x * x); };
 
@@ -31,15 +34,11 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 
     std::vector<double> x(3, 1.0);
 
-    const double exact_solution = y(1.0);
-
-    // DGL: x_t  == a / x(t)^2 -x(t), x(t=0) == 1, x(t) = 1 / sqrt(1 + 2 t)
+    // DGL: dx(t)/dt == a/x(t)^2 - x(t), x(0) == 1
+    const double exact_solution = y(timestepper.final());
 
     if (parameters.adaptive_timestep)
     {
-        std::cout << "Adaptive time stepping with "
-                  << timestepper.name() << " scheme" << std::endl;
-
         const double inital_step_size = timestepper.step_size();
         const double final_time = timestepper.final();
 
@@ -67,21 +66,15 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 
             timestepper.set_time_step(step_size(timestepper.now()));
         }
-        timestepper.print_info(std::cout);
 
-        std::cout << "Solution: " << x[0] << ", "
-                  << "suggested value: " << exact_solution << ", "
-                  << "error: " << std::abs(x[0] - exact_solution ) << std::endl;
+        return std::vector<double>{std::abs(x[0] - exact_solution ),
+                                   std::abs(x[0] - exact_solution) / exact_solution};
     }
     else
     {
-        std::cout << "Fixed time stepping with "
-                  << timestepper.name() << " scheme" << std::endl;
-
         while (!timestepper.at_end())
         {
             const std::array<double,3> &alpha = timestepper.alpha();
-
             const std::array<double,2> &beta = timestepper.beta();
             const std::array<double,3> &gamma = timestepper.gamma();
 
@@ -97,17 +90,10 @@ void checkTimeStepper(const TimeSteppingParameters &parameters)
 
             x[2] = x[1];
             x[1] = x[0];
-
-            timestepper.set_time_step(parameters.initial_timestep);
         }
-        timestepper.print_info(std::cout);
-
-        std::cout << "Solution: " << x[0] << ", "
-                  << "suggested value: " << exact_solution  << ", "
-                  << "error: " << std::abs(x[0] - exact_solution ) << std::endl;
+        return std::vector<double>{std::abs(x[0] - exact_solution ),
+                                   std::abs(x[0] - exact_solution) / exact_solution};
     }
-
-    return;
 }
 
 int main(int argc, char **argv)
@@ -121,57 +107,157 @@ int main(int argc, char **argv)
             parameter_filename = "timestepping_integration.prm";
 
         TimeSteppingParameters  parameters(parameter_filename);
+        const double initial_timestep = parameters.initial_timestep;
 
         // fixed time steps
         parameters.adaptive_timestep = false;
+        {
+            ConvergenceTable    convergence_table;
+            for (unsigned int cycle=0; cycle<10; ++cycle, parameters.initial_timestep /= 2.0)
+            {
+                convergence_table.add_value("cycle", cycle);
+                convergence_table.add_value("step size", parameters.initial_timestep);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::Euler;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::Euler;
+                std::vector<double> err = checkTimeStepper(parameters);
+                convergence_table.add_value("Euler abs.", err[0]);
+                convergence_table.add_value("Euler rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::SBDF;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::SBDF;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("SBDF abs.", err[0]);
+                convergence_table.add_value("SBDF rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::CNAB;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::CNAB;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("CNAB abs.", err[0]);
+                convergence_table.add_value("CNAB rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::MCNAB;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::MCNAB;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("MCNAB abs.", err[0]);
+                convergence_table.add_value("MCNAB rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::CNLF;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::CNLF;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("CNLF abs.", err[0]);
+                convergence_table.add_value("CNLF rel.", err[1]);
+            }
+            convergence_table.set_precision("step size", 3);
+            convergence_table.set_precision("Euler abs.", 3);
+            convergence_table.set_precision("Euler rel.", 3);
+            convergence_table.set_precision("SBDF abs.", 3);
+            convergence_table.set_precision("SBDF rel.", 3);
+            convergence_table.set_precision("CNAB abs.", 3);
+            convergence_table.set_precision("CNAB rel.", 3);
+            convergence_table.set_precision("MCNAB abs.", 3);
+            convergence_table.set_precision("MCNAB rel.", 3);
+            convergence_table.set_precision("CNLF abs.", 3);
+            convergence_table.set_precision("CNLF rel.", 3);
 
+            convergence_table.set_scientific("step size", true);
+            convergence_table.set_scientific("Euler abs.", true);
+            convergence_table.set_scientific("Euler rel.", true);
+            convergence_table.set_scientific("SBDF abs.", true);
+            convergence_table.set_scientific("SBDF rel.", true);
+            convergence_table.set_scientific("CNAB abs.", true);
+            convergence_table.set_scientific("CNAB rel.", true);
+            convergence_table.set_scientific("MCNAB abs.", true);
+            convergence_table.set_scientific("MCNAB rel.", true);
+            convergence_table.set_scientific("CNLF abs.", true);
+            convergence_table.set_scientific("CNLF rel.", true);
+
+            convergence_table
+            .omit_column_from_convergence_rate_evaluation("cycle");
+            convergence_table
+            .omit_column_from_convergence_rate_evaluation("step size");
+
+            convergence_table
+            .evaluate_all_convergence_rates("step size", ConvergenceTable::reduction_rate);
+
+            std::cout << "================================="
+                         "========================================" << std::endl;
+            std::cout << "===== Fixed step size ==========="
+                         "========================================" << std::endl;
+            convergence_table.write_text(std::cout);
+            std::cout << "================================="
+                         "========================================" << std::endl;
+        }
         // adaptive time steps
         parameters.adaptive_timestep = true;
+        parameters.initial_timestep = initial_timestep;
+        {
+            ConvergenceTable    convergence_table;
+            for (unsigned int cycle=0; cycle<10; ++cycle, parameters.initial_timestep /= 2.0)
+            {
+                convergence_table.add_value("cycle", cycle);
+                convergence_table.add_value("step size", parameters.initial_timestep);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::SBDF;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::Euler;
+                std::vector<double> err = checkTimeStepper(parameters);
+                convergence_table.add_value("Euler abs.", err[0]);
+                convergence_table.add_value("Euler rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::CNAB;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::SBDF;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("SBDF abs.", err[0]);
+                convergence_table.add_value("SBDF rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::MCNAB;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::CNAB;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("CNAB abs.", err[0]);
+                convergence_table.add_value("CNAB rel.", err[1]);
 
-        std::cout << "================================="
-                     "========================================" << std::endl;
-        parameters.imex_scheme = IMEXType::CNLF;
-        checkTimeStepper(parameters);
+                parameters.imex_scheme = IMEXType::MCNAB;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("MCNAB abs.", err[0]);
+                convergence_table.add_value("MCNAB rel.", err[1]);
+
+                parameters.imex_scheme = IMEXType::CNLF;
+                err = checkTimeStepper(parameters);
+                convergence_table.add_value("CNLF abs.", err[0]);
+                convergence_table.add_value("CNLF rel.", err[1]);
+            }
+            convergence_table.set_precision("step size", 3);
+            convergence_table.set_precision("Euler abs.", 3);
+            convergence_table.set_precision("Euler rel.", 3);
+            convergence_table.set_precision("SBDF abs.", 3);
+            convergence_table.set_precision("SBDF rel.", 3);
+            convergence_table.set_precision("CNAB abs.", 3);
+            convergence_table.set_precision("CNAB rel.", 3);
+            convergence_table.set_precision("MCNAB abs.", 3);
+            convergence_table.set_precision("MCNAB rel.", 3);
+            convergence_table.set_precision("CNLF abs.", 3);
+            convergence_table.set_precision("CNLF rel.", 3);
+
+            convergence_table.set_scientific("step size", true);
+            convergence_table.set_scientific("Euler abs.", true);
+            convergence_table.set_scientific("Euler rel.", true);
+            convergence_table.set_scientific("SBDF abs.", true);
+            convergence_table.set_scientific("SBDF rel.", true);
+            convergence_table.set_scientific("CNAB abs.", true);
+            convergence_table.set_scientific("CNAB rel.", true);
+            convergence_table.set_scientific("MCNAB abs.", true);
+            convergence_table.set_scientific("MCNAB rel.", true);
+            convergence_table.set_scientific("CNLF abs.", true);
+            convergence_table.set_scientific("CNLF rel.", true);
+
+            convergence_table
+            .omit_column_from_convergence_rate_evaluation("cycle");
+            convergence_table
+            .omit_column_from_convergence_rate_evaluation("step size");
+
+            convergence_table
+            .evaluate_all_convergence_rates("step size", ConvergenceTable::reduction_rate);
+
+            std::cout << "================================="
+                    "========================================" << std::endl;
+            std::cout << "===== Adaptive step size ========"
+                    "========================================" << std::endl;
+            convergence_table.write_text(std::cout);
+            std::cout << "================================="
+                    "========================================" << std::endl;
+        }
     }
     catch (std::exception &exc)
     {
