@@ -4,8 +4,10 @@
  *  Created on: Jul 24, 2019
  *      Author: sg
  */
+#include <deal.II/base/convergence_table.h>
 
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_tools.h>
 
 #include <deal.II/numerics/data_out.h>
 
@@ -29,7 +31,8 @@ public:
     TemperatureField(const double coefficient_in = 1.0,
                      const double kx = 2.0 * numbers::PI,
                      const double ky = 2.0 * numbers::PI,
-                     const double kz = 2.0 * numbers::PI);
+                     const double phi_x = 0.,
+                     const double phi_y = 0.);
 
     virtual double value(const Point<dim>  &point,
                          const unsigned int component = 0) const;
@@ -37,7 +40,8 @@ private:
     const double coefficient;
     const double kx;
     const double ky;
-    const double kz;
+    const double phi_x;
+    const double phi_y;
 };
 
 template <int dim>
@@ -45,13 +49,18 @@ TemperatureField<dim>::TemperatureField
 (const double coefficient_in,
  const double kx_in,
  const double ky_in,
- const double kz_in)
+ const double phi_x_in,
+ const double phi_y_in)
 :
 coefficient(coefficient_in),
 kx(kx_in),
 ky(ky_in),
-kz(kz_in)
-{}
+phi_x(phi_x_in),
+phi_y(phi_y_in)
+{
+    Assert(dim == 2,
+           ExcMessage("This class is only implemented in 2D."));
+}
 
 
 template <int dim>
@@ -59,9 +68,7 @@ double TemperatureField<dim>::value
 (const Point<dim> &point,
  const unsigned int /* component */) const
 {
-    AssertThrow(dim == 2,
-                ExcImpossibleInDim(dim));
-    return std::cos(kx * point[0] - numbers::PI / 2.0) * std::sin(ky * point[1])
+    return std::cos(kx * point[0] - phi_x) * std::sin(ky * point[1] - phi_y)
         * std::exp(-coefficient * (kx * kx + ky * ky) * this->get_time());
 }
 
@@ -94,7 +101,10 @@ struct HeatConductionParameters
     double  amplitude;
     double  kx;
     double  ky;
-    double  kz;
+    double  phi_x;
+    double  phi_y;
+
+    bool    modulate_amplitude;
 
     // refinement parameters
     bool            adaptive_mesh_refinement;
@@ -120,11 +130,13 @@ HeatConductionParameters::HeatConductionParameters(const std::string &parameter_
 :
 // geometry parameters
 dim(2),
-// advection field parameters
+// convection field parameters
 amplitude(1.0),
 kx(2.*numbers::PI),
 ky(2.*numbers::PI),
-kz(2.*numbers::PI),
+phi_x(0.),
+phi_y(0.),
+modulate_amplitude(false),
 // refinement parameters
 adaptive_mesh_refinement(false),
 n_global_refinements(1),
@@ -264,10 +276,20 @@ void HeatConductionParameters::declare_parameters(ParameterHandler &prm)
                 Patterns::Double(),
                 "Wave number in y-direction.");
 
-        prm.declare_entry("kz",
-                "6.283185307179586",
+        prm.declare_entry("phi_x",
+                "0.0",
                 Patterns::Double(),
-                "Wave number in z-direction.");
+                "Phase shift in x-direction.");
+
+        prm.declare_entry("phi_y",
+                "0.0",
+                Patterns::Double(),
+                "Phase shift in y-direction.");
+
+        prm.declare_entry("modulate_amplitude",
+                "false",
+                Patterns::Bool(),
+                "Flag to modulate the amplitude of the convection field in time.");
     }
     prm.leave_subsection();
 
@@ -363,9 +385,11 @@ void HeatConductionParameters::parse_parameters(ParameterHandler &prm)
         Assert(ky > 0.0,
                ExcMessage("Wave number in y-direction must be positive."));
 
-        kz = prm.get_double("kz");
-        Assert(kz > 0.0,
-               ExcMessage("Wave number in z-direction must be positive."));
+        phi_x = prm.get_double("phi_x");
+
+        phi_y = prm.get_double("phi_y");
+
+        modulate_amplitude = prm.get_bool("modulate_amplitude");
     }
     prm.leave_subsection();
 
@@ -389,7 +413,9 @@ void HeatConductionParameters::write(Stream &stream) const
            << "   amplitude: " << amplitude << std::endl
            << "   kx: " << kx << std::endl
            << "   ky: " << ky << std::endl
-           << "   kz: " << kz << std::endl
+           << "   phi_x: " << phi_x << std::endl
+           << "   phi_y: " << phi_y << std::endl
+           << "   modulate_amplitude: " << (modulate_amplitude? "true": "false") << std::endl
            << "   adaptive_mesh_refinement: " << (adaptive_mesh_refinement? "true": "false") << std::endl
            << "   n_global_refinements: " << n_global_refinements << std::endl
            << "   n_initial_refinements: " << n_initial_refinements << std::endl
@@ -413,7 +439,7 @@ class HeatConductionSquare
 {
 
 public:
-    HeatConductionSquare(const HeatConductionParameters &parameters);
+    HeatConductionSquare(HeatConductionParameters &parameters);
 
     void run();
 
@@ -425,7 +451,7 @@ private:
 
     double compute_cfl_number() const;
 
-    const HeatConductionParameters &parameters;
+    HeatConductionParameters &parameters;
 
     MPI_Comm            mpi_communicator;
 
@@ -452,7 +478,7 @@ private:
 
 template <int dim>
 HeatConductionSquare<dim>::HeatConductionSquare
-(const HeatConductionParameters &parameters)
+(HeatConductionParameters &parameters)
 :
 parameters(parameters),
 mpi_communicator(MPI_COMM_WORLD),
@@ -464,7 +490,9 @@ timestepper(parameters.time_stepping_params),
 convection_function(new AuxiliaryFunctions::ConvectionFunction<dim>
                         (parameters.amplitude,
                          parameters.kx,
-                         parameters.ky)),
+                         parameters.ky,
+                         parameters.phi_x,
+                         parameters.phi_y)),
 boundary_conditions(new BC::ScalarBoundaryConditions<dim>()),
 temperature_function(parameters.convect_diff_params.equation_coefficient,
                      parameters.kx,
@@ -483,38 +511,44 @@ void HeatConductionSquare<dim>::output_results () const
 {
     TimerOutput::Scope(*timer,"Output solution.");
 
+    const DoFHandler<dim> &temperature_dof_handler = solver.get_dof_handler();
+    const LA::Vector &temperature_solution = solver.get_solution();
+
     DataOut<dim> data_out;
 
-    data_out.add_data_vector(solver.get_dof_handler(),
-                           solver.get_solution(),
-                           "temperature");
-    data_out.build_patches(parameters.convect_diff_params.fe_degree);
+    data_out.attach_dof_handler(temperature_dof_handler);
+
+
+    data_out.add_data_vector(temperature_dof_handler,
+                             temperature_solution,
+                             "temperature");
+    data_out.build_patches();
 
     // write output to disk
     const std::string filename = ("solution-" +
-                                 Utilities::int_to_string(timestepper.step_no(), 5) +
-                                "." +
-                                Utilities::int_to_string
-                                (triangulation.locally_owned_subdomain(), 4) +
-                                ".vtu");
-    std::ofstream output (filename.c_str());
-    data_out.write_vtu (output);
+                                  Utilities::int_to_string(timestepper.step_no(), 5) +
+                                  "." +
+                                  Utilities::int_to_string
+                                  (triangulation.locally_owned_subdomain(), 4) +
+                                  ".vtu");
+    std::ofstream output(filename.c_str());
+    data_out.write_vtu(output);
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
     {
-      std::vector<std::string> filenames;
-      for (unsigned int i=0; i<Utilities::MPI::n_mpi_processes(mpi_communicator); ++i)
-          filenames.push_back(std::string("solution-") +
-                              Utilities::int_to_string(timestepper.step_no(), 5) +
-                              "." +
-                              Utilities::int_to_string(i, 4) +
-                              ".vtu");
-      const std::string
-      pvtu_master_filename = ("solution-" +
-                              Utilities::int_to_string(timestepper.step_no(), 5) +
-                              ".pvtu");
-      std::ofstream pvtu_master(pvtu_master_filename.c_str());
-      data_out.write_pvtu_record(pvtu_master, filenames);
+        std::vector<std::string> filenames;
+        for (unsigned int i=0; i<Utilities::MPI::n_mpi_processes(mpi_communicator); ++i)
+            filenames.push_back(std::string("solution-") +
+                                Utilities::int_to_string(timestepper.step_no(), 5) +
+                                "." +
+                                Utilities::int_to_string(i, 4) +
+                                ".vtu");
+        const std::string
+        pvtu_master_filename = ("solution-" +
+                                Utilities::int_to_string(timestepper.step_no(), 5) +
+                                ".pvtu");
+        std::ofstream pvtu_master(pvtu_master_filename.c_str());
+        data_out.write_pvtu_record(pvtu_master, filenames);
     }
 }
 
@@ -638,19 +672,79 @@ void HeatConductionSquare<dim>::run()
     {
         GridGenerator::hyper_cube(triangulation);
 
+        const double tol = 1e-12;
+
+        /*
+         * enumeration of the boundaries
+         *
+         *     *--- 2 ---*
+         *     |         |
+         *
+         *     3         1
+         *
+         *     |         |
+         *     *--- 0 ---*
+         *                             *
+         */
+        for (auto cell: triangulation.active_cell_iterators())
+            if (cell->at_boundary())
+                for (unsigned int f=0; f<GeometryInfo<dim>::faces_per_cell; ++f)
+                    if (cell->face(f)->at_boundary())
+                    {
+                        std::vector<Point<dim>> points(GeometryInfo<dim>::vertices_per_face);
+                        for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_face; ++v)
+                            points[v] = cell->face(f)->vertex(v);
+
+                        if (std::all_of(points.begin(), points.end(),
+                                [&](Point<dim> &p)->bool{return std::abs(p[1]) < tol;}))
+                            cell->face(f)->set_boundary_id(0);
+                        if (std::all_of(points.begin(), points.end(),
+                                [&](Point<dim> &p)->bool{return std::abs(p[0] - 1.0) < tol;}))
+                            cell->face(f)->set_boundary_id(1);
+                        if (std::all_of(points.begin(), points.end(),
+                                [&](Point<dim> &p)->bool{return std::abs(p[1] - 1.0) < tol;}))
+                            cell->face(f)->set_boundary_id(2);
+                        if (std::all_of(points.begin(), points.end(),
+                                [&](Point<dim> &p)->bool{return std::abs(p[0]) < tol;}))
+                            cell->face(f)->set_boundary_id(3);
+                    }
+
+        std::vector<GridTools::PeriodicFacePair<typename parallel::distributed::Triangulation<dim>::cell_iterator>>
+        periodicity_vector;
+
+        GridTools::collect_periodic_faces(triangulation,
+                                          0,
+                                          2,
+                                          1,
+                                          periodicity_vector);
+        GridTools::collect_periodic_faces(triangulation,
+                                          1,
+                                          3,
+                                          0,
+                                          periodicity_vector);
+
+        triangulation.add_periodicity(periodicity_vector);
+
         triangulation.refine_global(parameters.n_global_refinements);
     }
 
-    const std::shared_ptr<Function<dim>> dirichlet_function
-    = std::make_shared<Functions::ZeroFunction<dim>>();
-
-    boundary_conditions->set_dirichlet_bc(0, dirichlet_function);
+    boundary_conditions->set_periodic_bc(0, 1, 3);
+    boundary_conditions->set_periodic_bc(1, 0, 2);
 
     timer->leave_subsection();
 
     solver.set_convection_function(convection_function);
 
-    for (unsigned int cycle=0; cycle < 1; ++cycle)
+    const double n_steps = parameters.time_stepping_params.n_steps;
+
+    // spatial convergence study
+    {
+    ConvergenceTable    spatial_convergence_table;
+    parameters.time_stepping_params.adaptive_timestep = false;
+    parameters.time_stepping_params.n_steps = 100;
+    const unsigned int n_cycles = std::max(int(parameters.n_max_levels - parameters.n_global_refinements),
+                                           3);
+    for (unsigned int cycle=0; cycle<n_cycles; ++cycle)
     {
         // reset objects
         solver.set_post_refinement();
@@ -666,14 +760,12 @@ void HeatConductionSquare<dim>::run()
               << "n_dofs: "  << Utilities::to_string(solver.n_dofs(), 8)
               << std::endl;
 
-        solver.setup_initial_condition(TemperatureField<dim>());
+        solver.setup_initial_condition(temperature_function);
 
         pcout << "Start time integration..." << std::endl;
-
+        double max_cfl = 0;
         while (timestepper.at_end() == false)
         {
-            timestepper.print_info(pcout);
-
             // solve problem
             solver.advance_in_time();
 
@@ -688,6 +780,7 @@ void HeatConductionSquare<dim>::run()
             // determine new timestep
             {
                 const double cfl = compute_cfl_number();
+                max_cfl = std::max(max_cfl, cfl);
                 if (cfl > parameters.cfl_max || cfl < parameters.cfl_min)
                 {
                     const double desired_time_step
@@ -701,10 +794,111 @@ void HeatConductionSquare<dim>::run()
         timestepper.print_info(pcout);
 
         // postprocessing of solution
-        pcout << "   L2-error: " << compute_l2_error() << std::endl;
+        const double l2_error = compute_l2_error();
+        spatial_convergence_table.add_value("cycle", cycle);
+        spatial_convergence_table.add_value("cells", triangulation.n_global_active_cells());
+        spatial_convergence_table.add_value("n_dofs", solver.n_dofs());
+        spatial_convergence_table.add_value("L2 error", l2_error);
+        spatial_convergence_table.add_value("max cfl", max_cfl);
+        pcout << "   L2-error: " << l2_error << std::endl;
+        pcout << "   max(cfl): " << max_cfl << std::endl;
+
+        // output
+        output_results();
 
         // refinement
         triangulation.refine_global();
+    }
+    spatial_convergence_table.set_precision("L2 error", 3);
+    spatial_convergence_table.set_scientific("L2 error", true);
+
+    spatial_convergence_table.evaluate_convergence_rates("L2 error", ConvergenceTable::reduction_rate);
+    spatial_convergence_table.evaluate_convergence_rates("L2 error", ConvergenceTable::reduction_rate_log2);
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        spatial_convergence_table.write_text(pcout.get_stream());
+    }
+
+    for (unsigned int i=0; i<2; ++i)
+    {
+        for (auto cell: triangulation.active_cell_iterators())
+            if (cell->is_locally_owned())
+                cell->set_coarsen_flag();
+        triangulation.execute_coarsening_and_refinement();
+    }
+
+    {
+
+    ConvergenceTable    temporal_convergence_table;
+    double step_size = 100.0 * parameters.time_stepping_params.initial_timestep;
+    parameters.time_stepping_params.n_steps = n_steps;
+    const unsigned int n_cycles = 6;
+    for (unsigned int cycle=0; cycle<n_cycles; ++cycle, step_size /= 2.0)
+    {
+        // reset objects
+        solver.set_post_refinement();
+        timestepper.reset(step_size);
+        convection_function->set_time(timestepper.now());
+        temperature_function.set_time(timestepper.now());
+
+        // run cycle
+        solver.setup_problem();
+
+        pcout << "Cycle: " << Utilities::int_to_string(cycle, 2) << ", "
+              << "n_cells: " << Utilities::to_string(triangulation.n_global_active_cells(), 8) << ", "
+              << "n_dofs: "  << Utilities::to_string(solver.n_dofs(), 8) << ", "
+              << "step_size: "  << step_size
+              << std::endl;
+
+        solver.setup_initial_condition(temperature_function);
+
+        pcout << "Start time integration..." << std::endl;
+        double max_cfl = 0;
+        while (timestepper.at_end() == false)
+        {
+            // solve problem
+            solver.advance_in_time();
+
+            // The solver succeeded, therefore
+            // advance time in timestepper
+            timestepper.advance_in_time();
+
+            // update time of relevant objects
+            convection_function->set_time(timestepper.now());
+            temperature_function.set_time(timestepper.now());
+
+            // determine new timestep
+            {
+                const double cfl = compute_cfl_number();
+                max_cfl = std::max(max_cfl, cfl);
+                if (cfl > parameters.cfl_max || cfl < parameters.cfl_min)
+                {
+                    const double desired_time_step
+                    = 0.5 * (parameters.cfl_min + parameters.cfl_max)
+                                    * timestepper.step_size() / cfl;
+
+                    timestepper.set_time_step(desired_time_step);
+                }
+            }
+        }
+        timestepper.print_info(pcout);
+
+        // postprocessing of solution
+        const double l2_error = compute_l2_error();
+        temporal_convergence_table.add_value("cycle", cycle);
+        temporal_convergence_table.add_value("step size", step_size);
+        temporal_convergence_table.add_value("L2 error", l2_error);
+        temporal_convergence_table.add_value("max cfl", max_cfl);
+        pcout << "   L2-error: " << l2_error << std::endl;
+        pcout << "   max(cfl): " << max_cfl << std::endl;
+    }
+    temporal_convergence_table.set_precision("L2 error", 3);
+    temporal_convergence_table.set_scientific("L2 error", true);
+
+    temporal_convergence_table.evaluate_convergence_rates("L2 error", "step size", ConvergenceTable::reduction_rate);
+
+    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        temporal_convergence_table.write_text(pcout.get_stream());
     }
 }
 
@@ -738,11 +932,6 @@ int main (int argc, char **argv)
         if (parameters.dim == 2)
         {
             HeatConductionSquare<2> problem(parameters);
-            problem.run ();
-        }
-        else if (parameters.dim == 3)
-        {
-            HeatConductionSquare<3> problem (parameters);
             problem.run ();
         }
         else

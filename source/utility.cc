@@ -18,15 +18,20 @@ ConvectionFunction<dim>::ConvectionFunction
 (const double amplitude_in,
  const double kx_in,
  const double ky_in,
- const double kz_in)
+ const double phi_x_in,
+ const double phi_y_in)
 :
 amplitude(amplitude_in),
 kx(kx_in),
 ky(ky_in),
-kz(kz_in),
+phi_x(phi_x_in),
+phi_y(phi_y_in),
 old_time(this->get_time()),
 old_old_time(this->get_time())
-{}
+{
+    Assert(dim == 2,
+           ExcMessage("This class is only implemented in 2D."));
+}
 
 template <int dim>
 void
@@ -41,15 +46,11 @@ template<int dim>
 Tensor<1,dim> ConvectionFunction<dim>::value
 (const Point<dim> &point) const
 {
-    AssertThrow(dim == 2 || dim == 3,
-                ExcImpossibleInDim(dim));
-
     Tensor<1,dim> value;
-    value[0] = amplitude * std::sin(kx * point[0]) * std::cos(ky * point[1]);
-    value[1] = -amplitude * kx / ky * std::cos(kx * point[0]) * std::sin(ky * point[1]);
-
-    if (dim == 3)
-        value[2] = 0;
+    value[0] = amplitude
+             * std::cos(kx * point[0] - phi_x) * std::cos(ky * point[1] - phi_y);
+    value[1] = - amplitude * kx / ky
+             * std::sin(kx * point[0] - phi_x) * std::sin(ky * point[1] - phi_y);
 
     return value;
 }
@@ -58,15 +59,11 @@ template<int dim>
 Tensor<1,dim> ConvectionFunction<dim>::old_value
 (const Point<dim> &point) const
 {
-    AssertThrow(dim == 2 || dim == 3,
-                ExcImpossibleInDim(dim));
-
     Tensor<1,dim> value;
-    value[0] = amplitude * std::sin(kx * point[0]) * std::cos(ky * point[1]);
-    value[1] = -amplitude * kx / ky * std::cos(kx * point[0]) * std::sin(ky * point[1]);
-
-    if (dim == 3)
-        value[2] = 0;
+    value[0] = amplitude
+             * std::cos(kx * point[0] - phi_x) * std::cos(ky * point[1] - phi_y);
+    value[1] = - amplitude * kx / ky
+             * std::sin(kx * point[0] - phi_x) * std::sin(ky * point[1] - phi_y);
 
     return value;
 }
@@ -75,15 +72,11 @@ template<int dim>
 Tensor<1,dim> ConvectionFunction<dim>::old_old_value
 (const Point<dim> &point) const
 {
-    AssertThrow(dim == 2 || dim == 3,
-                ExcImpossibleInDim(dim));
-
     Tensor<1,dim> value;
-    value[0] = amplitude * std::sin(kx * point[0]) * std::cos(ky * point[1]);
-    value[1] = -amplitude * kx / ky * std::cos(kx * point[0]) * std::sin(ky * point[1]);
-
-    if (dim == 3)
-        value[2] = 0;
+    value[0] = amplitude
+             * std::cos(kx * point[0] - phi_x) * std::cos(ky * point[1] - phi_y);
+    value[1] = - amplitude * kx / ky
+             * std::sin(kx * point[0] - phi_x) * std::sin(ky * point[1] - phi_y);
 
     return value;
 }

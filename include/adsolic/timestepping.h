@@ -93,7 +93,7 @@ public:
     void   set_time_step(double);
     double advance_in_time();
 
-    void reset();
+    void reset(const double initial_step = 0.0);
 
     /*
      * functions returning array of the IMEX coefficients
@@ -273,14 +273,17 @@ IMEXTimeStepping::at_end() const
     return at_end_time || (step_no() == max_step_no);
 }
 
-inline void IMEXTimeStepping::reset()
+inline void IMEXTimeStepping::reset(const double initial_step)
 {
     at_end_time = false;
     step_no_val = 0;
     current_time = start();
     previous_time = 0.0;
     pre_previous_time = 0.0;
-    step_val = start_step_val;
+    if (!adaptive_timestep && initial_step > 0.0)
+        step_val = initial_step;
+    else
+        step_val = start_step_val;
     old_step_val = 0.0;
     old_old_step_val = 0.0;
     omega = 1.0;

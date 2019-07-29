@@ -1,0 +1,119 @@
+# Listing of Parameters
+# ---------------------
+subsection Convection diffusion parameters
+  # Diffusion coefficient.
+  set equation_coefficient = 1.0
+
+  # Polynomial degree of the finite element discretization.
+  set fe_degree            = 1
+
+  # Maximum number of iterations of the linear solver.
+  set n_max_iter           = 200
+
+  # Absolute tolerance of the linear solver.
+  set tol_abs              = 1e-9
+
+  # Relative tolerance of the linear solver.
+  set tol_rel              = 1e-6
+
+  # Flag to activate verbosity.
+  set verbose              = false
+end
+
+
+subsection Convective parameters
+  # Amplitude of the convective field.
+  set amplitude          = 1.0
+
+  # Wave number in x-direction.
+  set kx                 = 6.283185307179586
+
+  # Wave number in y-direction.
+  set ky                 = 6.283185307179586
+
+  # Flag to modulate the amplitude of the convection field in time.
+  set modulate_amplitude = false
+
+  # Phase shift in x-direction.
+  set phi_x              = 0.2617993877991494
+
+  # Phase shift in y-direction.
+  set phi_y              = 0.7853981633974483
+end
+
+
+subsection Geometry parameters
+  # Spatial dimension.
+  set dim = 2
+end
+
+
+subsection Logging parameters
+  # Flag to activate output of subroutines.
+  set verbose  = false
+
+  # Output frequency for vtk-files.
+  set vtk_freq = 1000
+end
+
+
+subsection Refinement parameters
+  # Flag to activate adaptive mesh refinement.
+  set adaptive_mesh_refinement = false
+
+  # Number of initial boundary refinements.
+  set n_boundary_refinements   = 0
+
+  # Number of initial global refinements.
+  set n_global_refinements     = 2
+
+  # Number of initial refinements based on the initial condition.
+  set n_initial_refinements    = 0
+
+  # Total of number of refinements allowed during the run.
+  set n_max_levels             = 10
+
+  # Minimum of number of refinements during the run.
+  set n_min_levels             = 1
+
+  # Refinement frequency.
+  set refinement_freq          = 100
+end
+
+
+subsection Time stepping settings
+  # Turn adaptive time stepping on or off
+  set adaptive_timestep         = false
+
+  # Time step after which adaptive time stepping is applied.
+  set adaptive_timestep_barrier = 2
+
+  # Maximal value for the cfl number.
+  set cfl_max                   = 0.7
+
+  # Minimal value for the cfl number.
+  set cfl_min                   = 0.3
+
+  # Initial time step.
+  set dt_initial                = 1e-4
+
+  # Maximum time step.
+  set dt_max                    = 1e-1
+
+  # Maximum time step.
+  set dt_min                    = 1e-6
+
+  # Final time.
+  set final_time                = 0.02
+
+  # Maximum number of time steps.
+  set n_steps                   = 10000
+
+  # Time stepping scheme applied.
+  set time_stepping_scheme      = CNAB
+
+  # Activate verbose output.
+  set verbose                   = false
+end
+
+

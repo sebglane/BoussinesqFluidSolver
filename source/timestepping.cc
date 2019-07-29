@@ -381,7 +381,7 @@ void IMEXTimeStepping::set_time_step(double desired_value)
         (adaptive_timestep && step_no_val < adaptive_barrier))
         return;
 
-    const double damping_factor = 0.5; // 0.5;
+    const double damping_factor = 1.0; // 0.5;
 
     // When setting a new time step size one needs to consider three things:
     //  - That it is not smaller than the minimum given

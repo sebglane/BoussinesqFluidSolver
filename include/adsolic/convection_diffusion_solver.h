@@ -13,30 +13,23 @@
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/tensor_function.h>
-#include <deal.II/base/timer.h>
-
-#include <deal.II/dofs/dof_handler.h>
 
 #include <deal.II/fe/fe_values.h>
 
 #include <deal.II/lac/constraint_matrix.h>
 
 #include <deal.II/fe/fe_q.h>
-#include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/distributed/tria.h>
 
 #include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
 #include <adsolic/solver_base.h>
-#include <adsolic/timestepping.h>
 #include <adsolic/utility.h>
 
 namespace adsolic {
 
 using namespace dealii;
-
-using namespace TimeStepping;
 
 using namespace AuxiliaryFunctions;
 

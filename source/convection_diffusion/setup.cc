@@ -86,7 +86,7 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
 
 
         const Functions::ZeroFunction<dim>  zero_function;
-        typename FunctionMap<dim>::type   function_map;
+        typename FunctionMap<dim>::type function_map;
 
         if (boundary_conditions.get() != 0)
         {
@@ -95,12 +95,25 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
                     function_map[it.first] = it.second.get();
             else
             {
-                this->pcout << "   No Dirichlet boundary conditions specified in" << std::endl
-                            << "   BC object. Using homogeneous Dirichlet boundary" << std::endl
-                            << "   conditions on all boundaries." << std::endl;
+                unsigned int cnt = 0;
+                for (unsigned int d=0; d<dim; ++d)
+                    if (boundary_conditions->periodic_bcs[d] !=
+                        std::pair<types::boundary_id,types::boundary_id>
+                        (numbers::invalid_boundary_id, numbers::invalid_boundary_id))
+                        ++cnt;
+                if (cnt != dim)
+                {
+                    this->pcout << "   No Dirichlet boundary conditions specified in" << std::endl
+                                << "   BC object. Using homogeneous Dirichlet boundary" << std::endl
+                                << "   conditions on all boundaries." << std::endl;
 
-                for (const auto &id: this->triangulation.get_boundary_ids())
-                    function_map[id] = &zero_function;
+                    for (const auto &id: this->triangulation.get_boundary_ids())
+                        function_map[id] = &zero_function;
+                }
+                else
+                    this->pcout << "   The problem seems fully periodic." << std::endl
+                                << "   No Dirichlet or Neumann boundary conditions" << std::endl
+                                << "   are applied." << std::endl;
             }
         }
         else

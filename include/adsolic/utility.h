@@ -29,7 +29,8 @@ public:
     ConvectionFunction(const double amplitude = 1.0,
                        const double kx = 2.0 * numbers::PI,
                        const double ky = 2.0 * numbers::PI,
-                       const double kz = 2.0 * numbers::PI);
+                       const double phi_x = 0.,
+                       const double phi_y = 0.);
 
     virtual void
     set_time(const double new_time);
@@ -54,7 +55,8 @@ private:
     const double amplitude;
     const double kx;
     const double ky;
-    const double kz;
+    const double phi_x;
+    const double phi_y;
 
     double  old_time;
     double  old_old_time;

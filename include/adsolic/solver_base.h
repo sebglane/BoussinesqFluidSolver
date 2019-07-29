@@ -41,24 +41,25 @@ public:
      const std::shared_ptr<TimerOutput> external_timer =
              std::shared_ptr<TimerOutput>());
 
-    virtual void advance_in_time();
+    virtual void advance_in_time() = 0;
 
-    virtual void setup_problem();
+    virtual void setup_problem() = 0;
 
     virtual void setup_initial_condition
-    (const Function<dim,double> &initial_field);
+    (const Function<dim,double> &initial_field) = 0;
 
-    const FiniteElement<dim> &get_fe() const;
+    virtual const FiniteElement<dim> &get_fe() const = 0;
 
-    unsigned int fe_degree() const;
+    virtual unsigned int fe_degree() const = 0;
 
     types::global_dof_index n_dofs() const;
 
     const DoFHandler<dim>  &get_dof_handler() const;
 
     const VectorType    &get_solution() const;
+    std::vector<const VectorType*> get_old_solutions() const;
 
-private:
+protected:
     // reference to common triangulation
     const parallel::distributed::Triangulation<dim>   &triangulation;
 

@@ -66,7 +66,7 @@ void ScalarBoundaryConditions<dim>::set_periodic_bc
     AssertThrow(direction >= 0 && direction < dim,
                 ExcMessage("Coordinate direction must be between 0 and the dim"));
     periodic_bcs[direction] = std::make_pair(first_boundary_id,
-                                                    second_boundary_id);
+                                             second_boundary_id);
 }
 
 template class ScalarBoundaryConditions<1>;
