@@ -11,6 +11,7 @@
 #include <memory>
 
 #include <deal.II/base/index_set.h>
+#include <deal.II/base/synchronous_iterator.h>
 
 #include <deal.II/dofs/dof_tools.h>
 
@@ -34,12 +35,12 @@ using namespace dealii;
  * enumeration for the type of the weak form of the convective term
  *
  */
-enum ConvectiveWeakForm
+enum class ConvectiveWeakForm
 {
     Standard,
-    DivergenceForm,
-    SkewSymmetric,
-    RotationalForm
+    DivergenceForm
+    /*SkewSymmetric,*/
+    /*RotationalForm*/
 };
 
 /*
@@ -47,7 +48,20 @@ enum ConvectiveWeakForm
  * enumeration for the type of the pressure projection scheme
  *
  */
-enum PressureUpdateType
+enum class PressureProjectionType
+{
+    Standard,
+    Compact,
+    NoneIncremental
+};
+
+
+/*
+ *
+ * enumeration for the type of the pressure update
+ *
+ */
+enum class PressureUpdateType
 {
     StandardForm,
     IrrotationalForm
@@ -62,56 +76,139 @@ using namespace dealii;
 namespace Scratch {
 
 template<int dim>
-struct Matrix
+struct PressureMatrix
 {
-    Matrix(const FiniteElement<dim> &fe,
-           const Mapping<dim>       &mapping,
-           const Quadrature<dim>    &quadrature,
-           const UpdateFlags        update_flags);
+    PressureMatrix(const FiniteElement<dim> &fe,
+                   const Mapping<dim>       &mapping,
+                   const Quadrature<dim>    &quadrature,
+                   const UpdateFlags        update_flags);
 
-    Matrix(const Matrix<dim>  &scratch);
+    PressureMatrix(const PressureMatrix<dim>  &scratch);
 
     FEValues<dim>               fe_values;
 
-    std::vector<double>         div_phi_velocity;
-    std::vector<Tensor<1,dim>>  phi_velocity;
-    std::vector<Tensor<2,dim>>  grad_phi_velocity;
+    std::vector<double>         phi;
+    std::vector<Tensor<1,dim>>  grad_phi;
 
-    std::vector<double>         phi_pressure;
-    std::vector<Tensor<1,dim>>  grad_phi_pressure;
+    const unsigned int          n_q_points;
 };
 
 template<int dim>
-struct RightHandSide
+struct VelocityMatrix
 {
-    RightHandSide(const FiniteElement<dim>  &fe,
-                  const Mapping<dim>        &mapping,
-                  const Quadrature<dim>     &quadrature,
-                  const UpdateFlags          update_flags,
-                  const std::array<double,3>&alpha,
-                  const std::array<double,2>&beta,
-                  const std::array<double,3>&gamma);
+    VelocityMatrix(const FiniteElement<dim> &fe,
+                   const Mapping<dim>       &mapping,
+                   const Quadrature<dim>    &quadrature,
+                   const UpdateFlags        update_flags);
 
-    RightHandSide(const RightHandSide<dim>  &scratch);
+    VelocityMatrix(const VelocityMatrix<dim>  &scratch);
 
     FEValues<dim>               fe_values;
-    std::vector<Tensor<1,dim>>  phi_velocity;
-    std::vector<Tensor<2,dim>>  grad_phi_velocity;
-    std::vector<Tensor<1,dim>>  old_velocity_values;
-    std::vector<Tensor<1,dim>>  old_old_velocity_values;
-    std::vector<Tensor<2,dim>>  old_velocity_gradients;
-    std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
 
-    const std::array<double,3> &alpha;
-    const std::array<double,2> &beta;
-    const std::array<double,3> &gamma;
+    std::vector<Tensor<1,dim>>  phi;
+    std::vector<Tensor<2,dim>>  grad_phi;
 
-    const unsigned int          dofs_per_cell;
     const unsigned int          n_q_points;
 
     const FEValuesExtractors::Vector    velocity;
 };
 
+template<int dim>
+struct VelocityDiffusion
+{
+    VelocityDiffusion(const FiniteElement<dim>  &velocity_fe,
+                      const FiniteElement<dim>  &pressure_fe,
+                      const Mapping<dim>        &mapping,
+                      const Quadrature<dim>     &quadrature,
+                      const UpdateFlags          velocity_update_flags,
+                      const UpdateFlags          pressure_update_flags,
+                      const std::array<double,3>&alpha,
+                      const std::array<double,2>&beta,
+                      const std::array<double,3>&gamma);
+
+    VelocityDiffusion(const VelocityDiffusion<dim>  &scratch);
+
+    FEValues<dim>               fe_values_velocity;
+    FEValues<dim>               fe_values_pressure;
+
+    std::vector<Tensor<1,dim>>  phi_velocity;
+    std::vector<Tensor<2,dim>>  grad_phi_velocity;
+    std::vector<double>         div_phi_velocity;
+
+    std::vector<Tensor<1,dim>>  old_velocity_values;
+    std::vector<Tensor<1,dim>>  old_old_velocity_values;
+    std::vector<Tensor<2,dim>>  old_velocity_gradients;
+    std::vector<Tensor<2,dim>>  old_old_velocity_gradients;
+
+    std::vector<double>         old_pressure_values;
+    std::vector<double>         pressure_update_values;
+    std::vector<double>         old_pressure_update_values;
+
+    const std::array<double,3> &alpha;
+    const std::array<double,2> &beta;
+    const std::array<double,3> &gamma;
+
+    const unsigned int          n_q_points;
+
+    const FEValuesExtractors::Vector    velocity;
+};
+
+template<int dim>
+struct PressureProjection
+{
+    PressureProjection(const FiniteElement<dim>  &velocity_fe,
+                       const FiniteElement<dim>  &pressure_fe,
+                       const Mapping<dim>        &mapping,
+                       const Quadrature<dim>     &quadrature,
+                       const UpdateFlags          velocity_update_flags,
+                       const UpdateFlags          pressure_update_flags,
+                       const std::array<double,3>&alpha);
+
+    PressureProjection(const PressureProjection<dim>  &scratch);
+
+    FEValues<dim>               fe_values_velocity;
+    FEValues<dim>               fe_values_pressure;
+
+    std::vector<double>         phi_pressure;
+    std::vector<Tensor<1,dim>>  grad_phi_pressure;
+
+    std::vector<double>         velocity_divergences;
+
+    const std::array<double,3> &alpha;
+
+    const unsigned int          n_q_points;
+
+    const FEValuesExtractors::Vector    velocity;
+};
+
+template<int dim>
+struct VelocityCorrection
+{
+    VelocityCorrection(const FiniteElement<dim>  &velocity_fe,
+                       const FiniteElement<dim>  &pressure_fe,
+                       const Mapping<dim>        &mapping,
+                       const Quadrature<dim>     &quadrature,
+                       const UpdateFlags          velocity_update_flags,
+                       const UpdateFlags          pressure_update_flags,
+                       const std::array<double,3>&alpha);
+
+    VelocityCorrection(const VelocityCorrection<dim>  &scratch);
+
+    FEValues<dim>   fe_values_velocity;
+    FEValues<dim>   fe_values_pressure;
+
+    std::vector<Tensor<1,dim>>  phi_velocity;
+
+    std::vector<Tensor<1,dim>>  tentative_velocity_values;
+
+    std::vector<Tensor<1,dim>>  pressure_gradients;
+
+    const std::array<double,3> &alpha;
+
+    const unsigned int          n_q_points;
+
+    const FEValuesExtractors::Vector    velocity;
+};
 
 }  // namespace Scratch
 
@@ -123,7 +220,8 @@ struct Matrix
     Matrix(const FiniteElement<dim> &fe);
     Matrix(const Matrix<dim>        &data);
 
-    FullMatrix<double>      local_matrix;
+    unsigned int dofs_per_cell;
+
     FullMatrix<double>      local_mass_matrix;
     FullMatrix<double>      local_laplace_matrix;
 
@@ -131,12 +229,18 @@ struct Matrix
 };
 
 template <int dim>
-struct RightHandSide
+struct RightHandSides
 {
-    RightHandSide(const FiniteElement<dim> &fe);
-    RightHandSide(const RightHandSide<dim> &data);
+    RightHandSides(const FiniteElement<dim> &fe,
+                   const ConstraintMatrix   &constraints);
+    RightHandSides(const RightHandSides<dim> &data);
 
-    Vector<double>          local_rhs;
+    const ConstraintMatrix  &constraints;
+
+    unsigned int  dofs_per_cell;
+
+    FullMatrix<double>  local_matrix_for_bc;
+    Vector<double>      local_rhs;
 
     std::vector<types::global_dof_index>   local_dof_indices;
 };
@@ -144,6 +248,195 @@ struct RightHandSide
 }  // namespace Copy
 
 }  // namespace NavierStokesAssembly
+
+
+namespace NavierStokesObjects
+{
+
+template<int dim>
+struct DefaultObjects
+{
+    DefaultObjects(const parallel::distributed::Triangulation<dim>  &triangulation,
+                   const Mapping<dim>   &mapping);
+
+    virtual const DoFHandler<dim>&  get_dof_handler() const;
+
+    virtual const ConstraintMatrix& get_current_constraints() const;
+
+    virtual void  setup_dofs(/* const typename FunctionMap<dim>::type &dirichlet_bcs */) = 0;
+
+    virtual void  assemble_matrices() = 0;
+
+    virtual const FiniteElement<dim>&   get_fe() const = 0;
+
+    virtual const Quadrature<dim>&      get_quadrature() const = 0;
+
+public:
+    LA::SparseMatrix    mass_matrix;
+    LA::SparseMatrix    stiffness_matrix;
+
+    LA::Vector          solution;
+    LA::Vector          old_solution;
+    LA::Vector          old_old_solution;
+
+    LA::Vector          rhs;
+
+    IndexSet            locally_owned_dofs;
+    IndexSet            locally_relevant_dofs;
+
+    /*
+    SparseDirectUMFPACK preconditioner_mass;
+    SparseILU<double>   preconditioner;
+    */
+
+protected:
+    const MPI_Comm      mpi_communicator;
+
+    const Mapping<dim> &mapping;
+
+    DoFHandler<dim>     dof_handler;
+
+    ConstraintMatrix    hanging_node_constraints;
+    ConstraintMatrix    current_constraints;
+
+    bool                rebuild_matrices;
+
+    virtual void setup_matrices(const IndexSet  &locally_owned_dofs,
+                                const IndexSet  &locally_relevant_dofs);
+};
+
+template<int dim>
+inline const DoFHandler<dim>&
+DefaultObjects<dim>::get_dof_handler() const
+{
+    return dof_handler;
+}
+
+template<int dim>
+inline const ConstraintMatrix&
+DefaultObjects<dim>::get_current_constraints() const
+{
+    return current_constraints;
+}
+
+template<int dim>
+struct PressureObjects : public DefaultObjects<dim>
+{
+    PressureObjects(const parallel::distributed::Triangulation<dim> &triangulation,
+                    const Mapping<dim>         &mapping,
+                    const unsigned int          degree);
+
+    virtual void setup_dofs(/*const typename FunctionMap<dim>::type &dirichlet_bcs*/);
+
+    virtual void assemble_matrices();
+
+    virtual const FiniteElement<dim>& get_fe() const;
+
+    virtual const Quadrature<dim>& get_quadrature() const;
+
+    LA::Vector  update;
+    LA::Vector  old_update;
+
+private:
+    const QGauss<dim>   quadrature;
+    FE_Q<dim>           fe;
+
+    void local_assemble_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator  &cell,
+     NavierStokesAssembly::Scratch::PressureMatrix<dim>    &scratch,
+     NavierStokesAssembly::CopyData::Matrix<dim>           &data);
+
+    void copy_local_to_global_matrix
+    (const NavierStokesAssembly::CopyData::Matrix<dim>     &data);
+};
+
+template<int dim>
+inline const FiniteElement<dim>&
+PressureObjects<dim>::get_fe() const
+{
+    return fe;
+}
+
+template<int dim>
+inline const Quadrature<dim>&
+PressureObjects<dim>::get_quadrature() const
+{
+    return quadrature;
+}
+
+template<int dim>
+struct VelocityObjects : public DefaultObjects<dim>
+{
+    VelocityObjects(const parallel::distributed::Triangulation<dim> &triangulation,
+                    const Mapping<dim>         &mapping,
+                    const unsigned int          degree);
+
+    virtual void setup_dofs(/*const typename FunctionMap<dim>::type &dirichlet_bcs*/);
+
+    virtual void assemble_matrices();
+
+    virtual const FiniteElement<dim>& get_fe() const;
+
+    virtual const Quadrature<dim>& get_quadrature() const;
+
+    const ConstraintMatrix& get_correction_constraints() const;
+
+public:
+    LA::SparseMatrix    system_matrix;
+    LA::SparseMatrix    correction_mass_matrix;
+    /*
+     * I think that these objects are not required in the end...
+     *
+     */
+    /*
+    SparseMatrix<double>    mass_stiffness_matrix;
+    SparseMatrix<double>    advection_matrix;
+
+    Vector<double>          extrapolated_solution;
+     */
+    LA::Vector          tentative_solution;
+
+private:
+    const QGauss<dim>   quadrature;
+    FESystem<dim>       fe;
+
+    ConstraintMatrix    correction_constraints;
+
+    virtual void setup_matrices(const IndexSet  &locally_owned_dofs,
+                                const IndexSet  &locally_relevant_dofs);
+
+    void local_assemble_matrix
+    (const typename DoFHandler<dim>::active_cell_iterator  &cell,
+     NavierStokesAssembly::Scratch::VelocityMatrix<dim>    &scratch,
+     NavierStokesAssembly::CopyData::Matrix<dim>           &data);
+
+    void copy_local_to_global_matrix
+    (const NavierStokesAssembly::CopyData::Matrix<dim>     &data);
+};
+
+template<int dim>
+inline const FiniteElement<dim>&
+VelocityObjects<dim>::get_fe() const
+{
+    return fe;
+}
+
+template<int dim>
+inline const Quadrature<dim>&
+VelocityObjects<dim>::get_quadrature() const
+{
+    return quadrature;
+}
+
+template<int dim>
+inline const ConstraintMatrix&
+VelocityObjects<dim>::get_correction_constraints() const
+{
+    return correction_constraints;
+}
+
+}  // namespace NavierStokesObjects
+
 
 
 struct NavierStokesParameters
@@ -160,17 +453,18 @@ struct NavierStokesParameters
     template<typename Stream>
     void write(Stream &stream) const;
 
-    // dimensionless coefficients
-    std::vector<double> equation_coefficients;
-
     LinearSolverParameters  linear_solver_parameters;
 
     // finite element degree
     unsigned int    fe_degree_velocity;
     unsigned int    fe_degree_pressure;
 
+    // dimensionless coefficient
+    double  equation_coefficient;
+
     // discretization parameters
-    PressureUpdateType              projection_scheme;
+    PressureProjectionType          pressure_projection_type;
+    PressureUpdateType              pressure_update_type;
     ConvectiveWeakForm              convective_weak_form;
 
     // verbosity
@@ -212,6 +506,11 @@ public:
     virtual const FiniteElement<dim> &get_fe() const;
 
     virtual unsigned int fe_degree() const;
+
+    const DoFHandler<dim>   &get_veloctiy_dof_handler() const;
+    const FiniteElement<dim>&get_velocity_fe() const;
+    const LA::Vector        &get_velocity_solution() const;
+
     unsigned int fe_degree_velocity() const;
     unsigned int fe_degree_pressure() const;
 
@@ -224,84 +523,60 @@ public:
 private:
     void setup_dofs();
 
-    void setup_system_matrix
-    (const std::vector<IndexSet> &locally_owned_dofs,
-     const std::vector<IndexSet> &locally_relevant_dofs);
-
-    void assemble_system();
-
-    void assemble_system_matrix();
-
-    void build_preconditioner();
-
     void assemble_diffusion_system();
     void assemble_projection_system();
-
-    void build_diffusion_preconditioner();
-    void build_projection_preconditioner();
-    void build_pressure_mass_preconditioner();
+    void assemble_correction_system();
 
     void solve_diffusion_system();
     void solve_projection_system();
+    void solve_correction_system();
 
     // reference to parameters
     const NavierStokesParameters &parameters;
 
     // copy of equation coefficient
-    const std::vector<double>   equation_coefficients;
+    const double    equation_coefficient;
 
     // pointer to boundary conditions
     std::shared_ptr<const BC::NavierStokesBoundaryConditions<dim>>  boundary_conditions;
 
-    // FiniteElement
+    // velocity and pressure objects
+    NavierStokesObjects::VelocityObjects<dim>   velocity;
+    NavierStokesObjects::PressureObjects<dim>   pressure;
+
+    // joint finite element
     const FESystem<dim> fe;
 
-    // matrices
-    std::vector<IndexSet>   locally_owned_dofs;
-    std::vector<IndexSet>   locally_relevant_dofs;
+    // join velocity and pressure solution
+    void compute_joined_solution();
 
-    ConstraintMatrix    hanging_node_constraints;
-    ConstraintMatrix    pressure_constraints;
-    ConstraintMatrix    tentative_velocity_constraints;
-    ConstraintMatrix    neumann_velocity_constraints;
 
-    LA::BlockSparseMatrix   system_matrix;
-    LA::BlockSparseMatrix   mass_matrix;
-    LA::BlockSparseMatrix   stiffness_matrix;
+    // work stream methods for assembly
+    typedef std::tuple<typename DoFHandler<dim>::active_cell_iterator,
+                       typename DoFHandler<dim>::active_cell_iterator> IteratorTuple;
 
-    // pointers to preconditioners
-    std::shared_ptr<LA::PreconditionAMG>
-    preconditioner_diffusion;
+    typedef SynchronousIterators<IteratorTuple> IteratorPair;
 
-    std::shared_ptr<LA::PreconditionAMG>
-    preconditioner_projection;
+    void local_assemble_diffusion_rhs
+    (const IteratorPair                                    &SI,
+     NavierStokesAssembly::Scratch::VelocityDiffusion<dim> &scratch,
+     NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
+    void copy_local_to_global_diffusion_rhs
+    (const NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
 
-    std::shared_ptr<LA::PreconditionJacobi>
-    preconditioner_pressure_mass;
+    void local_assemble_projection_rhs
+    (const IteratorPair                                    &SI,
+     NavierStokesAssembly::Scratch::PressureProjection<dim>&scratch,
+     NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
+    void copy_local_to_global_projection_rhs
+    (const NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
 
-    std::shared_ptr<LA::PreconditionJacobi>
-    preconditioner_velocity_mass;
-
-    // flags for rebuilding matrices and preconditioners
-    bool    rebuild_matrices = true,
-            rebuild_preconditioner = true;
-    mutable bool setup_dofs_flag = true;
-
-    // work stream methods for navier stokes assembly
-    void local_assemble_stokes_matrix
-    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
-     NavierStokesAssembly::Scratch::Matrix<dim>             &scratch,
-     NavierStokesAssembly::CopyData::Matrix<dim>            &data);
-    void copy_local_to_global_stokes_matrix
-    (const NavierStokesAssembly::CopyData::Matrix<dim>      &data);
-
-    void local_assemble_stokes_rhs
-    (const typename DoFHandler<dim>::active_cell_iterator   &cell,
-     NavierStokesAssembly::Scratch::RightHandSide<dim>      &scratch,
-     NavierStokesAssembly::CopyData::RightHandSide<dim>     &data);
-    void copy_local_to_global_stokes_rhs
-    (const NavierStokesAssembly::CopyData::RightHandSide<dim>   &data);
-
+    void local_assemble_correction_rhs
+    (const IteratorPair                                    &SI,
+     NavierStokesAssembly::Scratch::VelocityCorrection<dim>&scratch,
+     NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
+    void copy_local_to_global_correction_rhs
+    (const NavierStokesAssembly::CopyData::RightHandSides<dim>   &data);
 };
 
 template<int dim>
@@ -325,6 +600,47 @@ NavierStokesSolver<dim>::fe_degree_pressure() const
     return fe.base_element(1).degree;
 }
 
+template<int dim>
+inline const FiniteElement<dim>&
+NavierStokesSolver<dim>::get_fe() const
+{
+    return fe;
+}
+
+template<int dim>
+inline const DoFHandler<dim>&
+NavierStokesSolver<dim>::get_veloctiy_dof_handler() const
+{
+    return velocity.get_dof_handler();
+}
+
+template<int dim>
+inline const FiniteElement<dim>&
+NavierStokesSolver<dim>::get_velocity_fe() const
+{
+    return fe.base_element(0);
+}
+
+template<int dim>
+inline const LA::Vector&
+NavierStokesSolver<dim>::get_velocity_solution() const
+{
+    return velocity.solution;
+}
+
+template<int dim>
+inline types::global_dof_index
+NavierStokesSolver<dim>::n_dofs_velocity() const
+{
+    return velocity.get_dof_handler().n_dofs();
+}
+
+template<int dim>
+inline types::global_dof_index
+NavierStokesSolver<dim>::n_dofs_pressure() const
+{
+    return pressure.get_dof_handler().n_dofs();
+}
 
 }  // namespace adsolic
 

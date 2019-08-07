@@ -17,6 +17,7 @@
 namespace BuoyantFluid {
 
 using namespace dealii;
+using namespace TimeStepping;
 
 /*
  *
@@ -109,17 +110,8 @@ struct Parameters
     unsigned int    n_max_iter;
 
     // time stepping parameters
-    TimeStepping::IMEXType  imex_scheme;
+    TimeSteppingParameters timestepping;
 
-    unsigned int    n_steps;
-
-    bool            adaptive_timestep;
-    unsigned int    adaptive_timestep_barrier;
-
-    double          initial_timestep;
-    double          min_timestep;
-    double          max_timestep;
-    double          final_time;
     double          cfl_min;
     double          cfl_max;
 

@@ -17,8 +17,10 @@ NavierStokesParameters::NavierStokesParameters()
 linear_solver_parameters(),
 fe_degree_velocity(2),
 fe_degree_pressure(1),
-projection_scheme(PressureUpdateType::StandardForm),
-convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
+equation_coefficient(1.0),
+pressure_projection_type(PressureProjectionType::Compact),
+pressure_update_type(PressureUpdateType::IrrotationalForm),
+convective_weak_form(ConvectiveWeakForm::DivergenceForm),
 verbose(false)
 {}
 
@@ -76,6 +78,11 @@ void NavierStokesParameters::declare_parameters
                 "degree of the velocity is automatically set to one larger than the "
                 "one of the pressure.");
 
+        prm.declare_entry("equation_coefficient",
+                "1.0",
+                Patterns::Double(),
+                "Dimensionless coeffcient.");
+
         prm.declare_entry("pressure_update_type",
                 "Standard",
                 Patterns::Selection("Standard|Irrotational"),
@@ -111,13 +118,17 @@ void NavierStokesParameters::parse_parameters(ParameterHandler &prm)
             Assert(false, ExcMessage("Incorrect specification of polynomial "
                                      "degrees."));
 
-        const std::string projection_type_str
+        equation_coefficient = prm.get_double("equation_coefficient");
+        Assert(equation_coefficient > 0.,
+               ExcMessage("Equation coefficient cannot be negative."));
+
+        const std::string pressure_update_type_str
         = prm.get("pressure_update_type");
 
-        if (projection_type_str == "Standard")
-            projection_scheme = PressureUpdateType::StandardForm;
-        else if (projection_type_str == "Irrotational")
-            projection_scheme = PressureUpdateType::IrrotationalForm;
+        if (pressure_update_type_str == "Standard")
+            pressure_update_type = PressureUpdateType::StandardForm;
+        else if (pressure_update_type_str == "Irrotational")
+            pressure_update_type = PressureUpdateType::IrrotationalForm;
         else
             AssertThrow(false,
                         ExcMessage("Unexpected string for pressure update scheme."));
@@ -129,10 +140,12 @@ void NavierStokesParameters::parse_parameters(ParameterHandler &prm)
             convective_weak_form = ConvectiveWeakForm::Standard;
         else if (convective_weak_form_str == "DivergenceForm")
             convective_weak_form = ConvectiveWeakForm::DivergenceForm;
+        /*
         else if (convective_weak_form_str == "SkewSymmetric")
             convective_weak_form = ConvectiveWeakForm::SkewSymmetric;
         else if (convective_weak_form_str == "RotationalForm")
             convective_weak_form = ConvectiveWeakForm::RotationalForm;
+         */
         else
             AssertThrow(false,
                         ExcMessage("Unexpected string for convective weak form."));
@@ -157,50 +170,20 @@ SolverBase<dim,LA::BlockVector>
  timestepper_in,
  external_timer),
 parameters(parameters_in),
-equation_coefficients(parameters.equation_coefficients),
-fe(FE_Q<dim>(parameters.fe_degree_velocity), dim,
-   FE_Q<dim>(parameters.fe_degree_pressure), 1)
+equation_coefficient(parameters.equation_coefficient),
+velocity(this->triangulation,
+         this->mapping,
+         parameters.fe_degree_pressure),
+pressure(this->triangulation,
+         this->mapping,
+         parameters.fe_degree_pressure),
+fe(velocity.get_fe(), 1 ,
+   pressure.get_fe(), 1)
 {
    if (boundary_descriptor.get() != 0)
        boundary_conditions = boundary_descriptor;
    else
        boundary_conditions = std::make_shared<const BC::NavierStokesBoundaryConditions<dim>>();
-}
-
-template<int dim>
-const FiniteElement<dim> &
-NavierStokesSolver<dim>::get_fe() const
-{
-    return fe;
-}
-
-template<int dim>
-types::global_dof_index
-NavierStokesSolver<dim>::n_dofs_velocity() const
-{
-    std::vector<unsigned int> block_component(2,0);
-    block_component[1] = 1;
-    std::vector<types::global_dof_index> dofs_per_block(2);
-    DoFTools::count_dofs_per_block(this->dof_handler,
-                                   dofs_per_block,
-                                   block_component);
-
-    return dofs_per_block[0];
-
-}
-
-template<int dim>
-types::global_dof_index
-NavierStokesSolver<dim>::n_dofs_pressure() const
-{
-   std::vector<unsigned int> block_component(2,0);
-   block_component[1] = 1;
-   std::vector<types::global_dof_index> dofs_per_block(2);
-   DoFTools::count_dofs_per_block(this->dof_handler,
-                                  dofs_per_block,
-                                  block_component);
-
-   return dofs_per_block[1];
 }
 
 template<int dim>
@@ -210,17 +193,19 @@ void NavierStokesSolver<dim>::advance_in_time()
         this->pcout << "   Navier Stokes step..." << std::endl;
 
     this->computing_timer->enter_subsection("Nav.-St.");
+    /*
 
     // extrapolate from old solutions
     this->extrapolate_solution();
 
     // assemble right-hand side (and system if necessary)
-    assemble_system();
+    assemble_system_matrix();
 
     // update solution vectors
     this->advance_solution();
 
     this->computing_timer->leave_subsection();
+    */
 }
 
 // explicit instantiation
