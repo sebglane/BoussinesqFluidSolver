@@ -47,16 +47,8 @@ rel_tol(1e-6),
 abs_tol(1e-9),
 n_max_iter(50),
 // time stepping parameters
-imex_scheme(TimeStepping::CNAB),
-n_steps(100),
-initial_timestep(1e-3),
-min_timestep(1e-9),
-max_timestep(1e-3),
-final_time(1.0),
 cfl_min(0.3),
 cfl_max(0.7),
-adaptive_timestep_barrier(2),
-adaptive_timestep(true),
 // discretization parameters
 projection_scheme(PressureUpdateType::StandardForm),
 convective_weak_form(ConvectiveWeakForm::SkewSymmetric),
@@ -90,6 +82,7 @@ velocity_degree(2)
     prm.parse_input(parameter_file);
 
     parse_parameters(prm);
+    timestepping.parse_parameters(prm);
 }
 
 
@@ -242,7 +235,6 @@ void Parameters::declare_parameters(ParameterHandler &prm)
                 "1",
                 Patterns::Integer(),
                 "Minimum of number of refinements during the run.");
-
     }
     prm.leave_subsection();
 
@@ -301,46 +293,6 @@ void Parameters::declare_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Time stepping settings");
     {
-        prm.declare_entry("time_stepping_scheme",
-                "CNAB",
-                Patterns::Selection("Euler|CNAB|MCNAB|CNLF|SBDF"),
-                "Time stepping scheme applied.");
-
-        prm.declare_entry("n_steps",
-                "1000",
-                Patterns::Integer(),
-                "Maximum number of time steps.");
-
-        prm.declare_entry("adaptive_timestep",
-                "true",
-                Patterns::Bool(),
-                "Turn adaptive time stepping on or off");
-
-        prm.declare_entry("adaptive_timestep_barrier",
-                "2",
-                Patterns::Integer(),
-                "Time step after which adaptive time stepping is applied.");
-
-        prm.declare_entry("dt_initial",
-                "1e-6",
-                Patterns::Double(),
-                "Initial time step.");
-
-        prm.declare_entry("dt_min",
-                "1e-6",
-                Patterns::Double(),
-                "Maximum time step.");
-
-        prm.declare_entry("dt_max",
-                "1e-3",
-                Patterns::Double(),
-                "Maximum time step.");
-
-        prm.declare_entry("final_time",
-                "1.0",
-                Patterns::Double(0.),
-                "Final time.");
-
         prm.declare_entry("cfl_min",
                 "0.3",
                 Patterns::Double(),
@@ -419,12 +371,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
         aspect_ratio = prm.get_double("aspect_ratio");
         Assert(aspect_ratio < 1., ExcLowerRangeType<double>(aspect_ratio, 1.0));
-
-        prm.declare_entry("convective_discretization_type",
-                        "Standard",
-                        Patterns::Selection("Standard|SkewSymmetric|RotationalForm"),
-                        "Type of discretization of convective term.");
-
 
         const std::string projection_type_str
         = prm.get("pressure_update_type");
@@ -539,58 +485,6 @@ void Parameters::parse_parameters(ParameterHandler &prm)
 
     prm.enter_subsection("Time stepping settings");
     {
-        std::string imex_type_str;
-        imex_type_str = prm.get("time_stepping_scheme");
-
-        if (imex_type_str == "CNAB")
-            imex_scheme = TimeStepping::IMEXType::CNAB;
-        else if (imex_type_str == "MCNAB")
-            imex_scheme = TimeStepping::IMEXType::MCNAB;
-        else if (imex_type_str == "CNLF")
-            imex_scheme = TimeStepping::IMEXType::CNLF;
-        else if (imex_type_str == "SBDF")
-            imex_scheme = TimeStepping::IMEXType::SBDF;
-        else if (imex_type_str == "Euler")
-            imex_scheme = TimeStepping::IMEXType::Euler;
-        else
-            AssertThrow(false, ExcMessage("Unexpected string for IMEX scheme."));
-
-        adaptive_timestep = prm.get_bool("adaptive_timestep");
-        if (adaptive_timestep)
-            adaptive_timestep_barrier = prm.get_integer("adaptive_timestep_barrier");
-            Assert(adaptive_timestep_barrier > 0,
-                   ExcLowerRange(adaptive_timestep_barrier, 0));
-
-        n_steps = prm.get_integer("n_steps");
-        Assert(n_steps > 0, ExcLowerRange(n_steps, 0));
-
-        initial_timestep = prm.get_double("dt_initial");
-        Assert(initial_timestep > 0,
-               ExcLowerRangeType<double>(initial_timestep, 0));
-
-        if (adaptive_timestep)
-        {
-            min_timestep = prm.get_double("dt_min");
-            Assert(min_timestep > 0,
-                   ExcLowerRangeType<double>(min_timestep, 0));
-
-            max_timestep = prm.get_double("dt_max");
-            Assert(max_timestep > 0,
-                   ExcLowerRangeType<double>(max_timestep, 0));
-
-            Assert(min_timestep < max_timestep,
-                   ExcLowerRangeType<double>(min_timestep, min_timestep));
-            Assert(min_timestep <= initial_timestep,
-                   ExcLowerRangeType<double>(min_timestep, initial_timestep));
-            Assert(initial_timestep <= max_timestep,
-                   ExcLowerRangeType<double>(initial_timestep, max_timestep));
-        }
-
-        final_time = prm.get_double("t_final");
-        Assert(final_time > 0.0, ExcLowerRangeType<double>(final_time, 0.0));
-        Assert(initial_timestep < final_time,
-               ExcLowerRangeType<double>(initial_timestep, final_time));
-
         cfl_min = prm.get_double("cfl_min");
         Assert(cfl_min > 0, ExcLowerRangeType<double>(cfl_min, 0));
 
