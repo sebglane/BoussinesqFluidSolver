@@ -36,7 +36,7 @@ BuoyantFluidSolver<dim>::BuoyantFluidSolver(Parameters &parameters_)
 :
 mpi_communicator(MPI_COMM_WORLD),
 parameters(parameters_),
-imex_timestepper(parameters),
+imex_timestepper(parameters.timestepping),
 triangulation(mpi_communicator),
 mapping(4),
 // temperature part
@@ -58,8 +58,8 @@ pcout(std::cout,
 computing_timer(mpi_communicator, pcout,
                 TimerOutput::summary, TimerOutput::wall_times),
 // time stepping
-timestep(parameters.initial_timestep),
-old_timestep(parameters.initial_timestep),
+timestep(parameters.timestepping.initial_timestep),
+old_timestep(parameters.timestepping.initial_timestep),
 old_alpha_zero(1.0),
 // benchmarking
 phi_benchmark(-2.*numbers::PI)
@@ -156,29 +156,29 @@ void BuoyantFluidSolver<dim>::update_timestep(const double current_cfl_number)
     {
         timestep = 0.5 * (parameters.cfl_min + parameters.cfl_max)
                         * old_timestep / current_cfl_number;
-        if (timestep > parameters.max_timestep
-                 && old_timestep != parameters.max_timestep)
+        if (timestep > parameters.timestepping.max_timestep
+                 && old_timestep != parameters.timestepping.max_timestep)
         {
-            timestep = parameters.max_timestep;
+            timestep = parameters.timestepping.max_timestep;
             timestep_modified = true;
             return;
         }
-        else if (timestep > parameters.max_timestep
-                 && old_timestep == parameters.max_timestep)
+        else if (timestep > parameters.timestepping.max_timestep
+                 && old_timestep == parameters.timestepping.max_timestep)
         {
-            timestep = parameters.max_timestep;
+            timestep = parameters.timestepping.max_timestep;
             return;
         }
-        else if (timestep < parameters.max_timestep
-                 && timestep > parameters.min_timestep)
+        else if (timestep < parameters.timestepping.max_timestep
+                 && timestep > parameters.timestepping.min_timestep)
         {
             timestep_modified = true;
             return;
         }
-        else if (timestep < parameters.min_timestep)
+        else if (timestep < parameters.timestepping.min_timestep)
         {
             Assert(false,
-                   ExcLowerRangeType<double>(timestep, parameters.min_timestep));
+                   ExcLowerRangeType<double>(timestep, parameters.timestepping.min_timestep));
         }
     }
 
@@ -352,7 +352,7 @@ void BuoyantFluidSolver<dim>::resume_from_snapshot()
         snapshot_info.print(pcout);
 
         timestep_number = snapshot_info.timestep_number();
-        if (parameters.adaptive_timestep)
+        if (parameters.timestepping.adaptive_timestep)
             timestep = snapshot_info.timestep();
         old_timestep = snapshot_info.old_timestep();
 
@@ -764,14 +764,14 @@ void BuoyantFluidSolver<dim>::run()
                       << std::endl;
         }
         // adjust time step
-        if (parameters.adaptive_timestep)
+        if (parameters.timestepping.adaptive_timestep)
         {
             if (mesh_refined && cfl_number > parameters.cfl_max)
             {
                 update_timestep(cfl_number);
                 mesh_refined = false;
             }
-            else if ((timestep_number - inital_timestep_number) > parameters.adaptive_timestep_barrier)
+            else if ((timestep_number - inital_timestep_number) > parameters.timestepping.adaptive_timestep_barrier)
                 update_timestep(cfl_number);
         }
         /*
@@ -781,7 +781,7 @@ void BuoyantFluidSolver<dim>::run()
          * updated after the first newly computed timestep with the equidistant
          * timestep.
          */
-        else if (!parameters.adaptive_timestep && parameters.resume_from_snapshot)
+        else if (!parameters.timestepping.adaptive_timestep && parameters.resume_from_snapshot)
         {
             if ((timestep_number - inital_timestep_number) == 0)
             {
@@ -862,14 +862,14 @@ void BuoyantFluidSolver<dim>::run()
         // increase timestep number
         ++timestep_number;
 
-    } while (timestep_number < parameters.n_steps + 1 && time < parameters.final_time);
+    } while (timestep_number < parameters.timestepping.n_steps + 1 && time < parameters.timestepping.final_time);
 
     timestep_number -= 1;
 
-    if (parameters.n_steps % parameters.vtk_frequency != 0)
+    if (parameters.timestepping.n_steps % parameters.vtk_frequency != 0)
         output_results();
 
-    if (parameters.n_steps % parameters.snapshot_frequency != 0)
+    if (parameters.timestepping.n_steps % parameters.snapshot_frequency != 0)
         create_snapshot(time);
 
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)

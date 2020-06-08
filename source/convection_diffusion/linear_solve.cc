@@ -47,9 +47,9 @@ void ConvectionDiffusionSolver<dim>::solve_linear_system()
     LA::Vector  distributed_solution(this->rhs);
     distributed_solution = this->solution;
 
-    SolverControl solver_control(parameters.n_max_iter,
-                                 std::max(parameters.rel_tol * this->rhs.l2_norm(),
-                                          parameters.abs_tol));
+    SolverControl solver_control(parameters.linear_solver_parameters.n_max_iter,
+                                 std::max(parameters.linear_solver_parameters.rel_tol * this->rhs.l2_norm(),
+                                          parameters.linear_solver_parameters.abs_tol));
 
     // solve linear system
     try

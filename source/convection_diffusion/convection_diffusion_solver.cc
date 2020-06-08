@@ -14,9 +14,6 @@ ConvectionDiffusionParameters::ConvectionDiffusionParameters()
 :
 equation_coefficient(1.0),
 fe_degree(1),
-rel_tol(1e-6),
-abs_tol(1e-9),
-n_max_iter(200),
 verbose(false)
 {}
 
@@ -26,6 +23,7 @@ ConvectionDiffusionParameters()
 {
     ParameterHandler prm;
     declare_parameters(prm);
+    linear_solver_parameters.declare_parameters(prm);
 
     std::ifstream parameter_file(parameter_filename.c_str());
 
@@ -50,6 +48,7 @@ ConvectionDiffusionParameters()
     prm.parse_input(parameter_file);
 
     parse_parameters(prm);
+    linear_solver_parameters.parse_parameters(prm);
 }
 
 void ConvectionDiffusionParameters::declare_parameters
@@ -66,21 +65,6 @@ void ConvectionDiffusionParameters::declare_parameters
             "1",
             Patterns::Integer(1,5),
             "Polynomial degree of the finite element discretization.");
-
-    prm.declare_entry("tol_rel",
-            "1e-6",
-            Patterns::Double(1.0e-15,1.0),
-            "Relative tolerance of the linear solver.");
-
-    prm.declare_entry("tol_abs",
-            "1e-9",
-            Patterns::Double(1.0e-15,1.0),
-            "Absolute tolerance of the linear solver.");
-
-    prm.declare_entry("n_max_iter",
-            "200",
-            Patterns::Integer(1,1000),
-            "Maximum number of iterations of the linear solver.");
 
     prm.declare_entry("verbose",
             "false",
@@ -102,15 +86,6 @@ void ConvectionDiffusionParameters::parse_parameters
     fe_degree = prm.get_integer("fe_degree");
     Assert(fe_degree > 0, ExcLowerRange(fe_degree, 0));
 
-    rel_tol = prm.get_double("tol_rel");
-    Assert(rel_tol > 0, ExcLowerRangeType<double>(rel_tol, 0));
-
-    abs_tol = prm.get_double("tol_abs");
-    Assert(abs_tol > 0, ExcLowerRangeType<double>(abs_tol, 0));
-
-    n_max_iter = prm.get_integer("n_max_iter");
-    Assert(n_max_iter > 0, ExcLowerRange(n_max_iter, 0));
-
     verbose = prm.get_bool("verbose");
 
     prm.leave_subsection();
@@ -122,13 +97,8 @@ void ConvectionDiffusionParameters::write(Stream &stream) const
     stream << "Convection diffusion parameters" << std::endl
            << "   equation_coefficient: " << equation_coefficient << std::endl
            << "   fe_degree: " << fe_degree << std::endl
-           << "   rel_tol: " << rel_tol << std::endl
-           << "   abs_tol: " << abs_tol << std::endl
-           << "   n_max_iter: " << n_max_iter << std::endl
            << "   verbose: " << (verbose? "true": "false") << std::endl;
 }
-
-
 
 template<int dim>
 ConvectionDiffusionSolver<dim>::ConvectionDiffusionSolver
