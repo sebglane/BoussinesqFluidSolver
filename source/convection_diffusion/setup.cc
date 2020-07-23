@@ -86,7 +86,7 @@ void ConvectionDiffusionSolver<dim>::setup_dofs()
 
 
         const Functions::ZeroFunction<dim>  zero_function;
-        typename FunctionMap<dim>::type function_map;
+        std::map<types::boundary_id, const Function<dim> *> function_map;
 
         if (boundary_conditions.get() != 0)
         {
