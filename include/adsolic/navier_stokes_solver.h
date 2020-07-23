@@ -19,7 +19,7 @@
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 
-#include <deal.II/lac/constraint_matrix.h>
+#include <deal.II/lac/affine_constraints.h>
 
 #include <adsolic/boundary_conditions.h>
 #include <adsolic/linear_algebra.h>
@@ -232,10 +232,10 @@ template <int dim>
 struct RightHandSides
 {
     RightHandSides(const FiniteElement<dim> &fe,
-                   const ConstraintMatrix   &constraints);
+                   const AffineConstraints<double>  &constraints);
     RightHandSides(const RightHandSides<dim> &data);
 
-    const ConstraintMatrix  &constraints;
+    const AffineConstraints<double> &constraints;
 
     unsigned int  dofs_per_cell;
 
@@ -261,7 +261,7 @@ struct DefaultObjects
 
     virtual const DoFHandler<dim>&  get_dof_handler() const;
 
-    virtual const ConstraintMatrix& get_current_constraints() const;
+    virtual const AffineConstraints<double>& get_current_constraints() const;
 
     virtual void  setup_dofs(/* const typename FunctionMap<dim>::type &dirichlet_bcs */) = 0;
 
@@ -296,8 +296,8 @@ protected:
 
     DoFHandler<dim>     dof_handler;
 
-    ConstraintMatrix    hanging_node_constraints;
-    ConstraintMatrix    current_constraints;
+    AffineConstraints<double>   hanging_node_constraints;
+    AffineConstraints<double>   current_constraints;
 
     bool                rebuild_matrices;
 
@@ -313,7 +313,7 @@ DefaultObjects<dim>::get_dof_handler() const
 }
 
 template<int dim>
-inline const ConstraintMatrix&
+inline const AffineConstraints<double>&
 DefaultObjects<dim>::get_current_constraints() const
 {
     return current_constraints;
@@ -379,7 +379,7 @@ struct VelocityObjects : public DefaultObjects<dim>
 
     virtual const Quadrature<dim>& get_quadrature() const;
 
-    const ConstraintMatrix& get_correction_constraints() const;
+    const AffineConstraints<double>& get_correction_constraints() const;
 
 public:
     LA::SparseMatrix    system_matrix;
@@ -400,7 +400,7 @@ private:
     const QGauss<dim>   quadrature;
     FESystem<dim>       fe;
 
-    ConstraintMatrix    correction_constraints;
+    AffineConstraints<double>   correction_constraints;
 
     virtual void setup_matrices(const IndexSet  &locally_owned_dofs,
                                 const IndexSet  &locally_relevant_dofs);
@@ -429,7 +429,7 @@ VelocityObjects<dim>::get_quadrature() const
 }
 
 template<int dim>
-inline const ConstraintMatrix&
+inline const AffineConstraints<double>&
 VelocityObjects<dim>::get_correction_constraints() const
 {
     return correction_constraints;

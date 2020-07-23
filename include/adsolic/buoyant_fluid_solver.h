@@ -13,13 +13,15 @@
 #include <deal.II/base/table_handler.h>
 #include <deal.II/base/timer.h>
 
+#include <deal.II/distributed/tria.h>
+
 #include <deal.II/dofs/dof_handler.h>
 
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/mapping_q.h>
 
-#include <deal.II/distributed/tria.h>
+#include <deal.II/lac/affine_constraints.h>
 
 #include <memory>
 #include <tuple>
@@ -163,7 +165,7 @@ private:
     std::vector<IndexSet>           locally_relevant_stokes_dofs;
 
     // temperature part
-    ConstraintMatrix                temperature_constraints;
+                    temperature_constraints;
 
     LA::SparseMatrix     temperature_matrix;
     LA::SparseMatrix     temperature_mass_matrix;
@@ -175,9 +177,9 @@ private:
     LA::Vector           old_old_temperature_solution;
     LA::Vector           temperature_rhs;
 
-    // stokes part
-    ConstraintMatrix                navier_stokes_constraints;
-    ConstraintMatrix                stokes_pressure_constraints;
+    // navier stokes part
+    AffineConstraints<double>   navier_stokes_constraints;
+    AffineConstraints<double>   stokes_pressure_constraints;
 
     LA::BlockSparseMatrix    navier_stokes_matrix;
     LA::BlockSparseMatrix    navier_stokes_laplace_matrix;

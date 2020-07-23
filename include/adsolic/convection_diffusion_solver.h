@@ -16,7 +16,7 @@
 
 #include <deal.II/fe/fe_values.h>
 
-#include <deal.II/lac/constraint_matrix.h>
+#include <deal.II/lac/affine_constraints.h>
 
 #include <deal.II/fe/fe_q.h>
 
@@ -236,7 +236,7 @@ private:
     IndexSet            locally_owned_dofs;
     IndexSet            locally_relevant_dofs;
 
-    ConstraintMatrix    constraints;
+    AffineConstraints<double>    constraints;
 
     LA::SparseMatrix    system_matrix;
     LA::SparseMatrix    mass_matrix;

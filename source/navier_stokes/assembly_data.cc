@@ -264,7 +264,7 @@ local_dof_indices(data.local_dof_indices)
 template <int dim>
 RightHandSides<dim>::RightHandSides
 (const FiniteElement<dim>  &fe,
- const ConstraintMatrix    &constraints)
+ const AffineConstraints<double>    &constraints)
 :
 constraints(constraints),
 dofs_per_cell(fe.dofs_per_cell),
