@@ -9,6 +9,8 @@
 #include <adsolic/timestepping.h>
 #include <adsolic/parameters.h>
 
+#include <fstream>
+
 namespace TimeStepping
 {
 
