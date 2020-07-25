@@ -145,6 +145,10 @@ Thumbs.db
 # python compiled modules
 *.pyc
 *.pyo
+
+# Doxyen documentation
+documentation/html/
+documentation/latex/
 =======
 >>>>>>> f5cd5b2b69463968f3b40d2b353129c28b07c19e
 /build/

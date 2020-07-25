@@ -44,7 +44,7 @@ PROJECT_NUMBER         =
 # for a project that appears at the top of each page and should give viewer a
 # quick idea about the purpose of the project. Keep the description short.
 
-PROJECT_BRIEF          =
+PROJECT_BRIEF          = "An adaptive finite element solver for Boussinesq-type convection problems"
 
 # With the PROJECT_LOGO tag one can specify a logo or an icon that is included
 # in the documentation. The maximum height of the logo should not exceed 55
@@ -1573,7 +1573,7 @@ FORMULA_TRANSPARENT    = YES
 # to create new LaTeX commands to be used in formulas as building blocks. See
 # the section "Including formulas" for details.
 
-FORMULA_MACROFILE      =
+FORMULA_MACROFILE      = latex_macros.tex
 
 # Enable the USE_MATHJAX option to render LaTeX formulas using MathJax (see
 # https://www.mathjax.org) which uses client side JavaScript for the rendering
@@ -1614,7 +1614,7 @@ MATHJAX_RELPATH        = https://cdn.jsdelivr.net/npm/mathjax@2
 # MATHJAX_EXTENSIONS = TeX/AMSmath TeX/AMSsymbols
 # This tag requires that the tag USE_MATHJAX is set to YES.
 
-MATHJAX_EXTENSIONS     =
+MATHJAX_EXTENSIONS     = TeX/AMSmath TeX/AMSsymbols TeX/AMSfonts TeX/mathtools TeX/bm
 
 # The MATHJAX_CODEFILE tag can be used to specify a file with javascript pieces
 # of code that will be used on startup of the MathJax code. See the MathJax site
@@ -1780,13 +1780,13 @@ PAPER_TYPE             = a4
 # that should be included in the LaTeX output. The package can be specified just
 # by its name or with the correct syntax as to be used with the LaTeX
 # \usepackage command. To get the times font for instance you can specify :
-# EXTRA_PACKAGES=times or EXTRA_PACKAGES={times}
+# EXTRA_PACKAGES=times or EXTRA_PACKAGES={times}EXTRA_PACKAGES
 # To use the option intlimits with the amsmath package you can specify:
 # EXTRA_PACKAGES=[intlimits]{amsmath}
 # If left blank no extra packages will be included.
 # This tag requires that the tag GENERATE_LATEX is set to YES.
 
-EXTRA_PACKAGES         = {amsmath} {upgreek}
+EXTRA_PACKAGES         = {amsmath} {upgreek} {amsfonts} {mathtools} {bm}
 
 # The LATEX_HEADER tag can be used to specify a personal LaTeX header for the
 # generated LaTeX document. The header should contain everything until the first
@@ -1858,7 +1858,7 @@ USE_PDFLATEX           = YES
 # The default value is: NO.
 # This tag requires that the tag GENERATE_LATEX is set to YES.
 
-LATEX_BATCHMODE        = NO
+LATEX_BATCHMODE        = YES
 
 # If the LATEX_HIDE_INDICES tag is set to YES then doxygen will not include the
 # index chapters (such as File Index, Compound Index, etc.) in the output.
